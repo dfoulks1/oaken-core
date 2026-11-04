@@ -8,6 +8,15 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
 - Step 0 (commit 5281a70): the clean oaken-mail kernel (cf3b187) lifted, imports renamed to
   `oaken_core`, 106 lifted tests pass on Python 3.12. `ids` uses a generic `SubjectId`.
   Three tests wait in `tests_to_port/` (registry, gate, guard): they need a new test rig.
+- Step 1 (f913b6a): store seam, append-only change log (ordered by `seq`), two-layer labels.
+- Logging (00d89a8): stdlib `logging`, five levels, per-logger levels, no structlog.
+- Step 2: `jobs.py` (queues, claim, lease, retry, requeue, runner per queue), `queues.py`,
+  `scheduler.py` (lifted, `subject` + queue), `intake.py` (triage before storage, reject keeps a
+  content-free log row, accept moves labels to the real subject). 168 tests pass.
+  Skipped on purpose: external-agent leases and quotas, a generic event bus (a `wake` event is
+  enough for now), `pipeline_control` (replaced by `queue_state` pause), the `queue.requeue`
+  operation (needs step 4's registry), and ending a job's life when its `queue` label changes
+  (use `requeue --to`). `oaken_core.new_queue` is `Queues.new_queue` on a registry, not a global.
 - The unread parts were read for sizing (see Sizing).
 
 ## Decided

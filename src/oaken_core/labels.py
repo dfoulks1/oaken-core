@@ -177,6 +177,10 @@ class LabelStore:
         Used by a retriage. Returns how many were removed."""
         return await self._clear(subject_id, MACHINE, actor, key)
 
+    async def clear_human_all(self, subject_id: str, actor: Actor) -> int:
+        """Remove every human value of a subject (a rejected intake item must leave nothing)."""
+        return await self._clear(subject_id, HUMAN, actor, None)
+
     async def _clear(self, subject_id: str, layer: str, actor: Actor, key: str | None) -> int:
         async with self.db.transaction() as tx:
             sql = "SELECT key, value FROM labels WHERE subject_id = ? AND layer = ?"
@@ -192,6 +196,35 @@ class LabelStore:
                 )
                 await self.log.append(
                     tx, actor=actor, subject_id=subject_id, key=r["key"], op="clear", layer=layer,
+                    old=r["value"],
+                )  # fmt: skip
+        return len(rows)
+
+    async def move(self, src: str, dst: str) -> int:
+        """Move every label of ``src`` to ``dst``, both layers, keeping who set each and when
+        (intake: labels written on a provisional subject follow the item to its real record).
+        One log row for each label, on each side. Returns how many moved."""
+        async with self.db.transaction() as tx:
+            rows = await tx.fetchall("SELECT * FROM labels WHERE subject_id = ?", (src,))
+            for r in rows:
+                actor = Actor(r["actor_kind"], r["actor"])  # type: ignore[arg-type]
+                await tx.execute(
+                    "INSERT INTO labels (subject_id, key, layer, value, actor_kind, actor, at)"
+                    " VALUES (?,?,?,?,?,?,?) ON CONFLICT (subject_id, key, layer) DO UPDATE SET"
+                    " value = excluded.value, actor_kind = excluded.actor_kind,"
+                    " actor = excluded.actor, at = excluded.at",
+                    (dst, r["key"], r["layer"], r["value"], r["actor_kind"], r["actor"], r["at"]),
+                )
+                await tx.execute(
+                    "DELETE FROM labels WHERE subject_id = ? AND key = ? AND layer = ?",
+                    (src, r["key"], r["layer"]),
+                )
+                await self.log.append(
+                    tx, actor=actor, subject_id=dst, key=r["key"], op="set", layer=r["layer"],
+                    new=r["value"],
+                )  # fmt: skip
+                await self.log.append(
+                    tx, actor=actor, subject_id=src, key=r["key"], op="clear", layer=r["layer"],
                     old=r["value"],
                 )  # fmt: skip
         return len(rows)

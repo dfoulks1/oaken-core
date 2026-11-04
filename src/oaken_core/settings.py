@@ -32,3 +32,20 @@ class LogSettings(BaseModel):
     @classmethod
     def _upper_all(cls, v: object) -> object:
         return {k: s.upper() if isinstance(s, str) else s for k, s in v.items()} if isinstance(v, dict) else v
+
+
+class JobsSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    lease_seconds: float = Field(default=60.0, gt=0)
+    max_attempts: int = Field(default=3, ge=1)
+    backoff_base_seconds: float = Field(default=5.0, ge=0)
+    backoff_max_seconds: float = Field(default=900.0, ge=0)
+    backoff_jitter: float = Field(default=0.2, ge=0, le=1)  # a fraction taken off, at random
+    handler_timeout_seconds: float = Field(default=600.0, ge=0)  # 0 turns the timeout off
+    max_result_bytes: int = Field(default=65536, ge=1)
+    kind_limits: dict[str, int] = Field(default_factory=dict)  # concurrency cap per job kind
+    requeue_cooldown_seconds: float = Field(default=60.0, ge=0)  # per job, between requeues
+    # Intake: when a triager fails on the last attempt, treat the item as "unsure" and ingest it
+    # (oaken-mail's behaviour). Off by default: a broken triager lets intake back up.
+    open_gate_on_final_failure: bool = False
