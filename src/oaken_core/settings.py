@@ -68,3 +68,25 @@ class SwarmSettings(BaseModel):
     # How long an agent holds a job before it must heartbeat. Long: a large model on modest
     # hardware is slow.
     agent_lease_seconds: float = Field(default=600.0, gt=0)
+
+
+class PluginTables(BaseModel):
+    """The ``[plugins]`` part of the config: a table per plugin, ``[plugins.<kind>.<name>]``, and
+    which plugin is active for a kind that takes exactly one (``active``).
+
+    A table that carries ``plugin = "<entry point>"`` is a *named instance* of that plugin: any
+    number of them, each with its own settings (``[plugins.llm_backend.desk]`` and
+    ``[plugins.llm_backend.laptop]`` both with ``plugin = "ollama"``).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    active: dict[str, str] = Field(default_factory=dict)  # kind -> plugin, e.g. {"store": "sqlite"}
+    tables: dict[str, dict[str, dict[str, object]]] = Field(default_factory=dict)  # kind -> name -> table
+
+    def table(self, kind: str, name: str) -> dict[str, object]:
+        return dict(self.tables.get(kind, {}).get(name, {}))
+
+    def instances(self, kind: str) -> dict[str, str]:
+        """Instance name -> the plugin it is an instance of, for tables with a ``plugin`` key."""
+        return {n: str(t["plugin"]) for n, t in self.tables.get(kind, {}).items() if "plugin" in t}

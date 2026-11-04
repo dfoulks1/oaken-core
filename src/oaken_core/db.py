@@ -278,8 +278,9 @@ async def _connect(path: Path, busy_timeout_ms: int, *, read_only: bool) -> aios
 
 
 # -- migrations -----------------------------------------------------------------------------
+_VERSION_TABLE = re.compile(r"^schema_version(_[a-z0-9_]{1,80})?$")
 _SCHEMA_VERSION = """
-CREATE TABLE IF NOT EXISTS schema_version (
+CREATE TABLE IF NOT EXISTS {table} (
     version    INTEGER PRIMARY KEY,
     name       TEXT NOT NULL,
     checksum   TEXT NOT NULL,
@@ -320,17 +321,24 @@ def _statements(script: str) -> list[str]:
     return [s for s in out if s.strip("; \n")]
 
 
-async def migrate(db: Database, directory: Path) -> list[int]:
+async def migrate(
+    db: Database, directory: Path, *, table: str = "schema_version"
+) -> list[int]:
     """Apply every migration not yet applied, in order. Forward-only and idempotent.
 
     Raises StorageError if an applied migration's file changed (tamper), or if the database
     holds a version this code does not know (a newer database). Returns the versions applied.
+
+    ``table`` names the version table, so core and each plugin keep their own history and one
+    runner can apply them all in order (``schema_version_<plugin>``).
     """
+    if not _VERSION_TABLE.match(table):
+        raise StorageError(f"bad version table name {table!r}")
     available = _load_migrations(directory)
     applied_now: list[int] = []
     async with db.transaction() as tx:
-        await tx.execute(_SCHEMA_VERSION)
-        rows = await tx.fetchall("SELECT version, name, checksum FROM schema_version")
+        await tx.execute(_SCHEMA_VERSION.format(table=table))
+        rows = await tx.fetchall(f"SELECT version, name, checksum FROM {table}")  # noqa: S608
         applied = {r["version"]: (r["name"], r["checksum"]) for r in rows}
         newest = max(available, default=0)
         if applied and max(applied) > newest:
@@ -351,7 +359,7 @@ async def migrate(db: Database, directory: Path) -> list[int]:
             except StorageError as exc:
                 raise StorageError(f"migration {name} failed: {exc.message}") from exc
             await tx.execute(
-                "INSERT INTO schema_version (version, name, checksum) VALUES (?, ?, ?)",
+                f"INSERT INTO {table} (version, name, checksum) VALUES (?, ?, ?)",  # noqa: S608
                 (version, name, checksum),
             )
             applied_now.append(version)

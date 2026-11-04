@@ -20,6 +20,16 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   Skipped on purpose: per-kind pause (replaced by per-queue pause), the operations themselves
   (step 4, they need the registry), and moving already-queued jobs when a `queue` label changes
   (use `requeue --to`). `oaken_core.new_queue` is `Queues.new_queue` on a registry, not a global.
+- Step 3: the plugin host (`plugins/host.py`, lifted and reshaped), `kinds.py` (registrable kinds,
+  eleven shipped), `contracts.py` (generic half), `base.py` (`BasePlugin`, `@command`), `validate.py`,
+  `ui.py` (`check_ui`, lifted), `jobs.py` and `ops.py` (lifted bridges). The store is a plugin and
+  starts first (`start_store`, then core's migrations, then the rest). Named instances come from
+  config tables with `plugin = "<name>"`. A plugin may own tables (`migrations_dir`, its own version
+  table, once per plugin) and define labels. A bad label write or a `needs` cycle switches the plugin
+  off; `requires_core` is enforced. 209 tests pass. Skipped on purpose: per-plugin `capabilities`
+  allow-lists (mail's provider idea), the `trial` wizard, per-method tracing wrappers, mail's
+  declarative `PluginTable` store (plugins get `ctx.db` and a migrations folder instead; shortcut: not
+  sandboxed), and `ctx.llm` (step 5). The registry still carries mail's `marks_read` (step 4 drops it).
 - The unread parts were read for sizing (see Sizing).
 
 ## Decided
