@@ -30,3 +30,15 @@ async def db(tmp_path: Path) -> AsyncIterator[Database]:
 @pytest.fixture
 def clock() -> FakeClock:
     return FakeClock()
+
+
+@pytest.fixture
+async def core_db(tmp_path: Path) -> AsyncIterator[Database]:
+    """A database with core's migrations applied, opened through the default store."""
+    from oaken_core.store import SqliteStore, open_core
+
+    database = await open_core(SqliteStore(tmp_path / "core.db", read_pool_size=2))
+    try:
+        yield database
+    finally:
+        await database.close()
