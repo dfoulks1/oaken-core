@@ -73,3 +73,30 @@ async def kit(core_db: Database, clock: FakeClock) -> Kit:
     settings = JobsSettings(backoff_jitter=0, backoff_base_seconds=10, lease_seconds=30)
     queue = JobQueue(core_db, clock, queues, labels=labels, changelog=log, settings=settings)
     return Kit(core_db, clock, queues, maker, labels, log, queue, JobRunner(queue))
+
+
+@dataclass
+class Ops:
+    kit: Kit
+    svc: "Services"
+    client: "CoreClient"
+    registry: "OperationRegistry"
+    agents: "AgentRegistry"
+
+
+@pytest.fixture
+async def ops(kit: Kit) -> Ops:
+    """The operation layer wired over the kit: services, the core registry, the in-process client."""
+    from oaken_core.agents import AgentRegistry
+    from oaken_core.operations.builtin import core_registry
+    from oaken_core.operations.client import CoreClient
+    from oaken_core.operations.services import Services
+    from oaken_core.settings import Settings, SwarmSettings
+
+    swarm = SwarmSettings(enabled=True, allowed_kinds=["work"], default_max_leases=2, agent_lease_seconds=300)
+    kit.queue.swarm = swarm
+    agents = AgentRegistry(kit.db, kit.clock, swarm)
+    svc = Services(db=kit.db, clock=kit.clock, settings=Settings(swarm=swarm, version="9.9.9"),
+                   queues=kit.queues, queue=kit.queue, labels=kit.labels, changelog=kit.log, agents=agents)  # fmt: skip
+    registry = core_registry()
+    return Ops(kit, svc, CoreClient(registry, svc), registry, agents)

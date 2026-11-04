@@ -37,6 +37,7 @@ class Agent:
     label: str
     kinds: frozenset[str]
     queues: frozenset[str] | None  # None: every queue
+    operations: frozenset[str]  # granted beyond the job protocol: names and ``plugin:<name>``
     max_leases: int
     max_per_hour: int
     created_at: datetime
@@ -60,6 +61,7 @@ class Agent:
             label=r["label"],
             kinds=frozenset(json.loads(r["kinds_json"])),
             queues=frozenset(queues) if queues is not None else None,
+            operations=frozenset(json.loads(r["operations_json"] or "[]")),
             max_leases=r["max_leases"],
             max_per_hour=r["max_per_hour"],
             created_at=parse_ts(r["created_at"]),
@@ -87,6 +89,7 @@ class AgentRegistry:
         kinds: Collection[str],
         *,
         queues: Collection[str] | None = None,
+        operations: Collection[str] = (),
         max_leases: int | None = None,
         max_per_hour: int | None = None,
     ) -> tuple[Agent, str]:
@@ -119,7 +122,8 @@ class AgentRegistry:
                 raise QuotaExceeded(f"at most {s.max_agents} active agents ([swarm] max_agents)")
             await tx.execute(
                 "INSERT INTO agents (id, label, token_hash, kinds_json, queues_json,"
-                " max_leases, max_per_hour, created_at) VALUES (?,?,?,?,?,?,?,?)",
+                " max_leases, max_per_hour, created_at, operations_json)"
+                " VALUES (?,?,?,?,?,?,?,?,?)",
                 (
                     agent_id,
                     label,
@@ -129,6 +133,7 @@ class AgentRegistry:
                     leases,
                     hourly,
                     fmt_ts(now),
+                    json.dumps(sorted(set(operations))),
                 ),
             )
             created = await tx.fetchone("SELECT * FROM agents WHERE id = ?", (agent_id,))
@@ -155,6 +160,18 @@ class AgentRegistry:
         where = "" if include_revoked else " WHERE revoked_at IS NULL"
         rows = await self.db.fetchall(f"SELECT * FROM agents{where} ORDER BY created_at, id")  # noqa: S608
         return [Agent.from_row(r) for r in rows]
+
+    async def grant(self, agent_id: AgentId, operations: Collection[str]) -> Agent:
+        """Replace the operations an agent may call beyond the job protocol. Whether a name is real
+        or allowed over MCP is the caller's check (the ``mcp="never"`` ceiling stays above this)."""
+        async with self.db.transaction() as tx:
+            changed = await tx.execute(
+                "UPDATE agents SET operations_json = ? WHERE id = ? AND revoked_at IS NULL",
+                (json.dumps(sorted(set(operations))), agent_id),
+            )
+            if not changed:
+                raise NotFound(f"no such active agent: {agent_id}")
+        return await self.get(agent_id)
 
     async def revoke(self, agent_id: AgentId) -> bool:
         """Revoke an agent at once. Jobs it holds go back to the queue (the attempt is not

@@ -41,7 +41,7 @@ def _model(schemas: dict[str, Any], model: type[BaseModel], key: str) -> dict[st
 
 
 def build_openapi(
-    operations: Iterable[AnyOperation], *, title: str = "Oaken Mail", version: str = "1"
+    operations: Iterable[AnyOperation], *, title: str = "Oaken Core", version: str = "1"
 ) -> dict[str, Any]:
     schemas: dict[str, Any] = {}
     proposal = _model(schemas, Proposal, "Proposal")
@@ -95,7 +95,7 @@ def build_openapi(
                 "description": op.description or op.summary,
                 "tags": [op.plugin or "core"],
                 "x-oaken-permission": op.permission,
-                "x-oaken-marks-read": op.marks_read,
+                "x-oaken-group": op.group,
                 "x-oaken-mcp": op.mcp,
                 "requestBody": {
                     "required": True,

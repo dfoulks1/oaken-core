@@ -5,13 +5,12 @@ The general API, the CLI and the MCP server are generated from this registry, so
 apart, and the safety rules live here, in code: a permission class on every operation, a confirm
 gate on every mutation, and a ceiling on what may ever be offered over MCP.
 
-    @operation("mark_read", "Mark messages read.", permission="mutate",
-               input=MarkReadInput, output=MarkReadOutput, mcp="on", marks_read=True,
-               preview=preview_mark_read)
-    async def mark_read(ctx: OpContext, inp: MarkReadInput) -> MarkReadOutput: ...
+    @operation("label_set", "Set a label.", permission="mutate", group="label",
+               input=LabelSetIn, output=LabelSetOut, mcp="off", preview=preview_label_set)
+    async def label_set(ctx: OpContext, inp: LabelSetIn) -> LabelSetOut: ...
 
 Defining an operation that breaks a rule raises at once, at import: a ``send`` operation that could
-be offered over MCP, a read that marks mail read, a mutation an agent could reach that cannot say
+be offered over MCP, a mutation an agent could reach that cannot say
 what it would change.
 """
 
@@ -79,14 +78,17 @@ class Operation(Generic[In, Out]):
     output: type[Out]
     handler: Handler[In, Out]
     mcp: McpMode = "never"
-    marks_read: bool = (
-        False  # may change read state; the tests hold every other operation to "never"
-    )
     streaming: bool = False  # long-running: the result is a job or an event stream
     preview: PreviewFn[In] | None = None
     audit: AuditBy = "registry"
     plugin: str | None = None  # the plugin that offers it (its name is the name's prefix)
     description: str = ""
+    # The CLI group a core operation sits under (``queue`` for ``queue_requeue``: ``queue requeue``).
+    # A plugin operation's group is its plugin (``<plugin>.<name>`` is ``<plugin> <name>``).
+    group: str = ""
+    # An agent may call it with no grant, because the token's own scope bounds it (the job protocol:
+    # claim, heartbeat, complete, fail). Every other operation an agent calls must be granted.
+    agent_ok: bool = False
 
     def __post_init__(self) -> None:
         base = self.name.split(PLUGIN_SEP, 1)
@@ -101,19 +103,27 @@ class Operation(Generic[In, Out]):
             raise OperationDefinitionError(f"{self.name}: unknown permission {self.permission!r}")
         if self.permission == "send" and self.mcp != "never":
             raise OperationDefinitionError(f"{self.name}: sending is never exposed over MCP")
-        if self.permission == "read" and self.marks_read:
-            raise OperationDefinitionError(f"{self.name}: a read operation cannot mark mail read")
         if self.permission == "mutate" and self.mcp != "never" and self.preview is None:
             raise OperationDefinitionError(
                 f"{self.name}: an operation an agent can reach must preview what it would change"
             )
+        if self.group and not self.name.startswith(self.group + "_"):
+            raise OperationDefinitionError(f"{self.name}: its group {self.group!r} must prefix it")
         if self.plugin is not None:
-            if self.marks_read:
-                raise OperationDefinitionError(f"{self.name}: a plugin cannot mark mail read")
             if self.mcp == "on":
                 raise OperationDefinitionError(
                     f"{self.name}: a plugin's operations start off over MCP"
                 )
+
+    @property
+    def cli_path(self) -> tuple[str, ...]:
+        """Where the CLI puts it: ``(group, verb)`` for a core operation in a group,
+        ``(plugin, name)`` for a plugin's, ``(name,)`` for a core operation with none."""
+        if self.plugin is not None:
+            return (self.plugin, self.name.split(PLUGIN_SEP, 1)[1])
+        if self.group:
+            return (self.group, self.name[len(self.group) + 1 :])
+        return (self.name,)
 
     @property
     def mcp_allowed(self) -> bool:
@@ -143,10 +153,11 @@ def operation(
     input: type[In],
     output: type[Out],
     mcp: McpMode = "never",
-    marks_read: bool = False,
     streaming: bool = False,
     preview: PreviewFn[In] | None = None,
     audit: AuditBy = "registry",
+    group: str = "",
+    agent_ok: bool = False,
 ) -> Callable[[Handler[In, Out]], Operation[In, Out]]:
     """Turn a handler into an ``Operation`` (it is not registered until the registry is built)."""
 
@@ -159,10 +170,11 @@ def operation(
             output=output,
             handler=fn,
             mcp=mcp,
-            marks_read=marks_read,
             streaming=streaming,
             preview=preview,
             audit=audit,
+            group=group,
+            agent_ok=agent_ok,
             description=" ".join((fn.__doc__ or "").split()),
         )
 

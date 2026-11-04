@@ -277,7 +277,7 @@ async def test_a_plugin_owns_tables_and_they_migrate_once_in_their_own_history(t
         rows = await db.fetchall("SELECT version, name FROM schema_version_provider_notes")
         assert [(r["version"], r["name"]) for r in rows] == [(1, "0001_notes")]
         core = await db.fetchall("SELECT name FROM schema_version")
-        assert {r["name"] for r in core} == {"0001_core", "0002_jobs", "0003_agents"}  # core's history is its own
+        assert {r["name"] for r in core} == {"0001_core", "0002_jobs", "0003_agents", "0004_exposure"}  # core's history is its own
         assert all(s.healthy for s in host.statuses() if s.kind == "provider")
     finally:
         await host.stop()

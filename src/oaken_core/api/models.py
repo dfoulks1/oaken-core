@@ -25,7 +25,9 @@ class OperationInfo(BaseModel):
     name: str
     summary: str
     permission: Literal["read", "mutate", "send"]
-    marks_read: bool
+    group: str = ""
+    plugin: str | None = None
+    agent_ok: bool = False
     streaming: bool
     mcp: Literal["never", "off", "on"]
     input_schema: dict[str, Any]
@@ -51,7 +53,8 @@ class ClaimRequest(_Body):
 class JobLease(BaseModel):
     id: str
     kind: str
-    account_id: str | None
+    subject: str | None
+    queue: str
     payload: dict[str, Any]
     attempts: int
     max_attempts: int

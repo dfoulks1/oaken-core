@@ -90,3 +90,48 @@ class PluginTables(BaseModel):
     def instances(self, kind: str) -> dict[str, str]:
         """Instance name -> the plugin it is an instance of, for tables with a ``plugin`` key."""
         return {n: str(t["plugin"]) for n, t in self.tables.get(kind, {}).items() if "plugin" in t}
+
+
+class OperationsSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirm_ttl_seconds: float = Field(default=300.0, gt=0)  # how long a confirmation token lives
+    max_pending_confirmations: int = Field(default=64, ge=1)
+    proposal_changes_shown: int = Field(default=20, ge=1)  # changes listed in a proposal
+    # ``[mcp.allowed]``: operations (or ``plugin:<name>``) the config turns on or off for MCP. The
+    # ``never`` ceiling is not touched by these; only ``lift_never`` below lifts one.
+    mcp_allowed: dict[str, bool] = Field(default_factory=dict)
+    # Operations whose ``mcp="never"`` ceiling the config file lifts, by name, to ``off`` (then an
+    # exposure setting or an agent grant can turn them on). Logged at start. Only a person who can
+    # edit the file can do this; no operation can.
+    lift_never: list[str] = Field(default_factory=list)
+
+
+class ApiSettings(BaseModel):
+    """The authenticated door (API, MCP, gateways). The console is separate and loopback-only."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    host: str = "127.0.0.1"
+    port: int = Field(default=0, ge=0, le=65535)  # 0: pick a free one and publish it
+    remote_ok: bool = False  # serve beyond loopback (MJ on the laptop): the token is then the gate
+    allowed_hosts: list[str] = Field(default_factory=list)
+    dev_origin: str = ""
+    rate_limit_per_minute: int = Field(default=600, ge=1)
+    max_body_bytes: int = Field(default=1_000_000, ge=1024)
+    event_ring_size: int = Field(default=1000, ge=10)
+    heartbeat_seconds: float = Field(default=15.0, gt=0)
+
+
+class Settings(BaseModel):
+    """Core's whole configuration. Products add their sections through plugin ``config_model``s."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = "0.0.0"
+    log: LogSettings = Field(default_factory=LogSettings)
+    jobs: JobsSettings = Field(default_factory=JobsSettings)
+    swarm: SwarmSettings = Field(default_factory=SwarmSettings)
+    operations: OperationsSettings = Field(default_factory=OperationsSettings)
+    api: ApiSettings = Field(default_factory=ApiSettings)
+    plugins: PluginTables = Field(default_factory=PluginTables)

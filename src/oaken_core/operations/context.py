@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """What a handler receives besides its input.
 
-Trimmed from oaken-mail ``core/operations/context.py``: the mail ``Services`` bag is gone.
-``svc`` is whatever the daemon built (step 4 gives it a generic shape).
+Trimmed from oaken-mail ``core/operations/context.py``: the mail ``Services`` bag and ``Limits`` are
+gone. ``svc`` is the ``Services`` the daemon built.
 """
 
 from dataclasses import dataclass
@@ -17,5 +17,7 @@ class OpContext:
     has approved the call: a handler never decides that for itself, and never trusts a flag that
     came in with the input."""
 
-    svc: Any
+    svc: Any  # oaken_core.operations.services.Services
     caller: CallerContext
+    registry: Any = None  # the OperationRegistry, for operations that list operations
+    exposure: Any = None  # the ExposureStore

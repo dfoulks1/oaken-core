@@ -656,20 +656,11 @@ class JobQueue:
         return out
 
     # -- requeue ----------------------------------------------------------------------------
-    async def requeue(
-        self,
-        selector: Selector,
-        actor: Actor,
-        *,
-        to: str | None = None,
-        retriage: bool = False,
-    ) -> RequeueResult:
-        """Put failed, cancelled or queued jobs back to run now: attempts reset, last error
-        cleared. ``to`` moves them to another queue. ``retriage`` sends intake jobs back to
-        ``default`` and clears the machine layer of their subject's labels, so the triager decides
-        again; the human layer stays. A running or succeeded job is left alone. A job requeued less
-        than ``requeue_cooldown_seconds`` ago is skipped and reported. Each requeue writes a
-        change-log row."""
+    async def requeue_candidates(
+        self, selector: Selector, *, to: str | None = None, retriage: bool = False
+    ) -> tuple[list[Job], list[Job]]:
+        """The jobs a requeue would touch and the ones it would skip for the cooldown, after
+        checking the request. Changes nothing: a preview calls this."""
         if selector.empty():
             raise InvalidInput("a requeue needs a selector: job id, status, queue, kind or subject")
         if to is not None:
@@ -689,14 +680,29 @@ class JobQueue:
             (*args, *REQUEUEABLE),
         )
         jobs = [Job.from_row(r) for r in rows]
-        if retriage:
-            bad = [j for j in jobs if not j.kind.startswith("intake.")]
-            if bad:
-                raise InvalidInput("retriage applies to intake jobs only")
+        if retriage and any(not j.kind.startswith("intake.") for j in jobs):
+            raise InvalidInput("retriage applies to intake jobs only")
         now = self.clock.now()
         cooldown = timedelta(seconds=self.settings.requeue_cooldown_seconds)
         ready = [j for j in jobs if j.requeued_at is None or now - j.requeued_at >= cooldown]
-        cooling = [j.id for j in jobs if j not in ready]
+        return ready, [j for j in jobs if j not in ready]
+
+    async def requeue(
+        self,
+        selector: Selector,
+        actor: Actor,
+        *,
+        to: str | None = None,
+        retriage: bool = False,
+    ) -> RequeueResult:
+        """Put failed, cancelled or queued jobs back to run now: attempts reset, last error
+        cleared. ``to`` moves them to another queue. ``retriage`` sends intake jobs back to
+        ``default`` and clears the machine layer of their subject's labels, so the triager decides
+        again; the human layer stays. A running or succeeded job is left alone. A job requeued less
+        than ``requeue_cooldown_seconds`` ago is skipped and reported. Each requeue writes a
+        change-log row."""
+        ready, cooled = await self.requeue_candidates(selector, to=to, retriage=retriage)
+        now = self.clock.now()
         if retriage and self.labels is not None:
             for subject in {j.subject for j in ready if j.subject}:
                 await self.labels.clear_machine(subject, actor)
@@ -721,7 +727,7 @@ class JobQueue:
                         old=f"{job.status}@{job.queue}", new=f"queued@{dest}",
                     )  # fmt: skip
         await self.announce(*changes)
-        return RequeueResult(tuple(done), tuple(cooling))
+        return RequeueResult(tuple(done), tuple(j.id for j in cooled))
 
 
 def _where(**filters: str | None) -> tuple[str, list[object]]:

@@ -12,7 +12,7 @@ async def test_open_core_migrates_and_is_idempotent(tmp_path: Path) -> None:
     try:
         rows = await db.fetchall("SELECT version, name FROM schema_version")
         assert [(r["version"], r["name"]) for r in rows] == [
-            (1, "0001_core"), (2, "0002_jobs"), (3, "0003_agents")
+            (1, "0001_core"), (2, "0002_jobs"), (3, "0003_agents"), (4, "0004_exposure")
         ]
         tables = {r["name"] for r in await db.fetchall("SELECT name FROM sqlite_master")}
         assert {"change_log", "labels"} <= tables
