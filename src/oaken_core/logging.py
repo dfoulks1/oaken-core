@@ -1,25 +1,37 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Structured logging to stderr. Secrets are redacted and long values truncated, so mail
-content cannot leak into logs by accident."""
+"""Logging on Python's own ``logging``: five levels (DEBUG, INFO, WARNING, ERROR, CRITICAL), a
+level for the whole package and a level per logger, to stderr and optionally a file.
 
+``get_logger(name)`` returns a logger that takes fields as keywords
+(``log.warning("job failed", job_id=j)``). Secrets are redacted and long values truncated before
+they are written, and an exception is logged as its type and frames, never its message (which may
+quote private text). Core configures only the ``oaken_core`` logger, never the root, so a host
+application's logging is left alone.
+"""
+
+import contextlib
+import contextvars
+import json
+import logging
+import logging.handlers
 import os
 import re
 import sys
-import threading
 import traceback
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
-
-import structlog
-from structlog.typing import EventDict, Processor, WrappedLogger
 
 from oaken_core import paths
 from oaken_core.settings import LogSettings
 
+ROOT = "oaken_core"
 REDACTED = "[REDACTED]"
 MAX_FIELD = 200
 _SENSITIVE = re.compile(r"token|secret|password|authorization", re.IGNORECASE)
-_LEVELS = {"DEBUG": 10, "INFO": 20, "WARNING": 30, "ERROR": 40}
+_CTX: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("oaken_log_ctx", default={})
+_overridden: set[str] = set()  # loggers whose level a previous configure_logging set
 
 
 def _clean(key: str, value: Any) -> Any:
@@ -36,83 +48,78 @@ def _clean(key: str, value: Any) -> Any:
     return value
 
 
-def exc_frames(_logger: WrappedLogger, _method: str, event_dict: EventDict) -> EventDict:
-    """Swap ``exc_info`` for the exception's type and its frames. The message is left out: it
-    may quote mail."""
-    exc_info = event_dict.pop("exc_info", None)
-    if exc_info is True:
-        exc_info = sys.exc_info()
-    elif isinstance(exc_info, BaseException):
-        exc_info = (type(exc_info), exc_info, exc_info.__traceback__)
-    if exc_info and exc_info[1] is not None:
-        event_dict["exception"] = type(exc_info[1]).__name__
-        tb = traceback.extract_tb(exc_info[2])
-        event_dict["frames"] = [f"{f.filename}:{f.lineno} {f.name}" for f in tb]
-    return event_dict
+@contextlib.contextmanager
+def log_context(**fields: Any) -> Iterator[None]:
+    """Fields added to every log line written inside the block (a job id, for example)."""
+    token = _CTX.set({**_CTX.get(), **fields})
+    try:
+        yield
+    finally:
+        _CTX.reset(token)
 
 
-def scrub(_logger: WrappedLogger, _method: str, event_dict: EventDict) -> EventDict:
-    """Redact sensitive keys and truncate long values, at any depth."""
-    return {k: _clean(k, v) for k, v in event_dict.items()}
+class Log(logging.LoggerAdapter):  # type: ignore[type-arg]
+    """A logger that takes fields as keyword arguments."""
+
+    _STDLIB = ("exc_info", "stack_info", "stacklevel", "extra")
+
+    def process(self, msg: Any, kwargs: Any) -> tuple[Any, Any]:
+        fields = {k: kwargs.pop(k) for k in list(kwargs) if k not in self._STDLIB}
+        kwargs["extra"] = {"fields": fields}
+        kwargs.setdefault("stacklevel", 1)
+        return msg, kwargs
 
 
-class _LogFile:
-    """An append-only, owner-only (``0600``) log file that rotates by size. A failing file never
-    costs the process its log: the error is dropped."""
+def get_logger(name: str | None = None) -> Log:
+    return Log(logging.getLogger(name or ROOT), {})
 
-    def __init__(self, path: Path, max_bytes: int, backups: int) -> None:
-        self.path, self.max_bytes, self.backups = path, max_bytes, backups
-        self._lock = threading.Lock()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        self._fh = self._open()
 
-    def _open(self) -> TextIO:
-        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        return os.fdopen(fd, "a", encoding="utf-8")
+def _event(record: logging.LogRecord) -> dict[str, Any]:
+    """One record as a flat, scrubbed dict."""
+    out: dict[str, Any] = {
+        "ts": datetime.fromtimestamp(record.created, UTC).isoformat(timespec="milliseconds"),
+        "level": record.levelname.lower(),
+        "logger": record.name,
+        "event": record.getMessage(),
+    }
+    fields = {**_CTX.get(), **getattr(record, "fields", {})}
+    out.update({k: _clean(k, v) for k, v in fields.items()})
+    if record.exc_info and record.exc_info[1] is not None:
+        out["exception"] = type(record.exc_info[1]).__name__
+        frames = traceback.extract_tb(record.exc_info[2])
+        out["frames"] = [f"{f.filename}:{f.lineno} {f.name}" for f in frames]
+    return out
 
-    def _rotate(self) -> None:
-        self._fh.close()
-        for i in range(self.backups, 0, -1):
-            src = self.path if i == 1 else self.path.with_name(f"{self.path.name}.{i - 1}")
-            if src.exists():
-                src.replace(self.path.with_name(f"{self.path.name}.{i}"))
-        if not self.backups:
-            self.path.unlink(missing_ok=True)
-        self._fh = self._open()
 
-    def write(self, text: str) -> int:
-        with self._lock:
-            try:
-                if self._fh.tell() + len(text) > self.max_bytes:
-                    self._rotate()
-                self._fh.write(text)
-                self._fh.flush()
-            except (OSError, ValueError):
-                pass
-        return len(text)
+class JsonFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps(_event(record), default=str)
 
-    def flush(self) -> None:  # every write is flushed already
+
+class ConsoleFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        e = _event(record)
+        head = f"{e.pop('ts')} {e.pop('level').upper():8} {e.pop('logger')}  {e.pop('event')}"
+        return head + "".join(f" {k}={v}" for k, v in e.items())
+
+
+class _Quiet(logging.Handler):
+    """Mixin behaviour: a failing sink (a closed stderr, a full disk) never costs the process."""
+
+    def handleError(self, record: logging.LogRecord) -> None:  # noqa: N802
         pass
 
 
-class _Tolerant:
-    """``stream`` that never raises: a detached core's stderr may be closed, and logging must not
-    take the process down with it."""
+class _StreamHandler(_Quiet, logging.StreamHandler):  # type: ignore[type-arg]
+    pass
 
-    def __init__(self, stream: TextIO) -> None:
-        self.stream = stream
 
-    def write(self, text: str) -> int:
-        try:
-            return self.stream.write(text)
-        except (OSError, ValueError):
-            return len(text)
+class _FileHandler(_Quiet, logging.handlers.RotatingFileHandler):
+    """An owner-only (``0600``) log file that rotates by size."""
 
-    def flush(self) -> None:
-        try:
-            self.stream.flush()
-        except (OSError, ValueError):
-            pass
+    def _open(self) -> TextIO:
+        fd = os.open(self.baseFilename, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        return os.fdopen(fd, "a", encoding="utf-8")
 
 
 def _log_path(name: str) -> Path:
@@ -121,41 +128,29 @@ def _log_path(name: str) -> Path:
 
 
 def configure_logging(settings: LogSettings, stream: TextIO | None = None) -> None:
-    """Configure structlog. With ``settings.file`` set, every line also goes to that file as one
-    JSON object whatever ``format`` is, so the whole file parses; ``format`` shapes ``stream``
-    (stderr by default). Calling it again replaces the setup, so a reload can change any of it."""
-    out: TextIO = stream or sys.stderr
-    sink: list[Processor] = []
+    """Configure the ``oaken_core`` logger. With ``settings.file`` set, every line also goes to
+    that file as JSON whatever ``format`` is, so the whole file parses; ``format`` shapes the
+    stream (stderr by default). Calling it again replaces the setup, so a reload can change any
+    of it, including dropping a per-logger level it set before."""
+    root = logging.getLogger(ROOT)
+    for h in list(root.handlers):
+        root.removeHandler(h)
+        h.close()
+    for name in _overridden:
+        logging.getLogger(name).setLevel(logging.NOTSET)
+    _overridden.clear()
+
+    console = _StreamHandler(stream or sys.stderr)
+    console.setFormatter(JsonFormatter() if settings.format == "json" else ConsoleFormatter())
+    root.addHandler(console)
     if settings.file:
-        file = _LogFile(_log_path(settings.file), settings.file_max_bytes, settings.file_backups)
-        as_json = structlog.processors.JSONRenderer()
-
-        def to_file(_: WrappedLogger, __: str, event_dict: EventDict) -> EventDict:
-            line = as_json(_, __, event_dict)
-            file.write((line.decode() if isinstance(line, bytes) else line) + "\n")
-            return event_dict
-
-        sink = [to_file]
-    renderer: Processor = (
-        structlog.processors.JSONRenderer()
-        if settings.format == "json"
-        else structlog.dev.ConsoleRenderer(colors=False)
-    )
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="iso", utc=True),
-            exc_frames,
-            scrub,
-            *sink,
-            renderer,
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(_LEVELS[settings.level]),
-        logger_factory=structlog.PrintLoggerFactory(file=_Tolerant(out)),  # type: ignore[arg-type]
-        cache_logger_on_first_use=False,
-    )
-
-
-def get_logger(name: str | None = None) -> Any:
-    return structlog.get_logger(name)
+        path = _log_path(settings.file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fh = _FileHandler(path, maxBytes=settings.file_max_bytes, backupCount=settings.file_backups)
+        fh.setFormatter(JsonFormatter())
+        root.addHandler(fh)
+    root.setLevel(settings.level)
+    root.propagate = False  # we own this subtree; the host's root logger is left alone
+    for name, level in settings.levels.items():
+        logging.getLogger(name).setLevel(level)
+        _overridden.add(name)

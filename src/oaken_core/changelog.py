@@ -65,6 +65,6 @@ class ChangeLog:
         sql = "SELECT * FROM change_log"
         if where:
             sql += " WHERE " + " AND ".join(where)
-        sql += " ORDER BY ts, id LIMIT ?"
+        sql += " ORDER BY seq LIMIT ?"
         found = await db.fetchall(sql, (*args, limit))
         return [LogRow(**{k: r[k] for k in LogRow.__dataclass_fields__}) for r in found]

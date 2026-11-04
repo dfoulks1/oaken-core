@@ -15,7 +15,7 @@ from typing import Any, Literal
 from oaken_core.errors import Conflict, OakenError
 from oaken_core.logging import get_logger
 
-log = get_logger("oaken.authorize")
+log = get_logger("oaken_core.authorize")
 State = Literal["none", "pending", "done", "failed"]
 
 
