@@ -54,6 +54,9 @@ def check_plugin(
     problems.extend(check_scheduled_tasks(obj))
     if kind.analyzer:
         problems.extend(check_needs(obj))
+        vec = getattr(obj, "needs_vec", False)
+        if not isinstance(vec, bool):
+            problems.append("needs_vec must be True or False")
     info = PluginInfo(
         name=name, version=str(getattr(obj, "version", "") or ""), kind=kind.name,
         api_version=PLUGIN_API_VERSION,

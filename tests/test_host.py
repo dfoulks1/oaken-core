@@ -412,6 +412,19 @@ async def test_check_config_and_probe_try_a_setting_without_touching_the_live_pl
         await host.stop()
 
 
+async def test_needs_vec_marks_core_only_work_and_is_never_offered_to_an_agent(tmp_path: Path, clock: FakeClock) -> None:
+    host = make(tmp_path, clock, [STORE, ("enricher", "dedupe", stub("enricher", needs_llm=True, needs_vec=True)),
+                                  ("enricher", "summary", stub("enricher", needs_llm=True)),
+                                  ("enricher", "bad", stub("enricher", needs_vec="yes"))])  # fmt: skip
+    await host.start()
+    try:
+        assert host.agent_eligible_kinds() == ["enricher.summary"]  # an agent cannot reach the index
+        assert host.needs_vec_kinds() == ["enricher.dedupe"]
+        assert "needs_vec must be True or False" in {s.name: s for s in host.statuses()}["bad"].detail
+    finally:
+        await host.stop()
+
+
 async def test_agent_eligible_kinds_lists_analyzers_that_need_a_model(tmp_path: Path, clock: FakeClock) -> None:
     host = make(tmp_path, clock, [STORE, ("enricher", "summary", stub("enricher", needs_llm=True)),
                                   ("enricher", "gravatar", stub("enricher", needs_llm=False))])  # fmt: skip

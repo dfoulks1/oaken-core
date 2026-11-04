@@ -19,7 +19,22 @@ Build:
    `(analyzer, version, content hash, effective model)`.
 6. Ship a stub backend for tests. Hosted and OpenAI-compatible backends live in a plugins repo.
 
+7. The router owns the cost ladder, cheapest first: the analyzer's deterministic rules, the answer
+   cache, embedding shortcuts (near-duplicate reuse of a neighbour's stored result; nearest-example
+   verdicts; a junk index that keeps a vector and a hash only, off by default), a small model with
+   structured, length-capped output, then escalation to a larger one on low confidence or a failed
+   schema check. An analyzer that declares `needs_vec` reaches the index only through the router's
+   `embed` and `nearest`. `needs_vec` jobs run in core and wait for a healthy embedder and vector
+   store; they are never offered to an agent.
+8. Per-analyzer input budgets cut to the backend's `context_window`. A usage ledger per analyzer,
+   model and backend: tokens in and out, cache hits, shortcut hits, escalations. Report it through
+   an operation. "Optimized" needs a number.
+9. Triage's fourth outcome, reject and learn (`Verdict.learn`): the item is embedded and nothing else
+   happens. A `nearjunk` triager (`needs_vec`, rank between `rules` and `ai`) rejects on a close match.
+
 Done when:
 - Two backends serve one model. A call goes to the named one. It falls back when that one is down.
 - A `confidential` call never reaches a `lan` or `hosted` backend.
 - Changing an analyzer's model changes its cache key.
+- A near-duplicate is answered from its neighbour's stored result with no model call, and the ledger
+  counts it. A low-confidence small-model answer escalates once.

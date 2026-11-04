@@ -800,10 +800,22 @@ class PluginHost:
         return {n: usable[n] for n in order}
 
     def agent_eligible_kinds(self) -> list[str]:
-        """Job kinds an external agent could take: the analyzers that need a model, as
-        ``<kind>.<name>``. The owner opts in with ``[swarm] allowed_kinds``; this only lists."""
+        """Job kinds an external agent could take: the analyzers that need a model and do not need
+        the vector index (an agent cannot reach it), as ``<kind>.<name>``. The owner opts in with
+        ``[swarm] allowed_kinds``; this only lists."""
         return [
             f"{r.kind}.{r.name}"
             for r in self._shared()
-            if self.kinds.get(r.kind).analyzer and getattr(r.instance, "needs_llm", False)
+            if self.kinds.get(r.kind).analyzer
+            and getattr(r.instance, "needs_llm", False)
+            and not getattr(r.instance, "needs_vec", False)
+        ]
+
+    def needs_vec_kinds(self) -> list[str]:
+        """The analyzers that use the embedder and vector store, as ``<kind>.<name>``: their jobs
+        run in core and wait for a healthy embedder and vector store."""
+        return [
+            f"{r.kind}.{r.name}"
+            for r in self._shared()
+            if self.kinds.get(r.kind).analyzer and getattr(r.instance, "needs_vec", False)
         ]

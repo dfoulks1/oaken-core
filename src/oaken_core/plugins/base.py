@@ -172,6 +172,7 @@ class BaseTriager(BasePlugin):
 
     version: ClassVar[str] = "1"
     needs_llm: ClassVar[bool] = False
+    needs_vec: ClassVar[bool] = False  # uses the embedder and vector store (core-only, never an agent's)
     rank: ClassVar[int] = 50
 
     @_default
@@ -182,6 +183,7 @@ class BaseTriager(BasePlugin):
 class BaseEnricher(BasePlugin):
     version: ClassVar[str] = "1"
     needs_llm: ClassVar[bool] = False
+    needs_vec: ClassVar[bool] = False
 
     @_default
     async def enrich(self, target: Any) -> Any:
@@ -191,6 +193,7 @@ class BaseEnricher(BasePlugin):
 class BaseAction(BasePlugin):
     version: ClassVar[str] = "1"
     needs_llm: ClassVar[bool] = False
+    needs_vec: ClassVar[bool] = False
     routes: ClassVar[tuple[str, ...]] = ()
 
     @_default

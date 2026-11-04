@@ -20,6 +20,10 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   Skipped on purpose: per-kind pause (replaced by per-queue pause), the operations themselves
   (step 4, they need the registry), and moving already-queued jobs when a `queue` label changes
   (use `requeue --to`). `oaken_core.new_queue` is `Queues.new_queue` on a registry, not a global.
+- Step 4: operation layer (4a), HTTP and MCP (4b), CLI (4c, below). The CLI is built from the
+  registry at start, so a plugin's verbs appear when it loads and a failed plugin has none; flags
+  come from input schemas; a change is a proposal until `--yes`; exit codes are a contract
+  (0 ok, 1 error, 2 usage, 3 core down, 4 auth, 5 needs confirmation).
 - Step 3: the plugin host (`plugins/host.py`, lifted and reshaped), `kinds.py` (registrable kinds,
   eleven shipped), `contracts.py` (generic half), `base.py` (`BasePlugin`, `@command`), `validate.py`,
   `ui.py` (`check_ui`, lifted), `jobs.py` and `ops.py` (lifted bridges). The store is a plugin and
@@ -94,7 +98,10 @@ Also: `confidential` settable at intake; reject retention as config.
   and model with agent rows counting as current, a `min_priority` bar), `daemon/core`, `events`.
 - Medium, not small. Unread: pipeline agent/reprocess code, `base.py` triager/action bodies.
 
-## AI cost (owner: this must optimize AI usage)
+## AI cost (owner: this must optimize AI usage; it is the model router's job)
+The router owns the whole ladder below, including the embedding shortcuts: it is the one place that
+decides the cheapest way to answer a call, records what it spent, and exposes `embed` and `nearest`
+to analyzers that declare `needs_vec` (they never touch the vector store directly).
 Cost ladder, cheapest first: rules (0 tokens), cache (0), embedding shortcuts (near-duplicate reuse of a
 neighbour's stored result, nearest-example triage), a small local model with structured, length-capped
 output, then escalate to a larger model only on low confidence or a failed schema check. Per-analyzer
@@ -103,6 +110,17 @@ input budgets (cut to the backend's `context_window`). A usage ledger per analyz
 sent to a model: they find which text to send or whether to skip the call. Step 5 builds the router,
 cascade, budgets and ledger; the embedder and vector store get their first consumer (near-duplicate
 reuse, nearest-example triage) right after, which settles spec open items 5 and 6. Unmeasured.
+
+## Vectors and junk (owner idea; part of the model router)
+`needs_vec` pairs with `needs_llm`: the job calls the embedder and vector store, runs in core only
+(never an agent's) and waits for both to be healthy. Triage gets a fourth outcome, reject and learn:
+junk no triager recognizes is embedded and nothing else (no model, no enrichers, nothing stored). A
+cheap `nearjunk` triager (`needs_vec`, rank between `rules` and `ai`) embeds an incoming item and
+rejects it when a close neighbour is in the junk index, with no model call. A human decline can add
+its vector too. Privacy: a vector is derived from the content and can be partly inverted, so the
+junk index keeps the vector and a hash only, behind a config switch that defaults off. Not built:
+the `learn` field waits for the embedder and vector store (step 5 and after). `needs_vec` is on the
+analyzer bases, validated, and excluded from `agent_eligible_kinds`.
 
 ## Build order
 1. Store seam (`Store` protocol, SQLite default), migrations, change log, labels
