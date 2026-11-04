@@ -1,0 +1,5 @@
+oaken-core
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This project includes code adapted from oaken-mail (Apache-2.0), commit cf3b187.
+Copied files keep their SPDX headers. oaken-mail's own NOTICE is kept as NOTICE.oaken-mail.
