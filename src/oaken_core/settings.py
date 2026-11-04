@@ -49,3 +49,22 @@ class JobsSettings(BaseModel):
     # Intake: when a triager fails on the last attempt, treat the item as "unsure" and ingest it
     # (oaken-mail's behaviour). Off by default: a broken triager lets intake back up.
     open_gate_on_final_failure: bool = False
+
+
+class SwarmSettings(BaseModel):
+    """Optional external workers (agents) that lease jobs over the API, the CLI or MCP.
+
+    Off by default. A kind of job is never offered to an agent unless it is in ``allowed_kinds``:
+    handing a job to an external model sends it that job's text, so the user opts in kind by kind.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    enabled: bool = False
+    allowed_kinds: list[str] = Field(default_factory=list)
+    max_agents: int = Field(default=8, ge=1, le=256)  # active (unrevoked) agents
+    default_max_leases: int = Field(default=2, ge=1)  # jobs one agent may hold at once
+    default_max_per_hour: int = Field(default=600, ge=1)  # jobs one agent may claim per hour
+    # How long an agent holds a job before it must heartbeat. Long: a large model on modest
+    # hardware is slow.
+    agent_lease_seconds: float = Field(default=600.0, gt=0)

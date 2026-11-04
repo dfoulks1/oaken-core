@@ -110,6 +110,7 @@ class Scheduler:
     async def tick(self) -> int:
         """Enqueue every schedule that is due now. Returns how many fired."""
         now = self.clock.now()
+        changes = []
         async with self.db.transaction() as tx:
             due = await tx.fetchall(
                 "SELECT * FROM schedules WHERE next_run <= ? ORDER BY next_run, name",
@@ -117,7 +118,7 @@ class Scheduler:
             )
             for r in due:
                 slot = r["next_run"]
-                await self.queue.enqueue_in(
+                _, change = await self.queue.enqueue_in(
                     tx,
                     r["kind"],
                     r["payload_json"],
@@ -126,13 +127,13 @@ class Scheduler:
                     priority=r["priority"],
                     dedupe_key=f"schedule:{r['name']}:{slot}",
                 )
+                changes.append(change)
                 nxt = _next_run(r["spec_kind"], r["spec"], now, parse_ts(slot))
                 await tx.execute(
                     "UPDATE schedules SET next_run = ?, updated_at = ? WHERE name = ?",
                     (fmt_ts(nxt), fmt_ts(now), r["name"]),
                 )
-        if due:
-            self.queue.wake.set()
+        await self.queue.announce(*changes)
         return len(due)
 
     # -- running in the background ----------------------------------------------------------

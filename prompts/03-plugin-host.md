@@ -23,6 +23,12 @@ Build:
 7. An analyzer's input is an opaque view the product builds. Core assumes no text. The view supplies
    its own content hash. Relations are `self`, `parent`, `children`, plus ones a product registers.
 
+8. The host feeds the operation registry. A plugin's `operations()` (and its command groups) are
+   registered as the plugin loads, so step 4's CLI can build itself from the registry afterward.
+   A plugin that fails to load drops its operations. Nothing else breaks.
+9. `needs_llm` job kinds are added to the agent-eligible kinds (`SwarmSettings.allowed_kinds`
+   still decides; the owner opts in).
+
 Done when:
 - A stub plugin of every kind loads, starts, reports health, stops.
 - A second named instance of one plugin runs beside the first.

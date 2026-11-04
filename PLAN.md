@@ -13,9 +13,12 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
 - Step 2: `jobs.py` (queues, claim, lease, retry, requeue, runner per queue), `queues.py`,
   `scheduler.py` (lifted, `subject` + queue), `intake.py` (triage before storage, reject keeps a
   content-free log row, accept moves labels to the real subject). 168 tests pass.
-  Skipped on purpose: external-agent leases and quotas, a generic event bus (a `wake` event is
-  enough for now), `pipeline_control` (replaced by `queue_state` pause), the `queue.requeue`
-  operation (needs step 4's registry), and ending a job's life when its `queue` label changes
+  Also built (owner: needed for MCP parity and for trace): external agents (token hashed, scoped
+  by job kind and queue, lease and hourly quotas, revocable; `SwarmSettings` off by default and
+  kinds opt-in), agent leases in `claim`, and the event bus with the event log, the SSE ring and
+  the trace (lifted; mail events dropped). Job state changes publish `JobStateChanged`.
+  Skipped on purpose: per-kind pause (replaced by per-queue pause), the operations themselves
+  (step 4, they need the registry), and moving already-queued jobs when a `queue` label changes
   (use `requeue --to`). `oaken_core.new_queue` is `Queues.new_queue` on a registry, not a global.
 - The unread parts were read for sizing (see Sizing).
 
@@ -52,7 +55,17 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
 - **Console:** baked into core, loopback only, no login, never off, fixed bind. It serves config,
   plugins, queues, health and every plugin's `UiSpec`. Core serves `UiSpec` as JSON plus a minimal
   Jinja fallback. `BaseAuth` guards the API/MCP/gateway endpoint, where `remote_ok` lives.
-- Products depend on `oaken-core` as a package. No copies of the kernel.
+- **MCP access uses the agent-token mechanism.** An MCP client is an agent: same hashed, revocable
+  token, same quotas. Its actor is `agent`, so anything it writes to a label lands in the machine
+  layer. Step 4 adds a per-agent list of operations it may call; the `mcp="never"` ceiling stays
+  above it. Agent leases are a separate path from LLM providers: a provider is a plugin the router
+  calls; a lease lets a client that is the model (Claude, Librarian) do a job itself.
+- **Events:** the bus is for job state, plugin health, live console and MCP updates, trace
+  (opt-in, full text, never persisted by the event log). Logging does not need it (stdlib
+  `logging`); a small handler can forward records to the bus for live tail.
+- **The CLI is built at plugin load.** Core generates it from the operation registry, and a plugin's
+  operations (and its command groups, such as `grove people add`) appear as the host loads it. A
+  plugin that fails to load drops its commands and the CLI still starts.
 
 ## Open (proposed defaults, not yet answered)
 From the efax thought experiment: payloads as blob references (not inline queue rows); a "parked,
