@@ -13,24 +13,27 @@ that `import oaken_core`. Grove's spec is `~/local/oaken-grove/SPEC.md` (draft 0
 sections on plugins, stages, `needs`, labels and the form engine are now core's job. oaken-mail
 (`~/local/oaken-mail`, Apache-2.0, "inspiration, not gospel") is the source of lifted code.
 
-## The design, as the owner decided it
-- Labels and the change log are core, keyed to a generic `SubjectId`.
-- One `default` queue; more by `new_queue(name, description, ...)`. Jobs never choose a queue.
-  Intake is the only queue triagers run in. A triager writes the reserved label `queue` (and
-  `priority`); core routes by it. Triage runs before ingestion, so rejected items are never stored.
-- A broken triager means intake backs up. There is no fallback queue. `queue.requeue` is the way out.
-- Console: loopback only, no login, never switched off, baked into core. Auth guards the API.
-- Human-only operations are `mcp="never"` over MCP; the config file may lift one.
+## The design
+`PLAN.md` holds the decisions. In short: labels and the change log are core, in two layers (human
+value, machine value; effective = human else machine; no locks). Queues are named, jobs never pick
+one, a triager labels `queue`, triage runs before storage. Storage is a `BaseStore` plugin handing
+core a `Database` (SQLite default, in this package). LLM backends are named plugin instances behind
+a router in core. Console: loopback only, never off. Core has no nouns.
 
 ## Step 1: do this
-1. A migration runner over `oaken_core.db` that applies core's migrations then each plugin's, in
-   one order. Core tables: `change_log`, `labels`, `jobs` skeleton.
-2. Change log: append-only (who, what, subject, before, after, time). Writes go through one function.
-3. Labels: key-value on a `SubjectId`. `BaseLabel.new`, `ReservedLabel.new`, `LabelMaker`
-   (a core service), `LabelError` (a bad plugin write raises it and the plugin is disabled).
-   Reserved core keys: `queue`, `priority`, `confidential`. A later write replaces the value.
-4. Tests for each. Property tests for: every label write has a log row; `queue` must name a
-   real queue.
+1. `Store` protocol and a `SqliteStore` default (wraps `oaken_core.db`). Core opens its tables
+   through it.
+2. Migration `0001`: `change_log` (append-only, enforced by triggers) and `labels`
+   (`subject_id, key, layer, value, actor, at`, one row per layer).
+3. `ChangeLog`: one append function, used in the same transaction as every label write.
+4. Labels: `BaseLabel.new`, `ReservedLabel.new`, `LabelMaker`, `LabelError`. Reserved core keys:
+   `queue`, `priority`, `confidential`. A key must be registered before it is written. A key a
+   plugin registers must not collide with a reserved one. The `queue` key takes a validator hook
+   (it must name a real queue; queues arrive in step 2).
+5. Tests: every label write has a log row; the log refuses update and delete; a machine re-run
+   never changes the effective value while a human value exists; clearing the human layer reverts
+   to the machine value; clearing the machine layer keeps the human one; unknown and colliding
+   keys raise `LabelError`.
 
 ## Rules
 - Hemingway output, smallest complete change, name what you skipped. They hate big tables and
@@ -42,5 +45,5 @@ sections on plugins, stages, `needs`, labels and the form engine are now core's 
 - Run: `uv run --python 3.12 pytest -q` (Python 3.11 or later; this machine's default is 3.10).
 
 ## Open (ask, don't assume)
-Router in core? Reject retention? Locks in core? `oaken-core` name collision with oaken-mail's
+Efax open items and reject retention (see PLAN.md). The `oaken-core` name collision with oaken-mail's
 bundle package. PyPI name unchecked. Report what you skipped and what you did not verify.
