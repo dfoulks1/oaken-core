@@ -6,6 +6,9 @@ license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE*"]
 requires-python = ">=3.11"
 dependencies = [
+    "httpx2>=2.15.1",
+    "mcp>=1.0",
+    "uvicorn>=0.54.0",
     "packaging>=24.0",
     "aiosqlite>=0.22.1",
     "platformdirs>=4.13.5",

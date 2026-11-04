@@ -121,6 +121,10 @@ class ApiSettings(BaseModel):
     max_body_bytes: int = Field(default=1_000_000, ge=1024)
     event_ring_size: int = Field(default=1000, ge=10)
     heartbeat_seconds: float = Field(default=15.0, gt=0)
+    mcp_enabled: bool = True  # the master switch for the person's MCP door (agents have their own)
+    mcp_max_body_bytes: int = Field(default=256_000, ge=1024)
+    mcp_max_concurrent: int = Field(default=8, ge=1)
+    mcp_max_result_bytes: int = Field(default=256_000, ge=1024)
 
 
 class Settings(BaseModel):

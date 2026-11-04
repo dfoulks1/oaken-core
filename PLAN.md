@@ -94,6 +94,16 @@ Also: `confidential` settable at intake; reject retention as config.
   and model with agent rows counting as current, a `min_priority` bar), `daemon/core`, `events`.
 - Medium, not small. Unread: pipeline agent/reprocess code, `base.py` triager/action bodies.
 
+## AI cost (owner: this must optimize AI usage)
+Cost ladder, cheapest first: rules (0 tokens), cache (0), embedding shortcuts (near-duplicate reuse of a
+neighbour's stored result, nearest-example triage), a small local model with structured, length-capped
+output, then escalate to a larger model only on low confidence or a failed schema check. Per-analyzer
+input budgets (cut to the backend's `context_window`). A usage ledger per analyzer, model and backend
+(tokens in and out, cache hits, escalations), because "optimized" needs a number. Vectors are never
+sent to a model: they find which text to send or whether to skip the call. Step 5 builds the router,
+cascade, budgets and ledger; the embedder and vector store get their first consumer (near-duplicate
+reuse, nearest-example triage) right after, which settles spec open items 5 and 6. Unmeasured.
+
 ## Build order
 1. Store seam (`Store` protocol, SQLite default), migrations, change log, labels
    (`BaseLabel`, `ReservedLabel`, `LabelMaker`, `LabelError`).

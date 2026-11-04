@@ -211,6 +211,7 @@ class JobLease(BaseModel):
 
 class ClaimOut(BaseModel):
     job: JobLease | None
+    content_is_untrusted: bool = True  # the MCP door fences the result in a DATA block
 
 
 @operation("job_claim", "Lease the best job in a queue that this token may take.",
