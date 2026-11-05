@@ -432,7 +432,8 @@ class Console:
 
     async def add_queue(self, request: Request, form: dict[str, str]) -> Response:
         """The "Add a stage" form: a queue for one analyzer kind. A change, so it shows what it will do first."""
-        payload = {"name": form.get("name", "").strip(), "kind": form.get("kind", ""), "label": form.get("label", "").strip(),
+        title = form.get("label", "").strip()
+        payload = {"name": form.get("name", "").strip() or title, "kind": form.get("kind", ""), "label": title,
                    "workers": int(form.get("workers") or 1)}  # fmt: skip
         out = await self._gated("queue_add", payload, form, "/")
         if isinstance(out, Response):

@@ -152,7 +152,8 @@ async def test_queue_add_refuses_what_the_file_or_the_product_would_not_take(ops
         ({"name": "again", "kind": "triager"}, InvalidInput),  # a kind belongs to one queue
         ({"name": "x", "kind": "embedder"}, InvalidInput),  # not an analyzer
         ({"name": "x", "kind": "nope"}, InvalidInput),
-        ({"name": "Bad Name", "kind": "enricher"}, InvalidInput),
+        ({"name": "a/b", "kind": "enricher"}, InvalidInput),  # a character a name cannot have
+        ({"name": "9lives", "kind": "enricher"}, InvalidInput),  # must start with a letter
         ({"name": "default", "kind": "enricher"}, Conflict),  # exists already
     ]:
         with pytest.raises(exc):
@@ -165,3 +166,12 @@ async def test_queue_add_refuses_what_the_file_or_the_product_would_not_take(ops
 
 async def test_queue_add_is_never_offered_over_mcp(ops: Ops) -> None:
     assert "queue_add" not in {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
+
+
+async def test_queue_add_turns_what_was_typed_into_a_name_and_keeps_it_as_the_title(ops: Ops) -> None:
+    with_host(ops)
+    out = (await ops.client.call("queue_add", {"name": "  My Slow  Stage ", "kind": "enricher"}, CallerContext.cli(), confirm=True)).output
+    assert out.name == "my_slow_stage"  # type: ignore[union-attr]  # lower case, a run of spaces as one underscore
+    assert saved()["queues"]["my_slow_stage"] == {"kind": "enricher", "label": "My Slow  Stage", "workers": 1}
+    asked = await ops.client.call("queue_add", {"name": "Second One", "kind": "action"}, CallerContext.cli())
+    assert asked.proposal is not None and "second_one" in asked.proposal.summary  # the confirm step shows the name it will have

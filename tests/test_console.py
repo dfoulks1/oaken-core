@@ -396,13 +396,13 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
         assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
         assert page.index("<h2>Queues</h2>") < page.index('popovertarget="add-stage"') < page.index("<h2>Plugins</h2>")  # by the Queues table
         assert 'popovertarget="add-stage"' not in (await client.get("/pipeline")).text  # only on General
-        form = {"csrf": token, "name": "triage", "kind": "triager", "label": "", "workers": "1"}
+        form = {"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"}  # a title only: the name comes from it
         first = await client.post("/ui/queues/add", data=form)
-        assert first.status_code == 200 and "triager" in first.text and not (oaken_home / "config" / "config.toml").exists()
+        assert first.status_code == 200 and "my_triage" in first.text and not (oaken_home / "config" / "config.toml").exists()  # the confirm step shows the name
         second = await client.post("/ui/queues/add", data={**form, "confirm": "1"})
-        assert second.status_code == 200 and "Added triage" in second.text and "restart" in second.text  # the rig has no daemon to reload it
-        assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["queues"]["triage"]["kind"] == "triager"
-        bad = await client.post("/ui/queues/add", data={**form, "name": "again", "confirm": "1"})  # triager is taken now
+        assert second.status_code == 200 and "Added my_triage" in second.text and "restart" in second.text  # the rig has no daemon to reload it
+        assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["queues"]["my_triage"] == {"kind": "triager", "label": "My Triage", "workers": 1}
+        bad = await client.post("/ui/queues/add", data={**form, "label": "Again", "confirm": "1"})  # triager is taken now
         assert bad.status_code == 422
         core.client.svc.queues_from_config = False  # a product that fixes its own stages
         assert "add-stage" not in (await client.get("/")).text

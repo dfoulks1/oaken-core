@@ -287,8 +287,13 @@ async def job_fail(ctx: OpContext, inp: FailIn) -> JobStatusOut:
     return JobStatusOut(job_id=inp.job_id, status=status)
 
 
+def queue_name(text: str) -> str:
+    """A queue's name from what a person typed: lowercase, runs of spaces as one underscore."""
+    return re.sub(r"\s+", "_", text.strip().lower())
+
+
 class QueueAddIn(BaseModel):
-    name: str = Field(description="The queue's name: lowercase letters, digits, - and _.")
+    name: str = Field(description="The queue's name. Upper case becomes lower and spaces become underscores; then only a-z, 0-9, - and _ are left.")
     kind: str = Field(description="The analyzer plugin kind this queue is the stage of (triager, enricher, action, ...).")
     label: str = Field(default="", description="Its title in the console. Empty: the name, capitalised.")
     description: str = ""
@@ -301,47 +306,49 @@ class QueueAddOut(BaseModel):
     note: str
 
 
-def _add_plan(ctx: OpContext, inp: QueueAddIn) -> tuple[str, dict[str, Any]]:
+def _add_plan(ctx: OpContext, inp: QueueAddIn) -> tuple[str, dict[str, Any]]:  # (the name it will have, its table)
     """The config text with the new table in it, after checking the whole file would load. Raises
     ``Conflict`` for a queue that exists or a product that fixes its own queues, ``InvalidInput`` for
     anything the file would refuse."""
     if not ctx.svc.queues_from_config:
         raise Conflict("this product defines its own queues, so none can be added here")
-    if inp.name in {q.name for q in ctx.svc.queues.all()}:
-        raise Conflict(f"queue {inp.name!r} already exists")
-    table = {"kind": inp.kind, **({"label": inp.label} if inp.label else {}),
+    name = queue_name(inp.name)
+    label = inp.label or (inp.name.strip() if inp.name.strip() != name else "")  # keep what they typed as the title
+    if name in {q.name for q in ctx.svc.queues.all()}:
+        raise Conflict(f"queue {name!r} already exists")
+    table = {"kind": inp.kind, **({"label": label} if label else {}),
              **({"description": inp.description} if inp.description else {}), "workers": inp.workers}  # fmt: skip
     path = paths.config_dir() / "config.toml"
-    text = set_table(path.read_text(encoding="utf-8") if path.exists() else "", ["queues", inp.name], table)
+    text = set_table(path.read_text(encoding="utf-8") if path.exists() else "", ["queues", name], table)
     try:
         _check_text(ctx, text)
     except ConfigError as exc:
         raise InvalidInput(exc.message.replace("config.toml: ", "")) from None
-    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,40}", inp.name):
-        raise InvalidInput(f"queue name {inp.name!r} must start with a letter and use only a-z, 0-9, - and _")
-    return text, table
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,40}", name):
+        raise InvalidInput(f"queue name {name!r} (from {inp.name!r}) must start with a letter and use only a-z, 0-9, - and _")
+    return name, table
 
 
 async def preview_queue_add(ctx: OpContext, inp: QueueAddIn) -> Preview:
-    _add_plan(ctx, inp)
-    return Preview(summary=f"Add queue {inp.name}, the stage for {inp.kind} plugins, and reload core",
-                   changes=[Change(target=inp.name, field="queue", after=inp.kind)], total_changes=1)  # fmt: skip
+    name, _table = _add_plan(ctx, inp)
+    return Preview(summary=f"Add queue {name}, the stage for {inp.kind} plugins, and reload core",
+                   changes=[Change(target=name, field="queue", after=inp.kind)], total_changes=1)  # fmt: skip
 
 
 @operation("queue_add", "Add a queue: the stage for one kind of analyzer plugin. Written to config.toml, then core reloads.",
            permission="mutate", input=QueueAddIn, output=QueueAddOut, mcp="never", group="queue",
            preview=preview_queue_add)  # fmt: skip
 async def queue_add(ctx: OpContext, inp: QueueAddIn) -> QueueAddOut:
-    _text, table = _add_plan(ctx, inp)
-    save_table(paths.config_dir() / "config.toml", ["queues", inp.name], table)
-    restart = QueueAddOut(name=inp.name, reloading=False, note="saved to config.toml; restart core to start the queue's workers")
+    name, table = _add_plan(ctx, inp)
+    save_table(paths.config_dir() / "config.toml", ["queues", name], table)
+    restart = QueueAddOut(name=name, reloading=False, note="saved to config.toml; restart core to start the queue's workers")
     if ctx.svc.reload is None:
         return restart
     try:
         ctx.svc.reload()
     except Unavailable:  # core was not started by the daemon: there is nothing to reload it
         return restart
-    return QueueAddOut(name=inp.name, reloading=True, note="saved to config.toml; core is reloading, and the stage appears in the nav in a moment")
+    return QueueAddOut(name=name, reloading=True, note="saved to config.toml; core is reloading, and the stage appears in the nav in a moment")
 
 
 OPERATIONS = (queue_list, queue_pause, queue_resume, queue_requeue, queue_add, job_list, job_cancel,

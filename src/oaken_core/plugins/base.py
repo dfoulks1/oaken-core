@@ -14,6 +14,9 @@ CLI builds a verb for it (``<product> <plugin> <name>``, one flag per input fiel
 host loads the plugin, and a plugin that fails to load takes its commands with it.
 """
 
+import functools
+import inspect
+import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar
@@ -25,6 +28,7 @@ from pydantic import BaseModel, ValidationError
 from oaken_core.db import Database
 from oaken_core.errors import PluginError
 from oaken_core.labels import BaseLabel
+from oaken_core.trace import brief, trace_context
 from oaken_core.plugins.contracts import (
     PLUGIN_API_VERSION,
     CacheEntry,
@@ -52,6 +56,44 @@ def _default(fn: F) -> F:
     """Mark a base-class method as a placeholder: overriding it is what implements it."""
     fn._oaken_default = True  # type: ignore[attr-defined]
     return fn
+
+
+# The calls a plugin author implements and core makes: what is asked of it, and what it answers. Every one a
+# plugin class defines is traced by ``BasePlugin`` with no code in the plugin (see ``_traced``).
+TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest")
+_TRACE_KIND = {"generate": "llm.call"}  # the kind the trace file already knows a model call by
+
+
+def _shape(method: str, result: Any) -> Any:
+    """What the trace keeps of an answer. A vector is not read by a person: a count and a size will do."""
+    if method == "embed" and isinstance(result, list):
+        return {"vectors": len(result), "dimensions": len(result[0]) if result else 0}
+    return brief(result)
+
+
+def _traced(method: str, fn: Callable[..., Any]) -> Callable[..., Any]:
+    """``fn`` with its call recorded in the trace when tracing is on: who was asked (plugin kind and name), what,
+    what came back or which error type, and how long it took. Off, it adds one attribute read and a call."""
+
+    @functools.wraps(fn)
+    async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        ctx = getattr(self, "ctx", None)
+        if ctx is None or not ctx.tracing():
+            return await fn(self, *args, **kwargs)
+        kind = _TRACE_KIND.get(method, f"{ctx.kind}.{method}")
+        asked = {"args": brief(list(args)), **({"kwargs": brief(kwargs)} if kwargs else {})}
+        started = time.monotonic()
+        with trace_context(plugin_kind=ctx.kind, plugin=ctx.name):
+            try:
+                result = await fn(self, *args, **kwargs)
+            except BaseException as exc:
+                ctx.trace(kind, **asked, error=type(exc).__name__, ms=round((time.monotonic() - started) * 1000))
+                raise
+            ctx.trace(kind, **asked, result=_shape(method, result), ms=round((time.monotonic() - started) * 1000))
+            return result
+
+    wrapper._oaken_traced = True  # type: ignore[attr-defined]
+    return wrapper
 
 
 def is_implemented(obj: object, method: str) -> bool:
@@ -86,6 +128,15 @@ def command(
 
 
 class BasePlugin:
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Wrap the calls this class implements (``TRACED``) so they appear in the trace. A placeholder a base class
+        leaves for its subclasses is left alone, and so is a method that is already wrapped."""
+        super().__init_subclass__(**kwargs)
+        for name in TRACED:
+            fn = cls.__dict__.get(name)
+            if inspect.iscoroutinefunction(fn) and not getattr(fn, "_oaken_default", False) and not getattr(fn, "_oaken_traced", False):
+                setattr(cls, name, _traced(name, fn))
+
     api_version: ClassVar[int] = PLUGIN_API_VERSION
     version: ClassVar[str] = ""
     # A version range of Oaken Core this plugin works with (``">=0.1,<0.2"``). Empty: any. The
