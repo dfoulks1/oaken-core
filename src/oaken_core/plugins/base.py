@@ -18,6 +18,8 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar
 
+from dataclasses import dataclass, field
+
 from pydantic import BaseModel, ValidationError
 
 from oaken_core.db import Database
@@ -26,6 +28,7 @@ from oaken_core.labels import BaseLabel
 from oaken_core.plugins.contracts import (
     PLUGIN_API_VERSION,
     Health,
+    Hit,
     LLMRequest,
     LLMResponse,
     PluginContext,
@@ -33,6 +36,7 @@ from oaken_core.plugins.contracts import (
     PluginOperation,
     PluginScheduledTask,
     UiSpec,
+    VectorItem,
 )
 
 if TYPE_CHECKING:
@@ -266,6 +270,37 @@ class BaseLLMBackend(BasePlugin):
         """The model ids it can run right now, for a picker to offer. The default is the one it started
         with; a backend that can enumerate (Ollama's ``/api/tags``) overrides this."""
         return [self.model_id] if self.model_id else []
+
+
+@dataclass(frozen=True)
+class VectorStats:
+    """What a store holds: ``count`` vectors in all (or in the one collection asked about), of
+    ``dimensions`` (0 when it spans collections), and the count per collection."""
+
+    count: int
+    dimensions: int = 0
+    collections: dict[str, int] = field(default_factory=dict)
+
+
+class BaseVectorStore(BasePlugin):
+    """Stores vectors under a collection and a key, and finds the nearest. A collection never mixes
+    vector sizes, and one collection never sees another's vectors. ``score`` is cosine similarity."""
+
+    @_default
+    async def upsert(self, collection: str, items: Sequence[VectorItem]) -> None:
+        raise NotImplementedError("a vector store must implement upsert()")
+
+    @_default
+    async def delete(self, collection: str, keys: Sequence[str]) -> None:
+        raise NotImplementedError("a vector store must implement delete()")
+
+    @_default
+    async def query(self, collection: str, vector: Sequence[float], k: int) -> list[Hit]:
+        raise NotImplementedError("a vector store must implement query()")
+
+    @_default
+    async def stats(self, collection: str | None = None) -> VectorStats:
+        raise NotImplementedError("a vector store must implement stats()")
 
 
 class BaseIngestor(BasePlugin):

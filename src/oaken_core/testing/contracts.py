@@ -10,7 +10,7 @@ mixin, which gives one test per rule:
             return MyEmbedder()
 
 Or as one call, ``await verify_embedder(MyEmbedder)``, which runs every rule and raises a single
-``AssertionError`` listing everything that failed. The embedder and LLM backend suites exist so far; the others
+``AssertionError`` listing everything that failed. The embedder, LLM backend and vector store suites exist so far; the others
 join them as each kind gets one (step 7).
 """
 
@@ -24,7 +24,8 @@ import pytest
 from oaken_core import __version__
 from oaken_core.clock import FakeClock
 from oaken_core.logging import get_logger
-from oaken_core.plugins.contracts import LLMRequest, LLMResponse, PluginContext
+from oaken_core.plugins.base import VectorStats
+from oaken_core.plugins.contracts import Hit, LLMRequest, LLMResponse, PluginContext, VectorItem
 from oaken_core.plugins.kinds import KindRegistry
 from oaken_core.plugins.validate import check_plugin, check_started
 from oaken_core.untrusted import UntrustedText
@@ -118,6 +119,92 @@ async def check_llm_structured(llm: Any) -> None:
 LLM_CHECKS = (check_llm_valid, check_llm_text, check_llm_untrusted_parts, check_llm_structured)
 
 
+# -- Vector store ------------------------------------------------------------------------------
+async def _raises(awaitable: Awaitable[Any]) -> bool:
+    try:
+        await awaitable
+    except Exception:  # noqa: BLE001 - any refusal counts
+        return True
+    return False
+
+
+def _hits(value: Any, limit: int) -> list[Hit]:
+    assert isinstance(value, list) and len(value) <= limit and all(isinstance(h, Hit) for h in value), "query() must return at most k Hit objects"
+    return list(value)
+
+
+def _stats(value: Any) -> VectorStats:
+    assert isinstance(value, VectorStats), "stats() must return a VectorStats"
+    return value
+
+
+def _item(key: str, vec: tuple[float, ...]) -> VectorItem:
+    return VectorItem(key, vec)
+
+
+async def check_store_valid(store: Any) -> None:
+    _valid("vector_store", store)
+
+
+async def check_store_nearest_first(store: Any) -> None:
+    await store.upsert("c", [_item("x", (1.0, 0.0, 0.0)), _item("y", (0.0, 1.0, 0.0)), _item("z", (0.9, 0.1, 0.0))])
+    hits = _hits(await store.query("c", [1.0, 0.0, 0.0], 2), 2)
+    assert [h.key for h in hits] == ["x", "z"], f"wrong order or count: {hits}"
+    assert abs(hits[0].score - 1.0) < 1e-4, "an identical vector must score 1.0"
+    assert hits[0].score > hits[1].score
+
+
+async def check_store_upsert_replaces(store: Any) -> None:
+    await store.upsert("c", [_item("x", (1.0, 0.0, 0.0))])
+    await store.upsert("c", [_item("x", (0.0, 1.0, 0.0))])
+    assert _stats(await store.stats("c")).count == 1, "upsert duplicated a vector"
+    hits = _hits(await store.query("c", [0.0, 1.0, 0.0], 1), 1)
+    assert hits[0].key == "x" and hits[0].score > 0.99, "upsert kept the old vector"
+
+
+async def check_store_delete(store: Any) -> None:
+    await store.upsert("c", [_item("x", (1.0, 0.0, 0.0)), _item("y", (0.0, 1.0, 0.0))])
+    await store.delete("c", ["x", "never-existed"])
+    await store.delete("no-such-collection", ["x"])
+    hits = _hits(await store.query("c", [1.0, 0.0, 0.0], 5), 5)
+    assert [h.key for h in hits] == ["y"], "delete left the vector behind"
+
+
+async def check_store_collections_do_not_mix(store: Any) -> None:
+    await store.upsert("a", [_item("x", (1.0, 0.0, 0.0))])
+    await store.upsert("b", [_item("y", (1.0, 0.0, 0.0))])
+    assert [h.key for h in _hits(await store.query("a", [1.0, 0.0, 0.0], 5), 5)] == ["x"], "collections mixed"
+    assert await store.query("never-made", [1.0, 0.0, 0.0], 5) == [], "an unknown collection must be empty"
+    await store.upsert("c", [_item("w", (1.0, 0.0))])  # another collection may use another size
+
+
+async def check_store_rejects_mixed_dimensions(store: Any) -> None:
+    await store.upsert("c", [_item("x", (1.0, 0.0, 0.0))])
+    assert await _raises(store.upsert("c", [_item("y", (1.0, 0.0))])), "mixed dimensions"
+    assert await _raises(store.upsert("c", [_item("v", (1.0, 0.0, 0.0)), _item("w", (1.0, 0.0))])), "a mixed batch"
+    assert _stats(await store.stats("c")).count == 1, "a rejected upsert changed the store"
+    assert await _raises(store.query("c", [1.0, 0.0], 1)), "a query of the wrong size was accepted"
+
+
+async def check_store_stats(store: Any) -> None:
+    assert _stats(await store.stats()).count == 0
+    await store.upsert("c", [_item("x", (1.0, 0.0, 0.0))])
+    await store.upsert("d", [_item("y", (0.0, 1.0))])
+    one, whole = _stats(await store.stats("c")), _stats(await store.stats())
+    assert (one.count, one.dimensions) == (1, 3) and whole.count == 2
+
+
+STORE_CHECKS = (
+    check_store_valid,
+    check_store_nearest_first,
+    check_store_upsert_replaces,
+    check_store_delete,
+    check_store_collections_do_not_mix,
+    check_store_rejects_mixed_dimensions,
+    check_store_stats,
+)
+
+
 async def _verify(
     checks: tuple[Callable[..., Awaitable[None]], ...], make: Callable[[], Any], kind: str,
     config: dict[str, Any] | None,
@@ -140,6 +227,10 @@ async def verify_embedder(make: Callable[[], Any], config: dict[str, Any] | None
 
 async def verify_llm(make: Callable[[], Any], config: dict[str, Any] | None = None) -> None:
     await _verify(LLM_CHECKS, make, "llm_backend", config)
+
+
+async def verify_vector_store(make: Callable[[], Any], config: dict[str, Any] | None = None) -> None:
+    await _verify(STORE_CHECKS, make, "vector_store", config)
 
 
 def _abstract(name: str) -> Any:
@@ -201,3 +292,41 @@ class LLMContract:
     async def test_structured(self, llm: Any, llm_config: Any) -> None:
         async with running(llm, "llm_backend", llm_config):
             await check_llm_structured(llm)
+
+
+class VectorStoreContract:
+    """Override ``store`` (the plugin) and, if it needs settings, ``store_config``."""
+
+    store = _abstract("store")
+
+    @pytest.fixture
+    def store_config(self) -> dict[str, Any] | None:
+        return None
+
+    async def test_is_valid(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_valid(store)
+
+    async def test_nearest_first(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_nearest_first(store)
+
+    async def test_upsert_replaces(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_upsert_replaces(store)
+
+    async def test_delete(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_delete(store)
+
+    async def test_collections_do_not_mix(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_collections_do_not_mix(store)
+
+    async def test_rejects_mixed_dimensions(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_rejects_mixed_dimensions(store)
+
+    async def test_stats(self, store: Any, store_config: Any) -> None:
+        async with running(store, "vector_store", store_config):
+            await check_store_stats(store)

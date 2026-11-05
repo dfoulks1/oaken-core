@@ -17,6 +17,7 @@ dependencies = [
     "jinja2>=3.1",
     "python-multipart>=0.0.9",
     "tomlkit>=0.13.2",
+    "sqlite-vec>=0.1.9",
 ]
 
 [dependency-groups]
@@ -30,6 +31,9 @@ sqlite = "oaken_core.store:SqliteStore"
 
 [project.entry-points."oaken_core.embedders"]
 ollama = "oaken_core.ollama:OllamaEmbedder"
+
+[project.entry-points."oaken_core.vector_stores"]
+sqlite-vec = "oaken_core.vec_sqlite:SqliteVecStore"
 
 [project.entry-points."oaken_core.llm_backends"]
 ollama = "oaken_core.ollama:OllamaLLM"
