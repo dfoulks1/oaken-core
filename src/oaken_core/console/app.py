@@ -386,7 +386,9 @@ class Console:
     # -- mutations -----------------------------------------------------------------------------
     async def _gated(self, op: str, payload: Any, form: dict[str, str], back: str) -> Response | Any:
         """Run ``op`` for the person. A ``mutate`` that is not confirmed yet shows what it would
-        change, with every field of the form carried along so a second click repeats the call."""
+        change, with every field of the form carried along so a second click repeats the call.
+        ``back`` is where the confirm form posts: always the route handling this request (``request.url.path``),
+        never a page, because a page only answers GET."""
         res = await self.client.call(op, payload, UI, confirm=form.get("confirm") == "1")
         if res.proposal is not None:
             carried = {k: v for k, v in form.items() if k != "confirm"}
@@ -408,7 +410,7 @@ class Console:
         op = form.get("operation", "")
         if spec is None or op not in {b.operation for b in spec.buttons}:
             raise PermissionDenied(f"{name} has no button for {op!r}")
-        out = await self._gated(f"{name}{PLUGIN_SEP}{op}", {}, form, f"/plugins/{kind}/{name}")
+        out = await self._gated(f"{name}{PLUGIN_SEP}{op}", {}, form, request.url.path)
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=op, back=f"/plugins/{kind}/{name}", result=out.model_dump(mode="json") if out else {})
@@ -435,7 +437,7 @@ class Console:
         title = form.get("label", "").strip()
         payload = {"name": form.get("name", "").strip() or title, "kind": form.get("kind", ""), "label": title,
                    "workers": int(form.get("workers") or 1)}  # fmt: skip
-        out = await self._gated("queue_add", payload, form, "/")
+        out = await self._gated("queue_add", payload, form, request.url.path)
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=f"Added {out.name}", back="/", result={"note": out.note})

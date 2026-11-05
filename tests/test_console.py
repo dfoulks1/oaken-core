@@ -56,7 +56,7 @@ class Said(BaseModel):
 def spec(**over: Any) -> UiSpec:
     page = UiPage("rules", "Rules", load="rules_load", submit="rules_save", test="rules_test", order="rules_order",
                   fields=(UiField("text", "Rule text", required=True),))  # fmt: skip
-    return UiSpec(sections=(UiSection("Basics", ("greeting", "limit")),), buttons=(UiButton("Say hi", "hi"),), pages=(page,), **over)
+    return UiSpec(sections=(UiSection("Basics", ("greeting", "limit")),), buttons=(UiButton("Say hi", "hi"), UiButton("Wipe", "wipe")), pages=(page,), **over)
 
 
 class Notes(stub("enricher")):  # type: ignore[misc]
@@ -69,6 +69,10 @@ class Notes(stub("enricher")):  # type: ignore[misc]
     @command("hi", "Say hi.", input=Empty, output=Said)
     async def hi(self, ctx: PluginOpContext, inp: Empty) -> Said:
         return Said(said="hello")
+
+    @command("wipe", "Wipe the notes.", input=Empty, output=Said, permission="mutate")
+    async def wipe(self, ctx: PluginOpContext, inp: Empty) -> Said:
+        return Said(said="wiped")
 
     @command("sneaky", "Not on a button.", input=Empty, output=Said)
     async def sneaky(self, ctx: PluginOpContext, inp: Empty) -> Said:
@@ -499,6 +503,39 @@ async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path
         data = dict(re.findall(r'name="([a-z]+)" value="([^"]*)"', form))
         r = await client.post("/ui/plugins/enricher/notes/disable", data=data)
         assert r.status_code == 303, r.text[:200]  # accepted with the page's own token, and it acted
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+# -- the confirm step must post back to the route that asked, not to a page --------------------------------
+def confirm_form(html: str) -> tuple[str, dict[str, str]]:
+    """What a browser does with the confirm page's form: its action and its fields."""
+    import re
+
+    action = re.search(r'<form method="post" action="([^"]*)">', html[html.index("Do it") - 600 :]).group(1)  # type: ignore[union-attr]
+    form = html[html.index(f'action="{action}"') :]
+    return action, dict(re.findall(r'name="([a-z_]+)" value="([^"]*)"', form[: form.index("</form>")]))
+
+
+async def test_every_confirm_step_posts_back_to_the_route_that_asked(tmp_path: Path, oaken_home: Path) -> None:
+    """The confirm form once posted to ``/`` (a page, which only answers GET), so Add queue ended in Method Not Allowed.
+    The tests posted the second step by hand to the right URL and never saw it: follow the page's own form."""
+    core = await make_core(tmp_path, {}, {})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    try:
+        asked = await client.post("/ui/queues/add", data={"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"})
+        action, fields = confirm_form(asked.text)
+        assert action == "/ui/queues/add"  # the route that handles it, never "/"
+        done = await client.post(action, data=fields)
+        assert done.status_code == 200 and "Added my_triage" in done.text
+        # a plugin's own button that changes something
+        asked = await client.post("/ui/plugins/enricher/notes/button", data={"csrf": token, "operation": "wipe"})
+        action, fields = confirm_form(asked.text)
+        assert action == "/ui/plugins/enricher/notes/button"
+        done = await client.post(action, data=fields)
+        assert done.status_code == 200 and "wiped" in done.text
     finally:
         await client.aclose()
         await core.host.stop()
