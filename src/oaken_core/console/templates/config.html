@@ -2,6 +2,7 @@
 {% block body %}
 <h1>Config</h1>
 <p class="muted">The settings core is running on. A change is saved to config.toml and reaches the running core when you reload it.</p>
+<p><a class="btn btn-sm" href="/config/file">Edit config.toml as text</a></p>
 <form class="inline" method="post" action="/ui/core/reload">{{ csrf(token) }}<button class="btn btn-sm">Reload core</button> <span class="hint">Re-reads config.toml and restarts the plugins. A mistake in the file changes nothing.</span></form>
 {% for s in sections %}
 <div class="card">

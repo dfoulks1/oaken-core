@@ -76,7 +76,7 @@ async def health(core: Core) -> dict[str, str]:
 
 
 async def test_core_comes_up_serves_and_goes_down_in_reverse() -> None:
-    core = Core()
+    core = Core(Settings(console={"port": 0}))
     await core.open()
     await core.start()
     assert core.started == ["trace", "console", "host", "scheduler", "jobs", "mcp", "api"] and core.port and core.console_port
@@ -86,7 +86,7 @@ async def test_core_comes_up_serves_and_goes_down_in_reverse() -> None:
 
 
 async def test_a_taken_port_fails_start_and_leaves_nothing_open() -> None:
-    first = Core()
+    first = Core(Settings(console={"port": 0}))
     await first.open()
     await first.start()
     try:

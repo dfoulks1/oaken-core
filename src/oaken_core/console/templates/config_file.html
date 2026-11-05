@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% from "_fields.html" import csrf %}{% block title %}config.toml{% endblock %}
+{% block body %}
+<h1>config.toml</h1>
+<p class="muted">The whole file, as text. This is the way back in when the forms cannot help. <strong>Test</strong> checks it and saves nothing. <strong>Save</strong> keeps the old file as <code>config.toml.bak</code>, then writes this one. <strong>Reload</strong> restarts core on the saved file (not on what is typed here). Secrets never go in this file.</p>
+<p class="muted">File: <code>{{ path }}</code>{% if not exists %} (not created yet){% endif %}</p>
+{% if flash %}<div class="alert alert-{{ flash[0] }}">{{ flash[1] }}</div>{% endif %}
+<form method="post" action="/ui/config-file/save">{{ csrf(token) }}
+  <label class="sr-only" for="config-text">config.toml</label>
+  <textarea class="textarea" id="config-text" name="text" spellcheck="false" rows="28" style="width:100%;font-family:monospace">{{ text }}</textarea>
+  <p>
+    <button class="btn" formaction="/ui/config-file/test">Test</button>
+    <button class="btn btn-primary">Save</button>
+    <button class="btn" formaction="/ui/config-file/reload" formnovalidate title="Reloads from the saved file, not from what is typed here">Reload</button>
+    <a class="btn btn-ghost" href="/config/file">Revert to saved</a>
+  </p>
+</form>
+<p><a href="/config">Back to config</a></p>
+{% endblock %}

@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 """Core's own settings, read and changed one section at a time (``settings_edit`` says which keys)."""
 
+import os
+import shutil
 import tempfile
 import tomllib
 from pathlib import Path
@@ -9,8 +11,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from oaken_core import paths
-from oaken_core.config_edit import save_table, set_table
-from oaken_core.errors import InvalidInput
+from oaken_core.config_edit import refuse_secrets, save_table, set_table
+from oaken_core.errors import ConfigError, InvalidInput, NotFound
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.registry import Change, Preview, operation
 from oaken_core.settings import Settings
@@ -128,4 +130,71 @@ async def settings_set(ctx: OpContext, inp: SettingsSetIn) -> SettingsSetOut:
                           note=RELOAD_NOTE if changed else "Nothing to change.")  # fmt: skip
 
 
-OPERATIONS = (settings_get, settings_set)
+class ConfigText(BaseModel):
+    text: str = Field(description="The whole of config.toml.")
+
+
+class ConfigValidateOut(BaseModel):
+    ok: bool
+    error: str = ""
+
+
+def _check_text(ctx: OpContext, text: str) -> None:
+    """Raise ``ConfigError`` unless ``text`` is a config core would start on: valid TOML, no secret,
+    core's sections sound, and each plugin table fits its plugin's ``config_model``. A plugin that is
+    not installed is not an error here (it fails at reload, visibly, and the rest keeps running)."""
+    settings = Settings.from_text(text)  # TOML and core's sections
+    try:
+        refuse_secrets(tomllib.loads(text))
+    except ConfigError as exc:
+        raise ConfigError(exc.message) from None
+    host = ctx.svc.host
+    for kind, named in settings.plugins.tables.items():
+        for name, table in named.items():
+            try:
+                problems = host.check_config(name, {k: v for k, v in table.items() if k != "plugin"}) if host else []
+            except NotFound:
+                continue
+            if problems:
+                raise ConfigError("; ".join(problems))
+
+
+@operation("config_validate", "Check the text of a whole config.toml without saving it.",
+           permission="read", input=ConfigText, output=ConfigValidateOut, mcp="never", group="config")  # fmt: skip
+async def config_validate(ctx: OpContext, inp: ConfigText) -> ConfigValidateOut:
+    try:
+        _check_text(ctx, inp.text)
+    except ConfigError as exc:
+        return ConfigValidateOut(ok=False, error=exc.message.replace("config.toml: ", ""))
+    return ConfigValidateOut(ok=True)
+
+
+class ConfigSaveOut(BaseModel):
+    saved: bool
+    backup: str = ""
+    note: str
+
+
+async def _save_preview(ctx: OpContext, inp: ConfigText) -> Preview:
+    return Preview(summary="Replace the whole of config.toml (the old file is kept as config.toml.bak)",
+                   changes=[Change(target="config.toml", field="text")], total_changes=1)  # fmt: skip
+
+
+@operation("config_save", "Replace config.toml with new text: checked first, the old file kept as config.toml.bak.",
+           permission="mutate", input=ConfigText, output=ConfigSaveOut, mcp="never", group="config",
+           preview=_save_preview)  # fmt: skip
+async def config_save(ctx: OpContext, inp: ConfigText) -> ConfigSaveOut:
+    _check_text(ctx, inp.text)  # raises: nothing is written for a file core would not start on
+    path = _config_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    backup = ""
+    if path.exists():
+        shutil.copy2(path, path.with_name(path.name + ".bak"))  # one level: the file before this save
+        backup = str(path.with_name(path.name + ".bak"))
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    tmp.write_text(inp.text, encoding="utf-8")
+    os.replace(tmp, path)
+    return ConfigSaveOut(saved=True, backup=backup, note=RELOAD_NOTE)
+
+
+OPERATIONS = (settings_get, settings_set, config_validate, config_save)

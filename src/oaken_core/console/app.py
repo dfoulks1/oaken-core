@@ -86,6 +86,7 @@ class Console:
             Route("/plugins/{kind}/{name}/pages/{page}", self.page(self.plugin_page)),
             Route("/queues", self.page(self.queues)),
             Route("/config", self.page(self.config)),
+            Route("/config/file", self.page(self.config_file)),
             Route("/json/status", self.data(self.j_status)),
             Route("/json/plugins", self.data(self.j_plugins)),
             Route("/json/plugins/{kind}/{name}/ui", self.data(self.j_ui)),
@@ -93,6 +94,9 @@ class Console:
             Route("/json/config", self.data(self.j_config)),
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
             Route("/ui/core/reload", self.post(self.reload_core), methods=["POST"]),
+            Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
+            Route("/ui/config-file/save", self.post(self.config_file_save), methods=["POST"]),
+            Route("/ui/config-file/reload", self.post(self.config_file_reload), methods=["POST"]),
             Route("/ui/config/{section}", self.post(self.save_section), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/settings", self.post(self.save_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/try", self.post(self.try_settings), methods=["POST"]),
@@ -232,6 +236,39 @@ class Console:
 
     async def config(self, request: Request) -> Response:
         return self.render("config.html", sections=self._sections(), settings=json.dumps(self.svc.settings.model_dump(mode="json"), indent=2, sort_keys=True))
+
+    def _file_page(self, text: str | None = None, flash: tuple[str, str] | None = None) -> Response:
+        """The whole-file editor. ``text`` is what the person typed, kept when a check fails."""
+        exists = self.config_path.is_file()
+        if text is None:
+            try:
+                text = self.config_path.read_text(encoding="utf-8") if exists else ""
+            except OSError as exc:
+                raise ConfigError(f"cannot read {self.config_path}: {exc}") from exc
+        return self.render("config_file.html", text=text, path=str(self.config_path), exists=exists, flash=flash)
+
+    async def config_file(self, request: Request) -> Response:
+        return self._file_page()
+
+    async def config_file_test(self, request: Request, form: dict[str, str]) -> Response:
+        text = form.get("text", "")
+        out = await self._op("config_validate", {"text": text})
+        return self._file_page(text, ("ok", "Valid. Safe to save.") if out["ok"] else ("danger", f"Invalid: {out['error']}"))
+
+    async def config_file_save(self, request: Request, form: dict[str, str]) -> Response:
+        """The Save button is the person's confirmation, so the call is confirmed. A file core would not
+        start on is refused and the typed text stays on the page."""
+        text = form.get("text", "")
+        out = await self._op("config_validate", {"text": text})
+        if not out["ok"]:
+            return self._file_page(text, ("danger", f"Not saved: {out['error']}"))
+        saved = (await self.client.call("config_save", {"text": text}, UI, confirm=True)).output
+        note = "Saved. Reload to apply it." + (f" The old file is {saved.backup}." if saved and saved.backup else "")  # type: ignore[attr-defined]
+        return self._file_page(text, ("ok", note))
+
+    async def config_file_reload(self, request: Request, form: dict[str, str]) -> Response:
+        out = (await self.client.call("core_reload", {}, UI, confirm=True)).output
+        return self.render("result.html", title="Reloading", back="/config/file", result={"note": out.note})  # type: ignore[union-attr]
 
     async def save_section(self, request: Request, form: dict[str, str]) -> Response:
         """A core section's form: the typed values go to ``settings_set``, which checks the whole file,

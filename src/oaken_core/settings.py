@@ -188,11 +188,21 @@ class Settings(BaseModel):
         ``[mcp.allowed]`` is the operations turned on for MCP."""
         path = path or paths.config_dir() / "config.toml"
         try:
-            raw: dict[str, Any] = tomllib.loads(path.read_text(encoding="utf-8"))
+            text = path.read_text(encoding="utf-8")
         except FileNotFoundError:
-            raw = {}
-        except (OSError, tomllib.TOMLDecodeError) as exc:
+            text = ""
+        except OSError as exc:
             raise ConfigError(f"cannot read {path}: {exc}") from exc
+        return cls.from_text(text, source=str(path))
+
+    @classmethod
+    def from_text(cls, text: str, source: str = "config.toml") -> "Settings":
+        """Settings from the text of a ``config.toml``: what ``load`` reads, and what the console's
+        whole-file editor checks before it saves."""
+        try:
+            raw: dict[str, Any] = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            raise ConfigError(f"cannot read {source}: {exc}") from exc
         active, mcp, tables = raw.pop("active", {}), raw.pop("mcp", {}), raw.pop("plugins", {})
         if "allowed" in mcp:
             raw["operations"] = {**raw.get("operations", {}), "mcp_allowed": mcp["allowed"]}
@@ -200,4 +210,4 @@ class Settings(BaseModel):
         try:
             return cls.model_validate(raw)
         except ValidationError as exc:
-            raise ConfigError(f"{path}: {exc}") from exc
+            raise ConfigError(f"{source}: {exc}") from exc

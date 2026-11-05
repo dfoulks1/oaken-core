@@ -334,3 +334,50 @@ async def test_test_these_settings_tries_a_throwaway_copy_saves_nothing_and_need
     (running,) = [s for s in rig.core.host.statuses() if s.name == "notes"]
     assert running.started  # and the live plugin was never touched
     assert (await rig.post("/ui/plugins/enricher/ghost/try")).status_code == 404
+
+
+# -- the whole-file editor ---------------------------------------------------------------------
+def saved_config() -> str | None:
+    target = paths.config_dir() / "config.toml"
+    return target.read_text(encoding="utf-8") if target.is_file() else None
+
+
+async def test_the_file_editor_renders_with_test_save_and_reload(rig: Rig) -> None:
+    r = await rig.c.get("/config/file")
+    assert r.status_code == 200 and "<textarea" in r.text
+    assert 'formaction="/ui/config-file/test"' in r.text and 'action="/ui/config-file/save"' in r.text
+    assert 'formaction="/ui/config-file/reload"' in r.text
+
+
+async def test_test_checks_and_keeps_the_typed_text_without_writing(rig: Rig) -> None:
+    before = saved_config()
+    ok = await rig.post("/ui/config-file/test", text="[api]\nport = 8123\n")
+    assert "Valid." in ok.text and "port = 8123" in ok.text
+    bad = await rig.post("/ui/config-file/test", text="[api]\nbogus_key = 1\n")
+    assert "Invalid:" in bad.text and "bogus_key = 1" in bad.text  # the typed text survives
+    broken = await rig.post("/ui/config-file/test", text="[api\n")
+    assert "Invalid:" in broken.text
+    assert saved_config() == before  # testing never creates or changes the file
+
+
+async def test_save_writes_the_file_and_keeps_the_old_one_as_a_backup(rig: Rig) -> None:
+    first = await rig.post("/ui/config-file/save", text="[api]\nport = 8123\n")
+    assert "Saved." in first.text and "8123" in (saved_config() or "")
+    await rig.post("/ui/config-file/save", text="[api]\nport = 9000\n")
+    assert "9000" in (saved_config() or "")
+    assert "8123" in (paths.config_dir() / "config.toml.bak").read_text(encoding="utf-8")
+    assert "9000" in (await rig.c.get("/config/file")).text  # the editor shows what was saved
+
+
+async def test_save_refuses_a_file_core_would_not_start_on_and_writes_nothing(rig: Rig) -> None:
+    await rig.post("/ui/config-file/save", text="[api]\nport = 8123\n")
+    before = saved_config()
+    for bad in ("[api]\nbogus_key = 1\n", "[api\n", '[plugins.enricher.notes]\napi_key = "abc"\n'):
+        page = await rig.post("/ui/config-file/save", text=bad)
+        assert "Not saved" in page.text and bad.splitlines()[-1] in page.text.replace("&#34;", '"')
+    assert saved_config() == before
+
+
+async def test_the_file_editor_posts_need_the_token(rig: Rig) -> None:
+    r = await rig.c.post("/ui/config-file/save", data={"text": "[api]\nport = 1\n"})
+    assert r.status_code == 403 and saved_config() is None
