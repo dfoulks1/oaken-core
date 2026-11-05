@@ -42,7 +42,7 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   `escalate`. Each backend has its own semaphore. Confidential: local always, lan if in
   `[router] lan_allowlist`, hosted never; a disallowed backend is skipped, none left raises
   `ConfidentialRefused`. Cache key (analyzer, version, content hash, effective model), table
-  `answer_cache`; ledger `llm_ledger`, reported by operation `ai_usage` (mcp off). `BaseAnalyzer.ask`
+  `answer_cache`; ledger `llm_ledger`, reported by operation `ai_usage` (mcp off). `BaseLLMAnalyzer.ask`
   (triager, enricher, action bases). `Verdict.learn` and the `nearjunk` triager (rank 40, entry
   point); the junk index is off unless `[router] junk_index`. Stubs: `router/stub.py`. 274 tests pass.
   Skipped on purpose: a human decline adding its vector; moving the embedder and vector-store

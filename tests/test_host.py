@@ -11,7 +11,7 @@ from oaken_core.clock import FakeClock
 from oaken_core.errors import NotFound, PluginError
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore
-from oaken_core.plugins.base import BasePlugin, BaseTriager, command
+from oaken_core.plugins.base import BaseLLMAnalyzer, BasePlugin, BaseTriager, command
 from oaken_core.plugins.contracts import Health, PluginOpContext
 from oaken_core.plugins.host import PluginHost
 from oaken_core.plugins.kinds import KindRegistry, KindSpec
@@ -447,3 +447,18 @@ async def test_a_plain_install_finds_the_sqlite_store_through_real_entry_points(
         assert [(s.kind, s.name, s.started) for s in host.statuses() if s.kind == "store"] == [("store", "sqlite", True)]
     finally:
         await host.stop()
+
+
+async def test_an_llm_analyzer_is_a_kind_base_plus_base_llm_analyzer_in_either_order() -> None:
+    class A(BaseLLMAnalyzer, BaseTriager):
+        route = {"backend": "desk"}
+
+    class B(BaseTriager, BaseLLMAnalyzer):
+        pass
+
+    assert A.needs_llm and B.needs_llm and not BaseTriager.needs_llm
+    assert A.rank == 50 and A.prompt == "" and A.guard == ""
+    assert not hasattr(BaseTriager, "ask")  # a deterministic analyzer has no model door
+    plain = A()
+    with pytest.raises(AttributeError):  # ctx is set by start()
+        await plain.ask(None, BaseModel, content_hash="h")

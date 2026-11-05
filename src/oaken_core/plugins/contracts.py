@@ -330,7 +330,7 @@ class PluginScheduledTask:
 
 # -- Models and vectors -------------------------------------------------------------------------
 # A backend runs a model; an embedder turns text into vectors; a vector store finds the nearest.
-# Analyzers never call these directly: they go through the router (``BaseAnalyzer.ask``).
+# Analyzers never call these directly: they go through the router (``BaseLLMAnalyzer.ask``).
 
 
 @dataclass(frozen=True)

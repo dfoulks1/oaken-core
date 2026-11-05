@@ -13,7 +13,7 @@ from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, 
 from oaken_core.ids import SubjectId
 from oaken_core.intake import KIND, Intake, IntakeItem, Verdict
 from oaken_core.operations.caller import CallerContext
-from oaken_core.plugins.base import BaseEnricher
+from oaken_core.plugins.base import BaseEnricher, BaseLLMAnalyzer
 from oaken_core.plugins.contracts import LLMRequest, PluginContext
 from oaken_core.router import Call, Entry, Route, Router
 from oaken_core.router.nearjunk import NearJunk
@@ -282,9 +282,8 @@ async def test_an_analyzer_asks_through_ctx_router_with_its_route_and_its_own_na
     router, d = rig(core_db, clock)
     be = d.add("laptop", StubBackend(answer("fine")))
 
-    class Sum(BaseEnricher):
+    class Sum(BaseLLMAnalyzer, BaseEnricher):
         version = "7"
-        needs_llm = True
         route = {"backend": "desk", "model": "m"}  # the default; the owner's table moves it to the laptop
 
     sum_ = Sum()

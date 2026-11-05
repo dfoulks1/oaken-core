@@ -172,15 +172,28 @@ class BaseStore(BasePlugin):
 
 
 class BaseAnalyzer(BasePlugin):
-    """What triagers, enrichers and actions share: a place to ask a model through the router.
-
-    Declare the default ``route`` as a dict (``{"backend": "desk", "model": "qwen3", "fallback":
-    ["laptop"], "escalate": {"backend": "big", "model": "qwen3-72b"}}``); the owner overrides it
-    in ``[plugins.<kind>.<name>.route]``."""
+    """What triagers, enrichers and actions share. Deterministic by default; a plugin that asks a
+    model also extends ``BaseLLMAnalyzer``."""
 
     version: ClassVar[str] = "1"
     needs_llm: ClassVar[bool] = False
     needs_vec: ClassVar[bool] = False  # uses the embedder and vector store (core-only, never an agent's)
+
+
+class BaseLLMAnalyzer(BaseAnalyzer):
+    """Add to a kind's base for an analyzer that asks a model through the router:
+    ``class Mine(BaseLLMAnalyzer, BaseTriager)``. Sets ``needs_llm``, so the console shows the
+    plugin's ``prompt`` and ``guard`` (locked until the owner overrides them).
+
+    Declare the default ``route`` as a dict (``{"backend": "desk", "model": "qwen3", "fallback":
+    ["laptop"], "escalate": {"backend": "big", "model": "qwen3-72b"}}``); the owner overrides it
+    in ``[plugins.<kind>.<name>.route]``. ``prompt`` is the instruction the model gets and
+    ``guard`` the standing rules around outside text; the owner's override is the plugin's
+    ``prompt`` and ``guard`` settings."""
+
+    needs_llm: ClassVar[bool] = True
+    prompt: ClassVar[str] = ""
+    guard: ClassVar[str] = ""
     route: ClassVar[dict[str, Any]] = {}
 
     def _route(self) -> "Route":
