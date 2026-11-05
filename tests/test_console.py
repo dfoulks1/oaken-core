@@ -112,7 +112,7 @@ async def make_core(tmp_path: Path, plugins: dict[str, Any]) -> Core:
     clock = FakeClock()
     found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.enrichers": [EP("notes", Notes), EP("broken", Broken), EP("smart", Smart)]}
     tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}, "enricher": {"notes": {}, "broken": {}, "smart": {}, **plugins}}
-    core = Core(Settings(plugins=PluginTables(tables=tables)), clock=clock, discover=lambda g: found.get(g, []))
+    core = Core(Settings(console={"port": 0}, plugins=PluginTables(tables=tables)), clock=clock, discover=lambda g: found.get(g, []))
     await core.open()
     await core.host.start()
     core.console.bind(PORT)
@@ -271,7 +271,7 @@ async def test_the_console_listens_on_loopback_only_and_nothing_can_change_that(
         ConsoleSettings(host="0.0.0.0")  # noqa: S104 - the test: there is no such setting
     with pytest.raises(ValidationError):
         Settings.model_validate({"console": {"bind": "0.0.0.0"}})  # noqa: S104
-    core = Core(Settings(plugins=PluginTables(tables={"store": {"sqlite": {"path": str(tmp_path / "c.db")}}})))
+    core = Core(Settings(console={"port": 0}, plugins=PluginTables(tables={"store": {"sqlite": {"path": str(tmp_path / "c.db")}}})))
     await core.open()
     await core.start()
     try:

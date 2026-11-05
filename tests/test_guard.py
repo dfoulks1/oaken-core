@@ -204,11 +204,12 @@ def test_the_token_file_is_private_and_a_loose_one_is_tightened(tmp_path: Path) 
     assert path.stat().st_mode & 0o777 == 0o600
 
 
-def test_the_api_port_defaults_to_oaken_and_config_toml_overrides_it(tmp_path: Path) -> None:
-    from oaken_core.settings import Settings
+def test_the_console_port_defaults_to_oaken_and_config_toml_overrides_it(tmp_path: Path) -> None:
+    from oaken_core.settings import ConsoleSettings, Settings
 
-    assert ApiSettings().port == 62536  # OAKEN on a phone keypad
+    assert ConsoleSettings().port == 62536  # OAKEN on a phone keypad
+    assert ApiSettings().port == 0  # the API picks a free one and publishes it
     cfg = tmp_path / "config.toml"
-    assert Settings.load(cfg).api.port == 62536  # no file: the default
-    cfg.write_text("[api]\nport = 7777\n")
-    assert Settings.load(cfg).api.port == 7777
+    assert Settings.load(cfg).console.port == 62536  # no file: the default
+    cfg.write_text("[console]\nport = 7777\n")
+    assert Settings.load(cfg).console.port == 7777

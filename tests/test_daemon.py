@@ -90,7 +90,7 @@ async def test_a_taken_port_fails_start_and_leaves_nothing_open() -> None:
     await first.open()
     await first.start()
     try:
-        second = Core(Settings(api={"port": first.port}))
+        second = Core(Settings(console={"port": 0}, api={"port": first.port}))
         await second.open()
         with pytest.raises(Unavailable, match="could not listen"):
             await second.start()
@@ -102,7 +102,7 @@ async def test_a_taken_port_fails_start_and_leaves_nothing_open() -> None:
 async def test_serve_writes_the_runtime_file_refuses_a_second_and_stops_on_the_event() -> None:
     stop, ready = asyncio.Event(), asyncio.Event()
     runtime = RuntimeFile(paths.runtime_file(), SystemClock(), "t")
-    task = asyncio.create_task(lifecycle.serve(Settings(), runtime=runtime, stop=stop, ready=ready, handle_signals=False))
+    task = asyncio.create_task(lifecycle.serve(Settings(console={"port": 0}), runtime=runtime, stop=stop, ready=ready, handle_signals=False))
     await asyncio.wait_for(ready.wait(), 20)
     data = read_runtime(runtime.path)
     assert data and data["pid"] == os.getpid() and data["port"] > 0
@@ -118,7 +118,7 @@ async def test_serve_writes_the_runtime_file_refuses_a_second_and_stops_on_the_e
 
 async def test_reload_rebuilds_on_the_new_settings_keeps_the_port_and_refuses_a_bad_file() -> None:
     stop, ready, reload = asyncio.Event(), asyncio.Event(), asyncio.Event()
-    cfg = [Settings()]
+    cfg = [Settings(console={"port": 0})]
 
     def load() -> Settings:
         if cfg[0] is None:
@@ -126,7 +126,7 @@ async def test_reload_rebuilds_on_the_new_settings_keeps_the_port_and_refuses_a_
         return cfg[0]
 
     runtime = RuntimeFile(paths.runtime_file(), SystemClock(), "t")
-    task = asyncio.create_task(lifecycle.serve(Settings(), runtime=runtime, stop=stop, ready=ready,
+    task = asyncio.create_task(lifecycle.serve(Settings(console={"port": 0}), runtime=runtime, stop=stop, ready=ready,
                                                reload=reload, load_settings=load, handle_signals=False))  # fmt: skip
     await asyncio.wait_for(ready.wait(), 20)
     port, console = (read_runtime(runtime.path) or {})["port"], (read_runtime(runtime.path) or {})["console_port"]
@@ -137,7 +137,7 @@ async def test_reload_rebuilds_on_the_new_settings_keeps_the_port_and_refuses_a_
             await asyncio.sleep(0.01)
         await asyncio.sleep(0.5)
 
-    cfg[0] = Settings(jobs={"max_attempts": 9})
+    cfg[0] = Settings(console={"port": 0}, jobs={"max_attempts": 9})
     await reloaded()
     assert (read_runtime(runtime.path) or {})["port"] == port
     assert (read_runtime(runtime.path) or {})["console_port"] == console  # the page open in a browser stays put
@@ -157,14 +157,14 @@ async def test_the_core_reload_operation_proposes_then_rebuilds_core_on_the_file
     from oaken_core.operations.caller import CallerContext
 
     stop, ready = asyncio.Event(), asyncio.Event()
-    cfg, made = [Settings()], []
+    cfg, made = [Settings(console={"port": 0})], []
 
     def make(settings: Settings) -> Core:
         made.append(Core(settings))
         return made[-1]
 
     runtime = RuntimeFile(paths.runtime_file(), SystemClock(), "t")
-    task = asyncio.create_task(lifecycle.serve(Settings(), make=make, runtime=runtime, stop=stop, ready=ready,
+    task = asyncio.create_task(lifecycle.serve(Settings(console={"port": 0}), make=make, runtime=runtime, stop=stop, ready=ready,
                                                load_settings=lambda: cfg[0], handle_signals=False))  # fmt: skip
     try:
         await asyncio.wait_for(ready.wait(), 20)
@@ -172,7 +172,7 @@ async def test_the_core_reload_operation_proposes_then_rebuilds_core_on_the_file
         console = first.console_port  # read now: a stopped core's port reads 0
         proposal = await first.client.call("core_reload", {}, cli)
         assert proposal.proposal is not None and len(made) == 1  # a proposal changes nothing
-        cfg[0] = Settings(jobs={"max_attempts": 9})
+        cfg[0] = Settings(console={"port": 0}, jobs={"max_attempts": 9})
         done = await first.client.call("core_reload", {}, cli, confirm=True)
         assert done.output.reloading  # type: ignore[union-attr]
         for _ in range(100):
@@ -190,7 +190,7 @@ async def test_core_reload_says_so_when_core_was_not_started_by_the_daemon() -> 
     from oaken_core.errors import Unavailable
     from oaken_core.operations.caller import CallerContext
 
-    core = Core(Settings())
+    core = Core(Settings(console={"port": 0}))
     await core.open()
     try:
         with pytest.raises(Unavailable, match="nothing to reload"):
