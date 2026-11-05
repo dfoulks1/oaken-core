@@ -19,7 +19,7 @@
 {% endmacro %}
 
 {# The button that opens the Add a stage dialog (below), and nothing when no stage can be added. #}
-{% macro add_stage_button() %}{% if addable %}<button type="button" class="btn btn-sm btn-primary" popovertarget="add-stage" popovertargetaction="show" title="Add a stage">{{ m.icon("plus") }} Add queue</button>{% endif %}{% endmacro %}
+{% macro add_stage_button() %}{% if addable %}<button type="button" class="btn btn-primary" popovertarget="add-stage" popovertargetaction="show" title="Add a stage">{{ m.icon("plus") }} Add queue</button>{% endif %}{% endmacro %}
 
 {% macro add_stage_dialog() %}
 {% if addable %}
