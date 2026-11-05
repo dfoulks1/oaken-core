@@ -82,6 +82,7 @@ class Console:
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
             Route("/pipeline", self.page(self.pipeline)),
+            Route("/capabilities", self.page(self.capabilities)),
             Route("/stage/{queue}", self.page(self.stage)),
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
             Route("/plugins/{kind}/{name}/pages/{page}", self.page(self.plugin_page)),
@@ -94,6 +95,8 @@ class Console:
             Route("/json/config", self.data(self.j_config)),
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
             Route("/ui/queues/add", self.post(self.add_queue), methods=["POST"]),
+            Route("/ui/expose", self.post(self.expose), methods=["POST"]),
+            Route("/ui/mcp-power", self.post(self.mcp_power), methods=["POST"]),
             Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
             Route("/ui/config-file/save", self.post(self.config_file_save), methods=["POST"]),
             Route("/ui/config-file/reload", self.post(self.config_file_reload), methods=["POST"]),
@@ -218,7 +221,7 @@ class Console:
     def _nav(self) -> list[tuple[str, str]]:
         """General, a link per stage in pipeline order, the machinery, and the config."""
         stages = [(f"/stage/{q.name}", q.title) for q in self._stage_specs()]
-        return [("/", "General"), *stages, ("/pipeline", "Pipeline"), ("/config", "Config")]
+        return [("/", "General"), *stages, ("/pipeline", "Pipeline"), ("/config", "Config"), ("/capabilities", "Capabilities")]
 
     async def _flow(self) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
         """Intake, then each stage, with what waits in it; and the queue rows by name."""
@@ -240,6 +243,29 @@ class Console:
         stages, rows = await self._flow()
         return self.render("stage.html", stage=spec, stages=stages, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
                            plugins=[p for p in self._host().statuses() if p.kind == spec.kind])  # fmt: skip
+
+    async def capabilities(self, request: Request) -> Response:
+        """Every operation (the registry the CLI lists), by the part that offers it, with its MCP switch."""
+        rows = (await self._op("exposure_list"))["operations"]
+        kind_of = {s.name: s.kind for s in self._host().statuses()}
+        core: dict[str, list[dict[str, Any]]] = {}
+        plugin: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            if r["plugin"]:
+                plugin.setdefault(kind_of.get(r["plugin"], "plugin"), []).append(r)
+            else:
+                core.setdefault(r["group"] or "general", []).append(r)
+        groups = [(f"Core: {g}", core[g]) for g in sorted(core)] + [(f"{k} plugins", plugin[k]) for k in sorted(plugin)]
+        return self.render("capabilities.html", groups=groups, power=self.svc.settings.api.mcp_enabled)
+
+    async def expose(self, request: Request, form: dict[str, str]) -> Response:
+        """A row's MCP switch. The click is the person's confirmation, so the call is confirmed."""
+        await self.client.call("exposure_set", {"name": form.get("name", ""), "enabled": form.get("mcp") == "on"}, UI, confirm=True)
+        return RedirectResponse("/capabilities", 303)
+
+    async def mcp_power(self, request: Request, form: dict[str, str]) -> Response:
+        await self.client.call("mcp_power", {"enabled": form.get("mcp") == "on"}, UI, confirm=True)
+        return RedirectResponse("/capabilities", 303)
 
     async def pipeline(self, request: Request) -> Response:
         stage_kinds = {q.kind for q in self._stage_specs()}

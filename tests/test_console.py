@@ -11,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 from oaken_core import paths
 from oaken_core.clock import FakeClock
 from oaken_core.daemon.core import Core
+from oaken_core.operations.caller import CallerContext
 from oaken_core.plugins.base import command
 from oaken_core.plugins.contracts import PluginOpContext, UiButton, UiField, UiPage, UiSection, UiSpec
 from oaken_core.settings import ConsoleSettings, PluginTables, Settings
@@ -19,6 +20,7 @@ from oaken_core.store import SqliteStore
 from .test_host import EP, STORE, stub
 
 PORT = 8321
+UI_CALLER = CallerContext.ui()
 BASE = f"http://127.0.0.1:{PORT}"
 
 
@@ -405,3 +407,40 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
     finally:
         await client.aclose()
         await core.host.stop()
+
+
+# -- capabilities: what MCP clients may call, from the registry the CLI lists ------------------
+async def test_capabilities_lists_every_operation_by_who_offers_it_and_switches_mcp_per_row(rig: Rig, oaken_home: Path) -> None:
+    page = (await rig.c.get("/capabilities")).text
+    assert "Core: queue" in page and "enricher plugins" in page  # core by group; a plugin's under its kind
+    assert 'class="mono nowrap">notes.hi' in page  # the loader put the plugin's operation here
+    assert 'aria-label="Expose queue_list over MCP"' in page
+    assert page.index(">Config<") < page.index(">Capabilities<")  # mail's nav order
+    # a row's switch turns an operation on for MCP, and back
+    on = await rig.post("/ui/expose", name="notes.hi", mcp="on")
+    assert on.status_code == 303 and on.headers["location"] == "/capabilities"
+    rows = {o["name"]: o for o in (await rig.core.client.call("exposure_list", {}, UI_CALLER)).output.model_dump()["operations"]}
+    assert rows["notes.hi"]["exposed"] is True
+    await rig.post("/ui/expose", name="notes.hi", mcp="off")
+    rows = {o["name"]: o for o in (await rig.core.client.call("exposure_list", {}, UI_CALLER)).output.model_dump()["operations"]}
+    assert rows["notes.hi"]["exposed"] is False
+
+
+async def test_an_operation_that_is_never_offered_has_a_disabled_switch_and_cannot_be_turned_on(rig: Rig) -> None:
+    page = (await rig.c.get("/capabilities")).text
+    row = page[page.index("agent_create"):]
+    assert "disabled" in row[: row.index("</tr>")]  # no toggle for a never
+    r = await rig.post("/ui/expose", name="agent_create", mcp="on")
+    assert r.status_code == 422 and "never offered" in r.text
+
+
+async def test_the_mcp_power_switch_turns_the_door_off_live_and_writes_the_config(rig: Rig, oaken_home: Path) -> None:
+    import tomllib
+
+    assert "MCP is ON" in (await rig.c.get("/capabilities")).text
+    await rig.post("/ui/mcp-power", mcp="off")
+    assert rig.core.settings.api.mcp_enabled is False  # live: the door reads it on every request
+    assert "MCP is OFF" in (await rig.c.get("/capabilities")).text
+    assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["api"]["mcp_enabled"] is False
+    await rig.post("/ui/mcp-power", mcp="on")
+    assert "MCP is ON" in (await rig.c.get("/capabilities")).text

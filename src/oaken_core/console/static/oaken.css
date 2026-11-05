@@ -390,3 +390,6 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .table td form.inline { display: inline-flex; align-items: center; vertical-align: middle; }
 .section-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 1.4rem 0 .6rem; }
 .section-head h2 { margin: 0; }
+/* Capabilities: every fold's table shares its column widths, so the MCP switches line up down the page. */
+.caps { table-layout: fixed; }
+.caps th:nth-child(1) { width: 15rem; } .caps th:nth-child(2) { width: 7rem; } .caps th:nth-child(3) { width: 7.5rem; } .caps th:nth-child(4) { width: 5rem; }

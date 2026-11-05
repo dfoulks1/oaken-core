@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Status, the change log, plugins and MCP exposure."""
 
+import tomllib
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -204,6 +205,8 @@ class ExposureRow(BaseModel):
     ceiling: str  # the code's mcp mode
     allowed: bool  # may anything turn it on?
     exposed: bool  # is it on now?
+    group: str = ""  # the CLI group it sits under ("" for a core operation with none)
+    summary: str = ""
 
 
 class ExposureListOut(BaseModel):
@@ -216,7 +219,7 @@ async def exposure_list(ctx: OpContext, inp: Empty) -> ExposureListOut:
     exp, chosen = ctx.exposure, await ctx.exposure.settings()
     return ExposureListOut(operations=[
         ExposureRow(name=o.name, plugin=o.plugin, permission=o.permission, ceiling=o.mcp,
-                    allowed=exp.allowed(o), exposed=exp.effective(o, chosen))
+                    allowed=exp.allowed(o), exposed=exp.effective(o, chosen), group=o.group, summary=o.summary)
         for o in ctx.registry.all()
     ])  # fmt: skip
 
@@ -292,5 +295,33 @@ async def ai_usage(ctx: OpContext, inp: UsageIn) -> UsageOut:
                     answered_without_a_model=sum(r.cache_hits + r.shortcut_hits for r in rows))  # fmt: skip
 
 
+class McpPowerIn(BaseModel):
+    enabled: bool = Field(description="Whether the person's MCP door serves anything.")
+
+
+class McpPowerOut(BaseModel):
+    enabled: bool
+    note: str
+
+
+async def preview_mcp_power(ctx: OpContext, inp: McpPowerIn) -> Preview:
+    return Preview(summary=f"Turn the MCP door {'on' if inp.enabled else 'off'} (the agent door has its own switch)",
+                   changes=[Change(target="api", field="mcp_enabled", before=ctx.svc.settings.api.mcp_enabled, after=inp.enabled)], total_changes=1)  # fmt: skip
+
+
+@operation("mcp_power", "Turn the person's MCP door on or off. Off: it answers 503 and offers no tools. Saved to config.toml and live at once.",
+           permission="mutate", input=McpPowerIn, output=McpPowerOut, mcp="never", group="mcp",
+           preview=preview_mcp_power)  # fmt: skip
+async def mcp_power(ctx: OpContext, inp: McpPowerIn) -> McpPowerOut:
+    path = paths.config_dir() / "config.toml"
+    try:
+        table = dict(tomllib.loads(path.read_text(encoding="utf-8")).get("api", {}))
+    except FileNotFoundError:
+        table = {}
+    save_table(path, ["api"], {**table, "mcp_enabled": inp.enabled})
+    ctx.svc.settings.api.mcp_enabled = inp.enabled  # the door reads this on every request
+    return McpPowerOut(enabled=inp.enabled, note="the MCP door is " + ("on" if inp.enabled else "off"))
+
+
 OPERATIONS = (status, log_list, plugin_list, plugin_enable, plugin_disable, plugin_reload,
-              exposure_list, exposure_set, ai_usage, plugin_add, plugin_test, core_reload)  # fmt: skip
+              exposure_list, exposure_set, mcp_power, ai_usage, plugin_add, plugin_test, core_reload)  # fmt: skip

@@ -1,0 +1,30 @@
+{% extends "base.html" %}{% import "_macros.html" as m with context %}{% block title %}Capabilities{% endblock %}
+{% block body %}
+<h1>Capabilities</h1>
+<p class="muted">What this core can do, grouped by the part that offers it, and what MCP clients may call. Some things you do not want an AI client doing: switch them off here.</p>
+<div class="card">
+  <div class="card-body row">
+    <span class="mcp-state">MCP is {{ "ON" if power else "OFF" }}</span>
+    {{ m.switch("mcp-power", "/capabilities", power, "MCP", {}, "mcp", "on", "off", false, "", false) }}
+    <span class="muted">{% if power %}AI clients can reach the operations switched on below.{% else %}Switched off: the door answers 503 and offers no tools.{% endif %}</span>
+  </div>
+</div>
+{% for title, rows in groups %}
+<details class="card fold" id="fold-{{ loop.index }}"{% if rows|selectattr("exposed")|list %} open{% endif %}>
+  <summary class="card-head">{{ title }} <span class="muted small">{{ rows|length }}</span></summary>
+  <div class="table-wrap"><table class="table caps">
+    <thead><tr><th>Operation</th><th>Provider</th><th>Permission</th><th>MCP</th><th>Summary</th></tr></thead>
+    <tbody>
+    {% for o in rows %}<tr>
+      <td class="mono nowrap">{{ o.name }}</td>
+      <td class="mono">{{ o.plugin or "core" }}</td>
+      <td>{% if o.permission == "mutate" %}<span class="badge badge-warn">mutate</span>{% elif o.permission == "send" %}<span class="badge badge-danger">send</span>{% else %}<span class="badge badge-ok">read</span>{% endif %}</td>
+      <td>{{ m.switch("expose", "/capabilities", o.exposed, "Expose " ~ o.name ~ " over MCP", {"name": o.name}, "mcp", "on", "off", not o.allowed, "Never offered over MCP: no setting can change that", false) }}</td>
+      <td class="muted">{{ o.summary }}</td>
+    </tr>{% endfor %}
+    </tbody>
+  </table></div>
+</details>
+{% endfor %}
+<p class="muted small">Generated from the operation registry: the same list as <code>operations</code> on the command line. A plugin's operations appear under its kind the moment the plugin loads, and leave with it.</p>
+{% endblock %}
