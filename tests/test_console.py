@@ -108,11 +108,11 @@ class Rig:
         return await self.c.post(path, data={"csrf": self.token, **form})
 
 
-async def make_core(tmp_path: Path, plugins: dict[str, Any]) -> Core:
+async def make_core(tmp_path: Path, plugins: dict[str, Any], queues: dict[str, Any] | None = None) -> Core:
     clock = FakeClock()
     found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.enrichers": [EP("notes", Notes), EP("broken", Broken), EP("smart", Smart)]}
     tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}, "enricher": {"notes": {}, "broken": {}, "smart": {}, **plugins}}
-    core = Core(Settings(console={"port": 0}, plugins=PluginTables(tables=tables)), clock=clock, discover=lambda g: found.get(g, []))
+    core = Core(Settings(console={"port": 0}, queues=queues or {}, plugins=PluginTables(tables=tables)), clock=clock, discover=lambda g: found.get(g, []))
     await core.open()
     await core.host.start()
     core.console.bind(PORT)
@@ -279,17 +279,17 @@ async def test_the_console_listens_on_loopback_only_and_nothing_can_change_that(
         assert sock[0] == "127.0.0.1" and sock[1] == core.console_port != core.port
         async with httpx2.AsyncClient() as c:
             r = await c.get(f"http://127.0.0.1:{core.console_port}/")
-            assert r.status_code == 200 and "Overview" in r.text
+            assert r.status_code == 200 and "General" in r.text
             assert (await c.get(f"http://127.0.0.1:{core.console_port}/", headers={"host": "evil.example"})).status_code == 400
     finally:
         await core.stop()
 
 
 async def test_the_theme_menu_saves_palette_and_mode_to_config_and_refuses_unknown_ones(rig: Rig, oaken_home: Path) -> None:
-    r = await rig.post("/ui/look", palette="moss", mode="dark", back="/queues")
-    assert r.status_code == 303 and r.headers["location"] == "/queues"
-    page = (await rig.c.get("/queues")).text
-    assert 'data-palette="moss" data-mode="dark"' in page and 'aria-current="page">Queues' in page
+    r = await rig.post("/ui/look", palette="moss", mode="dark", back="/pipeline")
+    assert r.status_code == 303 and r.headers["location"] == "/pipeline"
+    page = (await rig.c.get("/pipeline")).text
+    assert 'data-palette="moss" data-mode="dark"' in page and 'aria-current="page">Pipeline' in page
     assert 'palette = "moss"' in (oaken_home / "config" / "config.toml").read_text()
     assert (await rig.post("/ui/look", palette="neon")).status_code == 422
     assert (await rig.post("/ui/look", palette="oak", back="//evil.example")).headers["location"] == "/"
@@ -356,3 +356,23 @@ async def test_save_refuses_a_file_core_would_not_start_on_and_writes_nothing(ri
 async def test_the_file_editor_posts_need_the_token(rig: Rig) -> None:
     r = await rig.c.post("/ui/config-file/save", data={"text": "[api]\nport = 1\n"})
     assert r.status_code == 403 and saved_config() is None
+
+
+# -- the nav follows the queues ----------------------------------------------------------------
+async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_rest_is_the_pipeline(tmp_path: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher", "label": "Enrichment"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        home = (await client.get("/")).text
+        assert home.index(">General<") < home.index(">Enrichment<") < home.index(">Pipeline<") < home.index(">Config<")
+        assert "Queues<" not in home.split("</header>")[0]
+        stage = await client.get("/stage/enrich")
+        assert stage.status_code == 200 and 'aria-current="page">Enrichment' in stage.text
+        assert "notes" in stage.text and "flow-strip" in stage.text and "Intake" in stage.text
+        assert (await client.get("/stage/default")).status_code == 404  # intake is not a stage page
+        assert (await client.get("/stage/nope")).status_code == 404
+        machinery = (await client.get("/pipeline")).text
+        assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
+    finally:
+        await client.aclose()
+        await core.host.stop()

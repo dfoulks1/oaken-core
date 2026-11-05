@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% from "_plugin_table.html" import plugin_table, flow with context %}{% block title %}{{ stage.title }}{% endblock %}
+{% block body %}
+<h1>{{ stage.title }}</h1>
+{{ flow(stages, stage.name) }}
+<p class="muted">{{ stage.description or ("Work in the " ~ stage.name ~ " queue is done by " ~ stage.kind ~ " plugins.") }} {{ stage.workers }} worker{{ "s" if stage.workers != 1 }}.</p>
+<h2>Queue</h2>
+<div class="table-wrap"><table class="table"><tr><th>Queued</th><th>Running</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
+<tr><td>{{ row.queued }}{% if row.paused %} <span class="muted">(paused)</span>{% endif %}</td><td>{{ row.running }}</td><td class="{{ 'bad' if row.failed }}">{{ row.failed }}</td>
+<td>{{ "%.0fs"|format(row.oldest_queued_seconds) if row.oldest_queued_seconds is not none else "" }}</td><td>{{ row.last_error or "" }}</td></tr></table></div>
+<h2>{{ stage.kind }} plugins</h2>
+{{ plugin_table(plugins, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is installed.") }}
+{% endblock %}

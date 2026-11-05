@@ -1,0 +1,18 @@
+{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}
+{# The plugins in ``plugins`` as a table with an enable switch and a reload button; ``back`` is the page a button returns to. #}
+{% macro plugin_table(plugins, back, empty="No plugins here.") %}
+<div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Name</th><th>Version</th><th>State</th><th></th></tr>
+{% for p in plugins %}<tr><td>{{ p.kind }}</td><td><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td><td>{{ p.version }}</td>
+<td class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "healthy" if p.healthy else (p.detail or "off") }}</td>
+<td>{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ ("/disable" if p.enabled else "/enable"), back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled") }}
+<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/reload">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm">Reload</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="muted">{{ empty }}</td></tr>{% endfor %}</table></div>
+{% endmacro %}
+
+{# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}
+{% macro flow(stages, current="") %}
+<ol class="flow-strip" aria-label="Pipeline">
+{% for s in stages %}<li><a href="{{ s.href }}"{% if s.name == current %} aria-current="page"{% endif %}><span class="flow-name">{{ s.title }}</span>
+<span class="flow-count {{ 'bad' if s.failed }}">{{ s.queued }} waiting{% if s.failed %} · {{ s.failed }} failed{% endif %}{% if s.paused %} · paused{% endif %}</span></a></li>{% endfor %}
+</ol>
+{% endmacro %}

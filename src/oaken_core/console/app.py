@@ -38,6 +38,7 @@ from oaken_core.console import forms
 from oaken_core.console.forms import Field
 from oaken_core.console.guard import ConsoleGuard, PortRef
 from oaken_core import identity
+from oaken_core.queues import DEFAULT
 from oaken_core.errors import ConfigError, InvalidInput, NotFound, OakenError, PermissionDenied
 from oaken_core.logging import get_logger
 from oaken_core.operations.caller import CallerContext
@@ -56,7 +57,6 @@ MODES = ("auto", "light", "dark")
 CSS_VERSION = hashlib.sha256((HERE / "static" / "oaken.css").read_bytes()).hexdigest()[:10]
 _here: ContextVar[str] = ContextVar("console_here", default="/")  # the page being drawn, for nav and "back"
 
-NAV = (("/", "Overview"), ("/plugins", "Plugins"), ("/queues", "Queues"), ("/config", "Config"))
 
 Handler = Callable[[Request], Awaitable[Response]]
 
@@ -81,6 +81,8 @@ class Console:
         routes = [
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
+            Route("/pipeline", self.page(self.pipeline)),
+            Route("/stage/{queue}", self.page(self.stage)),
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
             Route("/plugins/{kind}/{name}/pages/{page}", self.page(self.plugin_page)),
             Route("/queues", self.page(self.queues)),
@@ -112,7 +114,7 @@ class Console:
     # -- plumbing ------------------------------------------------------------------------------
     def render(self, template: str, http: int = 200, **ctx: Any) -> HTMLResponse:
         html = self.env.get_template(template).render(
-            nav=NAV, app_title=identity.title, wordmark=identity.wordmark(), token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
+            nav=self._nav(), app_title=identity.title, wordmark=identity.wordmark(), token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
             modes=MODES, css_version=CSS_VERSION, here=_here.get(), **ctx)
         return HTMLResponse(html, status_code=http)
 
@@ -200,8 +202,44 @@ class Console:
         return {"spec": spec, "schema": schema, "fields": fields, "sections": sections}
 
     # -- pages ---------------------------------------------------------------------------------
+    def _stage_specs(self) -> list[Any]:
+        """The queues that are a stage (they serve an analyzer kind), in the order they were made."""
+        return [q for q in self.svc.queues.all() if q.kind]
+
+    def _nav(self) -> list[tuple[str, str]]:
+        """General, a link per stage in pipeline order, the machinery, and the config."""
+        stages = [(f"/stage/{q.name}", q.title) for q in self._stage_specs()]
+        return [("/", "General"), *stages, ("/pipeline", "Pipeline"), ("/config", "Config")]
+
+    async def _flow(self) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+        """Intake, then each stage, with what waits in it; and the queue rows by name."""
+        rows = {r["queue"]: r for r in (await self._op("queue_list"))["queues"]}
+        out = []
+        for q in self.svc.queues.all():
+            if q.kind or q.name == DEFAULT:
+                r = rows.get(q.name, {})
+                out.append({"name": q.name, "title": "Intake" if q.name == DEFAULT else q.title,
+                            "href": "/" if q.name == DEFAULT else f"/stage/{q.name}", "queued": r.get("queued", 0),
+                            "failed": r.get("failed", 0), "paused": r.get("paused", False)})
+        return out, rows
+
+    async def stage(self, request: Request) -> Response:
+        name = request.path_params["queue"]
+        spec = next((q for q in self._stage_specs() if q.name == name), None)
+        if spec is None:
+            raise NotFound(f"no stage named {name!r}")
+        stages, rows = await self._flow()
+        return self.render("stage.html", stage=spec, stages=stages, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
+                           plugins=[p for p in self._host().statuses() if p.kind == spec.kind])  # fmt: skip
+
+    async def pipeline(self, request: Request) -> Response:
+        stage_kinds = {q.kind for q in self._stage_specs()}
+        stages, _ = await self._flow()
+        return self.render("pipeline.html", stages=stages, plugins=[p for p in self._host().statuses() if p.kind not in stage_kinds])
+
     async def overview(self, request: Request) -> Response:
-        return self.render("overview.html", status=await self._op("status"), plugins=self._host().statuses())
+        stages, _ = await self._flow()
+        return self.render("overview.html", status=await self._op("status"), plugins=self._host().statuses(), stages=stages)
 
     async def plugins(self, request: Request) -> Response:
         return self.render("plugins.html", plugins=self._host().statuses())

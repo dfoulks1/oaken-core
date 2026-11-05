@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% from "_plugin_table.html" import plugin_table, flow with context %}{% block title %}Pipeline{% endblock %}
+{% block body %}
+<h1>Pipeline</h1>
+{{ flow(stages) }}
+<p class="muted">The machinery behind the stages: stores, providers, models, embedders and the rest. A stage's own plugins are on its page.</p>
+{{ plugin_table(plugins, "/pipeline", "No plugins here.") }}
+{% endblock %}
