@@ -164,7 +164,7 @@ class Console:
         async def wrapped(request: Request) -> Response:
             try:
                 form = {k: str(v) for k, v in (await request.form()).items()}
-                _here.set(form.pop("back", "/"))  # the macros' guard() names the page to return to
+                _here.set(form.pop("back", ""))  # the page the form came from (empty: it did not say)
                 if not hmac.compare_digest(form.pop("csrf", ""), self.token):
                     raise PermissionDenied("this form is missing its token; reload the page and try again")
                 return await fn(request, form)
@@ -239,7 +239,7 @@ class Console:
     def _back(default: str) -> str:
         """Where a form came from (its ``back`` field), if that is a page on this console; else ``default``."""
         back = _here.get()
-        return back if back.startswith("/") and not back.startswith("//") and back != "/" else default
+        return back if back.startswith("/") and not back.startswith("//") else default
 
     async def _choices(self, kind: str, name: str, modal: dict[str, Any]) -> dict[str, Any]:
         """``modal`` with each setting the plugin offers choices for drawn as a dropdown (a plain text setting only)."""
@@ -305,22 +305,22 @@ class Console:
         return " ".join(words) + ("" if words[-1].endswith("s") else "s")
 
     async def pipeline(self, request: Request) -> Response:
-        """The machinery: a tab for each kind of plugin that is not a stage's (stores, providers, models, embedders...),
-        each a card of its plugins. A stage's own plugins are on its page."""
+        """The machinery: a collapsible section for each kind of plugin that is not a stage's (stores, providers, models,
+        embedders...) that has something in it. A stage's own plugins are on its page."""
         stage_kinds = {q.kind for q in self._stage_specs()}
         stages, _ = await self._flow()
         every = self._host().statuses()
-        kinds = [k.name for k in self._host().kinds if k.name not in stage_kinds]
-        tab = request.query_params.get("tab", "")
-        if tab not in kinds:  # no tab, or one that is not machinery here: the first kind that has something in it
-            tab = next((k for k in kinds if any(p.kind == k for p in every)), kinds[0] if kinds else "")
-        plugins = [p for p in every if p.kind == tab]
-        tabs = [(k, self._kind_label(k), sum(p.kind == k and p.enabled for p in every)) for k in kinds]
-        return self.render("pipeline.html", stages=stages, tabs=tabs, tab=tab, label=self._kind_label(tab) if tab else "", plugins=plugins, modals=await self._modals(plugins))
+        sections, empty = [], []
+        for k in (k.name for k in self._host().kinds if k.name not in stage_kinds):
+            found = [p for p in every if p.kind == k]
+            (sections if found else empty).append((k, self._kind_label(k), found) if found else self._kind_label(k))
+        plugins = [p for _, _, ps in sections for p in ps]
+        return self.render("pipeline.html", stages=stages, sections=sections, empty=empty, modals=await self._modals(plugins))
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()
-        return self.render("overview.html", status=await self._op("status"), plugins=self._host().statuses(), stages=stages)
+        plugins = self._host().statuses()
+        return self.render("overview.html", status=await self._op("status"), plugins=plugins, stages=stages, modals=await self._modals(plugins))
 
     async def plugins(self, request: Request) -> Response:
         plugins = self._host().statuses()

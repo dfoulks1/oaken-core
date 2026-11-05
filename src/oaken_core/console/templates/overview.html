@@ -1,18 +1,12 @@
-{% extends "base.html" %}{% from "_plugin_table.html" import flow, add_stage_button, add_stage_dialog with context %}{% from "_fields.html" import csrf %}{% block title %}General{% endblock %}
+{% extends "base.html" %}{% from "_plugin_table.html" import flow, plugin_table, add_stage_button, add_stage_dialog with context %}{% from "_fields.html" import csrf %}{% block title %}General{% endblock %}
 {% block body %}
 <h1>General</h1>
 {{ flow(stages) }}
-<p>Plugins: <b class="{{ 'ok' if status.plugins_healthy == status.plugins_total else 'bad' }}">{{ status.plugins_healthy }} of {{ status.plugins_total }} healthy</b>.</p>
 {{ add_stage_dialog() }}
 <div class="card">
 <div class="card-head"><span>Queues</span><span class="row"><span class="muted small">{{ status.queues|length }}</span>{{ add_stage_button() }}</span></div>
 <div class="table-wrap"><table class="table"><tr><th>Queue</th><th>Queued</th><th>Running</th><th>Failed</th><th>State</th></tr>
 {% for q in status.queues %}<tr><td>{{ q.queue }}</td><td>{{ q.queued }}</td><td>{{ q.running }}</td><td class="{{ 'bad' if q.failed }}">{{ q.failed }}</td><td>{{ "paused" if q.paused else "running" }}</td></tr>{% endfor %}</table></div>
 </div>
-<div class="card">
-<div class="card-head"><span>Plugins</span><span class="muted small">{{ plugins|length }}</span></div>
-<div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Name</th><th>State</th></tr>
-{% for p in plugins %}<tr><td>{{ p.kind }}</td><td><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td>
-<td class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "healthy" if p.healthy else (p.detail or "off") }}</td></tr>{% endfor %}</table></div>
-</div>
+{{ plugin_table(plugins, "/", "No plugins installed.", "Active plugins", True, "g-", False, False, True) }}
 {% endblock %}

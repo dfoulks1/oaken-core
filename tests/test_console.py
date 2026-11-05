@@ -398,7 +398,7 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
         assert 'popovertarget="add-stage"' in page and 'action="/ui/queues/add"' in page  # a button, and the form it opens
         assert 'value="triager"' in page and 'value="action"' in page
         assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
-        assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index("<span>Plugins</span>")  # by the Queues table
+        assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index("<span>Active plugins</span>")  # by the Queues table
         assert 'popovertarget="add-stage"' not in (await client.get("/pipeline")).text  # only on General
         form = {"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"}  # a title only: the name comes from it
         first = await client.post("/ui/queues/add", data=form)
@@ -466,7 +466,7 @@ async def test_the_gear_opens_that_plugins_settings_in_a_dialog_and_a_save_comes
         assert 'action="/ui/plugins/enricher/notes/settings"' in dialog and 'name="f_greeting"' in dialog
         assert 'id="m1-f_greeting"' in dialog and 'name="back" value="/stage/enrich"' in dialog  # unique ids; returns here
         pipe = (await client.get("/pipeline")).text
-        ids = [i for i in __import__("re").findall(r'id="(m\d+-f_[a-z_]+)"', pipe)]
+        ids = [i for i in __import__("re").findall(r'id="(m[a-z0-9_-]*-f_[a-z_]+)"', pipe)]
         assert len(ids) == len(set(ids))  # several dialogs on one page never share an id
         saved = await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "/stage/enrich", "f_greeting": "yo", "f_limit": "5"})
         assert saved.status_code == 303 and saved.headers["location"] == "/stage/enrich"
@@ -541,21 +541,23 @@ async def test_every_confirm_step_posts_back_to_the_route_that_asked(tmp_path: P
         await core.host.stop()
 
 
-# -- the Pipeline page: a tab per kind of machinery, like oaken-mail's ----------------------------------------
-async def test_the_pipeline_has_a_tab_for_each_kind_of_machinery_and_not_for_a_stage(tmp_path: Path) -> None:
+# -- the Pipeline page: a collapsible section per kind of machinery, like Capabilities --------------------------
+async def test_the_pipeline_is_a_collapsible_section_per_kind_that_has_plugins_and_not_for_a_stage(tmp_path: Path) -> None:
+    import re
+
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
         page = (await client.get("/pipeline")).text
-        tabs = page[page.index('aria-label="Kinds of machinery"'):]
-        tabs = tabs[: tabs.index("</nav>")]
-        assert "Stores" in tabs and "LLM backends" in tabs and "Vector stores" in tabs  # machinery, named in words
-        assert "Enrichers" not in tabs and "Sieve" not in tabs  # a stage has its own page; Sieve is a product's
-        assert 'aria-current="page">Stores' in page and "sqlite" in page  # the first kind with something in it
-        stores = (await client.get("/pipeline?tab=store")).text
-        assert "sqlite" in stores and 'class="badge badge-ok">healthy' in stores  # health as a badge
-        assert "Plugin</th><th>Health</th><th>Enabled</th>" in stores  # mail's four columns
-        assert (await client.get("/pipeline?tab=nonsense")).status_code == 200  # an unknown tab is the default one
+        heads = re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)
+        assert "Stores" in heads and "Enrichers" not in heads  # a kind with plugins; a stage has its own page
+        assert "LLM backends" not in heads and "Nothing installed for:" in page and "LLM backends" in page  # empties: one quiet line
+        assert 'id="fold-store-" open' in page  # a section with something active starts open
+        assert "sqlite" in page and 'class="badge badge-ok">healthy' in page  # health as a badge
+        assert "Plugin</th><th>Health</th><th>Enabled</th>" in page  # mail's four columns
+        assert page.count("Turn a plugin off") == 1  # said once, not under every section
+        ids = re.findall(r'id="(set-[a-z_-]*\d+)"', page)
+        assert ids and len(ids) == len(set(ids))  # several sections on one page never share a dialog id
         await client.post("/ui/plugins/enricher/notes/disable", data={"csrf": core.console.token})
         stage = (await client.get("/stage/enrich")).text
         assert "inactive (disabled)" in stage and "notes" in stage  # a plugin that is off is folded away, not lost
@@ -604,3 +606,25 @@ async def test_a_setting_with_choices_is_a_dropdown_and_one_that_cannot_be_fille
     finally:
         await client.aclose()
         await core.host.stop()
+
+
+# -- General: active plugins (where an error shows) and inactive ones (where a switch moves them up) --------------
+async def test_general_has_an_active_table_with_the_errors_and_an_inactive_one_that_switches_plugins_up(rig: Rig) -> None:
+    rec = rig.core.host._records[("enricher", "broken")]
+    rec.healthy, rec.detail = False, "the server is down"  # on, but failing
+    page = (await rig.c.get("/")).text
+    assert "healthy</b>" not in page and "Plugins: " not in page  # the count sentence is gone
+    active = page[page.index("<span>Active plugins</span>"):]
+    active = active[: active.index("</table>")]
+    assert "notes" in active and 'class="badge badge-ok">healthy' in active
+    assert 'class="badge badge-danger">down' in active and 'class="health-detail small bad">the server is down' in active  # on but failing: why, in the bad colour
+    assert "Inactive plugins" not in page  # nothing is off yet
+    off = await rig.post("/ui/plugins/enricher/notes/disable", back="/")
+    assert off.status_code == 303 and off.headers["location"] == "/"  # a switch on General returns to General
+    page = (await rig.c.get("/")).text
+    inactive = page[page.index("<span>Inactive plugins</span>"):]
+    assert "notes" in inactive[: inactive.index("</table>")] and "Turn a plugin on to move it up" in inactive
+    assert "notes" not in page[page.index("<span>Active plugins</span>"): page.index("<span>Inactive plugins</span>")]
+    on = await rig.post("/ui/plugins/enricher/notes/enable", back="/")
+    assert on.status_code == 303
+    assert "Inactive plugins" not in (await rig.c.get("/")).text  # back up, and the inactive table is gone again

@@ -2,7 +2,7 @@
 {% block body %}
 <h1>Pipeline</h1>
 {{ flow(stages) }}
-<p class="muted">The machinery behind the stages. A stage's own plugins are on its page.</p>
-<nav class="tabbar" aria-label="Kinds of machinery">{% for key, name, n in tabs %}<a href="/pipeline?tab={{ key }}"{% if key == tab %} aria-current="page"{% endif %}>{{ name }}{% if n %} <span class="muted small">{{ n }}</span>{% endif %}</a>{% endfor %}</nav>
-{% if tab %}{{ plugin_table(plugins, "/pipeline?tab=" ~ tab, "No " ~ label|lower ~ " installed.", label) }}{% endif %}
+<p class="muted">The machinery behind the stages, by kind. A stage's own plugins are on its page. Turn a plugin off to take it out of the pipeline for now; turn it on to put it back.</p>
+{% for kind, label, plugins in sections %}{{ plugin_table(plugins, "/pipeline", "No " ~ label|lower ~ " installed.", label, False, kind ~ "-", True, False) }}{% endfor %}
+{% if empty %}<p class="muted small">Nothing installed for: {{ empty|join(", ") }}.</p>{% endif %}
 {% endblock %}
