@@ -2,11 +2,12 @@
 """``OllamaEmbedder``: turns text into vectors with a model served by Ollama."""
 
 from collections.abc import Sequence
+from typing import Any
 
 import httpx2
 
 from oaken_core.errors import PluginError
-from oaken_core.ollama.client import OllamaClient, OllamaConfig, check_url
+from oaken_core.ollama.client import OllamaClient, OllamaConfig, check_url, installed_models
 from oaken_core.plugins.base import BaseEmbedder
 from oaken_core.plugins.contracts import Health, PluginContext
 
@@ -38,6 +39,10 @@ class OllamaEmbedder(BaseEmbedder):
         except BaseException:
             await self.stop()
             raise
+
+    async def setting_choices(self, config: dict[str, Any]) -> dict[str, list[str]]:
+        """The models Ollama has pulled, for the ``model`` dropdown."""
+        return {"model": await installed_models(config, "ollama", transport=self._transport)}
 
     async def stop(self) -> None:
         if self._client:

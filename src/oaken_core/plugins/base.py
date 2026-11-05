@@ -183,6 +183,13 @@ class BasePlugin:
     def scheduled_tasks(self) -> list[PluginScheduledTask]:
         return []
 
+    async def setting_choices(self, config: dict[str, Any]) -> dict[str, list[str]]:
+        """Values worth offering for some of this plugin's settings, by setting name, worked out from ``config`` (the
+        table as it stands, which may not be enough to start on). A setting that gets choices is drawn as a dropdown in
+        the settings form, with whatever is saved kept even if it is not offered. Called on an instance that has not
+        been started, so use only ``config``. Raise or return nothing and the form keeps its plain box."""
+        return {}
+
     def trace(self, kind: str, /, **data: Any) -> None:
         """Record an event of your own in the trace. Does nothing unless tracing is on."""
         ctx = getattr(self, "ctx", None)

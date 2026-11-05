@@ -207,3 +207,12 @@ class OllamaClient:
         except AIBackendError:
             return False
         return True
+
+
+async def installed_models(config: dict[str, Any], who: str, *, transport: httpx2.AsyncBaseTransport | None = None) -> list[str]:
+    """The models an Ollama server has pulled, for the settings dropdown: from ``config``'s address, never pulling."""
+    client = OllamaClient(OllamaConfig.parse(config, who), who, transport=transport)
+    try:
+        return sorted(await client.installed_models())
+    finally:
+        await client.close()

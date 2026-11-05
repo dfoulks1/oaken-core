@@ -114,9 +114,9 @@ class Rig:
         return await self.c.post(path, data={"csrf": self.token, **form})
 
 
-async def make_core(tmp_path: Path, plugins: dict[str, Any], queues: dict[str, Any] | None = None) -> Core:
+async def make_core(tmp_path: Path, plugins: dict[str, Any], queues: dict[str, Any] | None = None, extra: list[Any] | None = None) -> Core:
     clock = FakeClock()
-    found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.enrichers": [EP("notes", Notes), EP("broken", Broken), EP("smart", Smart)]}
+    found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.enrichers": [EP("notes", Notes), EP("broken", Broken), EP("smart", Smart), *(extra or [])]}
     tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}, "enricher": {"notes": {}, "broken": {}, "smart": {}, **plugins}}
     core = Core(Settings(console={"port": 0}, queues=queues or {}, plugins=PluginTables(tables=tables)), clock=clock, discover=lambda g: found.get(g, []))
     await core.open()
@@ -559,6 +559,48 @@ async def test_the_pipeline_has_a_tab_for_each_kind_of_machinery_and_not_for_a_s
         await client.post("/ui/plugins/enricher/notes/disable", data={"csrf": core.console.token})
         stage = (await client.get("/stage/enrich")).text
         assert "inactive (disabled)" in stage and "notes" in stage  # a plugin that is off is folded away, not lost
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+# -- a setting a plugin offers choices for is a dropdown ----------------------------------------------------
+class PickCfg(BaseModel):
+    model: str = ""
+    note: str = ""
+
+
+class Picky(stub("enricher")):  # type: ignore[misc]
+    config_model = PickCfg
+
+    async def setting_choices(self, config: dict[str, Any]) -> dict[str, list[str]]:
+        return {"model": ["small:1b", "large:9b"]}
+
+
+class Mute(stub("enricher")):  # type: ignore[misc]
+    config_model = PickCfg
+
+    async def setting_choices(self, config: dict[str, Any]) -> dict[str, list[str]]:
+        raise OSError("the server is down")
+
+
+async def test_a_setting_with_choices_is_a_dropdown_and_one_that_cannot_be_filled_stays_a_box(tmp_path: Path) -> None:
+    core = await make_core(tmp_path, {"picky": {"plugin": "picky", "model": "gone:2b"}, "mute": {"plugin": "mute"}}, None,
+                           [EP("picky", Picky), EP("mute", Mute)])  # fmt: skip
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        page = (await client.get("/pipeline?tab=enricher")).text
+        picky = page[page.index('action="/ui/plugins/enricher/picky/settings"'):]
+        picky = picky[: picky.index("</form>")]
+        assert '<select class="select"' in picky and 'name="f_model"' in picky
+        assert '<option value="small:1b"' in picky and '<option value="large:9b"' in picky  # what the plugin offers
+        assert '<option value="gone:2b" selected>gone:2b (not offered)</option>' in picky  # what is saved is never lost
+        assert 'name="f_note"' in picky and picky.count("<select") == 1  # only the setting with choices
+        mute = page[page.index('action="/ui/plugins/enricher/mute/settings"'):]
+        mute = mute[: mute.index("</form>")]
+        assert '<input class="input" type="text"' in mute and "<select" not in mute  # the server was down: a plain box
+        again = (await client.get("/plugins/enricher/picky")).text  # the plugin's own page offers the same
+        assert '<option value="large:9b"' in again
     finally:
         await client.aclose()
         await core.host.stop()

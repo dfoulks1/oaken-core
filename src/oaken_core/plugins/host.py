@@ -818,6 +818,24 @@ class PluginHost:
             for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))
         ]
 
+    async def setting_choices(self, kind: str, name: str) -> dict[str, list[str]]:
+        """What the plugin offers as choices for its settings (``BasePlugin.setting_choices``), asked of the live instance or,
+        if it has not started, a throwaway one. A plugin that is slow, fails, or offers nothing gives ``{}``: the form
+        keeps its plain boxes."""
+        rec = self._records.get((kind, name))
+        if rec is None:
+            return {}
+        try:
+            instance = rec.instance if rec.instance is not None else self._instantiate(rec.factory)
+            ask = getattr(instance, "setting_choices", None)
+            if ask is None:
+                return {}
+            found = await asyncio.wait_for(ask(self._config(rec)), min(self.call_timeout, 3.0))
+            return {str(k): [str(v) for v in vs] for k, vs in found.items() if vs}
+        except Exception as exc:  # noqa: BLE001 - a dropdown that cannot be filled is a text box, never an error page
+            log.info("no setting choices", kind=kind, name=name, error=type(exc).__name__)
+            return {}
+
     def provider_of(self, name: str) -> str:
         """The dotted path of the class behind the plugin instance ``name`` (``pkg.module.Class``), or its
         entry point's name when nothing has been instantiated. Several kinds may share a name; the first wins."""

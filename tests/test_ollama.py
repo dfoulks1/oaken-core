@@ -235,3 +235,10 @@ async def test_text_that_is_not_json_comes_back_without_data(ollama: FakeOllama)
     ollama.chat_reply = lambda body: {"message": {"content": "not json"}, "done": True}
     resp = await (await started_llm(ollama)).generate(LLMRequest("x", json_schema={"type": "object"}))
     assert resp.text == "not json" and resp.data is None
+
+
+async def test_the_models_ollama_has_pulled_are_offered_as_choices_for_model(ollama: FakeOllama) -> None:
+    for plugin in (OllamaLLM(transport=ollama.transport), OllamaEmbedder(transport=ollama.transport)):
+        found = await plugin.setting_choices({"base_url": "http://127.0.0.1:11434"})  # not started: only its config
+        assert list(found) == ["model"] and "qwen2.5:3b" in found["model"] and found["model"] == sorted(found["model"])
+    assert ollama.paths().count("/api/tags") == 2 and "/api/pull" not in ollama.paths()  # it only lists; it never pulls

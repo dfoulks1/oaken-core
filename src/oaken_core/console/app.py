@@ -241,13 +241,24 @@ class Console:
         back = _here.get()
         return back if back.startswith("/") and not back.startswith("//") and back != "/" else default
 
-    def _modals(self, plugins: list[Any]) -> dict[str, dict[str, Any]]:
+    async def _choices(self, kind: str, name: str, modal: dict[str, Any]) -> dict[str, Any]:
+        """``modal`` with each setting the plugin offers choices for drawn as a dropdown (a plain text setting only)."""
+        found = await self._host().setting_choices(kind, name)
+        if not found:
+            return modal
+
+        def pick(f: Field) -> Field:
+            return dataclasses.replace(f, kind="enum", choices=tuple(found[f.name])) if f.name in found and f.kind == "text" else f
+
+        return {**modal, "fields": [pick(f) for f in modal["fields"]], "sections": [(t, [pick(f) for f in fs]) for t, fs in modal["sections"]]}
+
+    async def _modals(self, plugins: list[Any]) -> dict[str, dict[str, Any]]:
         """What each row's settings dialog shows (the same data as the plugin's own page). A plugin whose
         settings cannot be read has none, and its dialog says so."""
         out: dict[str, dict[str, Any]] = {}
         for p in plugins:
             try:
-                modal = self._modal(p.kind, p.name)
+                modal = await self._choices(p.kind, p.name, self._modal(p.kind, p.name))
                 out[f"{p.kind}/{p.name}"] = {"sections": modal["sections"], "values": self._values(p.kind, p.name),
                                               "llm": self._host().llm_defaults(p.kind, p.name), "own": self._host().tables.table(p.kind, p.name)}  # fmt: skip
             except OakenError:
@@ -261,7 +272,7 @@ class Console:
             raise NotFound(f"no stage named {name!r}")
         stages, rows = await self._flow()
         return self.render("stage.html", stage=spec, stages=stages, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
-                           plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=self._modals(plugins))  # fmt: skip
+                           plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
         """Every operation (the registry the CLI lists), by the part that offers it, with its MCP switch."""
@@ -305,7 +316,7 @@ class Console:
             tab = next((k for k in kinds if any(p.kind == k for p in every)), kinds[0] if kinds else "")
         plugins = [p for p in every if p.kind == tab]
         tabs = [(k, self._kind_label(k), sum(p.kind == k and p.enabled for p in every)) for k in kinds]
-        return self.render("pipeline.html", stages=stages, tabs=tabs, tab=tab, label=self._kind_label(tab) if tab else "", plugins=plugins, modals=self._modals(plugins))
+        return self.render("pipeline.html", stages=stages, tabs=tabs, tab=tab, label=self._kind_label(tab) if tab else "", plugins=plugins, modals=await self._modals(plugins))
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()
@@ -313,11 +324,11 @@ class Console:
 
     async def plugins(self, request: Request) -> Response:
         plugins = self._host().statuses()
-        return self.render("plugins.html", plugins=plugins, modals=self._modals(plugins))
+        return self.render("plugins.html", plugins=plugins, modals=await self._modals(plugins))
 
     async def plugin(self, request: Request) -> Response:
         kind, name = request.path_params["kind"], request.path_params["name"]
-        modal = self._modal(kind, name)
+        modal = await self._choices(kind, name, self._modal(kind, name))
         values = self._values(kind, name)
         return self.render("plugin.html", status=self._status(kind, name), values=values, display=forms.display,
                            llm=self._host().llm_defaults(kind, name), own=self._host().tables.table(kind, name),
