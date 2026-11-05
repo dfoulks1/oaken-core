@@ -1,7 +1,7 @@
 {# Form helpers for the console. Import with context so they can see the form token:
    {% import "_macros.html" as m with context %} #}
 {% macro guard(back) -%}
-  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="{{ back }}">
+  <input type="hidden" name="csrf" value="{{ token }}"><input type="hidden" name="back" value="{{ back }}">
 {%- endmacro %}
 
 {# A form that posts to /ui/<action> and comes back to <back>. Its fields are the caller's. #}

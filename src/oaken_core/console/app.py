@@ -398,8 +398,8 @@ class Console:
         if verb not in ("enable", "disable", "reload"):
             raise NotFound("no such action")
         self._status(kind, name)
-        out = await self._gated(f"plugin_{verb}", {"name": name}, form, request.url.path)
-        return out if isinstance(out, Response) else RedirectResponse("/plugins", 303)
+        await self.client.call(f"plugin_{verb}", {"name": name}, UI, confirm=True)  # the click is the confirmation
+        return RedirectResponse(self._back("/plugins"), 303)
 
     async def press(self, request: Request, form: dict[str, str]) -> Response:
         """A button of the plugin's spec: one of its own operations, taking no input."""

@@ -150,7 +150,7 @@ async def test_a_foreign_host_origin_or_peer_is_refused_and_a_post_needs_the_tok
     assert (await c.get("/", headers={"host": "127.0.0.1:9"})).status_code == 400  # right name, wrong port
     assert (await c.post("/ui/plugins/enricher/notes/disable", data={"csrf": rig.token}, headers={"origin": "http://evil.example"})).status_code == 403
     assert (await c.post("/ui/plugins/enricher/notes/disable", data={"csrf": rig.token}, headers={"sec-fetch-site": "cross-site"})).status_code == 403
-    assert (await c.post("/ui/plugins/enricher/notes/disable", data={"csrf": rig.token}, headers={"origin": BASE})).status_code == 200  # its own origin: a confirm page
+    assert (await c.post("/ui/plugins/enricher/notes/reload", data={"csrf": rig.token}, headers={"origin": BASE})).status_code == 303  # its own origin: it acts
     assert (await c.post("/ui/plugins/enricher/notes/disable", json={})).status_code == 415
     assert (await c.post("/ui/plugins/enricher/notes/disable", data={"x": "1"})).status_code == 403  # no token
     assert (await c.post("/ui/plugins/enricher/notes/disable", data={"csrf": "wrong"})).status_code == 403
@@ -160,12 +160,12 @@ async def test_a_foreign_host_origin_or_peer_is_refused_and_a_post_needs_the_tok
     assert all(s.enabled for s in rig.core.host.statuses() if s.name == "notes")  # nothing changed
 
 
-async def test_a_plugin_action_shows_what_it_would_change_and_acts_only_on_the_second_click(rig: Rig) -> None:
-    first = await rig.post("/ui/plugins/enricher/notes/disable")
-    assert "Disable plugin notes" in first.text and 'name="confirm"' in first.text
-    assert next(s for s in rig.core.host.statuses() if s.name == "notes").enabled
-    done = await rig.post("/ui/plugins/enricher/notes/disable", confirm="1")
-    assert done.status_code == 303 and not next(s for s in rig.core.host.statuses() if s.name == "notes").enabled
+async def test_a_plugin_switch_acts_on_the_click_and_an_unknown_verb_is_refused(rig: Rig) -> None:
+    on = lambda: next(s for s in rig.core.host.statuses() if s.name == "notes").enabled  # noqa: E731
+    off = await rig.post("/ui/plugins/enricher/notes/disable")
+    assert off.status_code == 303 and not on()  # the switch is the confirmation: no "Do it" page
+    back = await rig.post("/ui/plugins/enricher/notes/enable", back="/stage/enrich")
+    assert back.status_code == 303 and back.headers["location"] == "/stage/enrich" and on()  # and returns where it came from
     assert (await rig.post("/ui/plugins/enricher/notes/explode")).status_code == 404
 
 
@@ -477,3 +477,28 @@ async def test_a_field_shows_the_schemas_default_as_its_placeholder(rig: Rig) ->
     html = (await rig.c.get("/plugins/enricher/notes")).text
     assert 'name="f_greeting"' in html and 'placeholder="hi"' in html  # Cfg.greeting defaults to "hi"
     assert 'name="f_limit"' in html and 'placeholder="3"' in html
+
+
+# -- the forms the pages render must carry the real token -----------------------------------------
+async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path) -> None:
+    """A macro called ``csrf`` once shadowed the variable ``guard`` printed, so a plugin row's switch posted the text
+    ``<Macro 'csrf'>``. The tests posted with the right token by hand and never saw it: read it from the page."""
+    import re
+
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        for path in ("/", "/pipeline", "/stage/enrich", "/plugins", "/capabilities", "/config", "/plugins/enricher/notes"):
+            html = (await client.get(path)).text
+            tokens = re.findall(r'name="csrf" value="([^"]*)"', html)
+            assert tokens and set(tokens) == {core.console.token}, (path, set(tokens))
+        # and a switch, posted the way the browser does: with the values the page gave it
+        page = (await client.get("/stage/enrich")).text
+        form = page[page.index('action="/ui/plugins/enricher/notes/disable"'):]
+        form = form[: form.index("</form>")]
+        data = dict(re.findall(r'name="([a-z]+)" value="([^"]*)"', form))
+        r = await client.post("/ui/plugins/enricher/notes/disable", data=data)
+        assert r.status_code == 303, r.text[:200]  # accepted with the page's own token, and it acted
+    finally:
+        await client.aclose()
+        await core.host.stop()
