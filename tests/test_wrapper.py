@@ -57,3 +57,36 @@ async def test_the_console_and_openapi_carry_the_products_title(tmp_path: Path) 
         await client.aclose()
         await core.stop()
     assert build_openapi([])["info"]["title"] == "Oaken CRM"
+
+
+async def test_a_products_plugins_load_through_entry_points_from_an_installed_package(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The real discovery, no stubs: a package on sys.path with an entry_points.txt, like a wheel."""
+    import importlib
+
+    site = tmp_path / "site"
+    (site / "grove_plugins-0.1.dist-info").mkdir(parents=True)
+    (site / "grove_plugins-0.1.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: grove-plugins\nVersion: 0.1\n")
+    (site / "grove_plugins-0.1.dist-info" / "entry_points.txt").write_text("[oaken_core.triagers]\ncrm = grove_plugins:CrmTriager\n")
+    (site / "grove_plugins.py").write_text(
+        "from oaken_core.plugins.base import BasePlugin\n\n"
+        "class CrmTriager(BasePlugin):\n"
+        "    version = '1'\n    needs_llm = False\n    rank = 50\n"
+        "    async def triage(self, item):\n        return None\n"
+    )
+    monkeypatch.syspath_prepend(str(site))
+    importlib.invalidate_caches()
+    identity.configure(app="oaken-grove", title="Oaken CRM", prog="grove")
+    tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}, "triager": {"crm": {}}}
+    queues = {"triage": {"kind": "triager", "label": "Triage"}}
+    core = Core(Settings.model_validate({"console": {"port": 0}, "queues": queues, "plugins": {"tables": tables}}))  # default discovery
+    await core.open()
+    await core.host.start()
+    try:
+        crm = next(s for s in core.host.statuses() if (s.kind, s.name) == ("triager", "crm"))
+        assert crm.started and crm.healthy, crm
+        assert [q.name for q in core.client.svc.queues.all()] == ["default", "triage"]
+    finally:
+        await core.host.stop()
+        await core.stop()
