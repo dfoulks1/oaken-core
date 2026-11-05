@@ -25,12 +25,17 @@ from collections.abc import Callable
 from typing import Any
 
 from oaken_core.cli.client import ApiClient, CallResult, OpInfo
-from oaken_core.cli.exits import CliError, ExitCode, exit_for_error_code
+from oaken_core.cli.exits import CliError, CoreUnavailable, ExitCode, exit_for_error_code
 from oaken_core.cli.output import print_json, print_table, print_text
 from oaken_core.cli.schema_flags import add_flags, missing_required, secret_fields
 
 ClientFactory = Callable[[argparse.Namespace], ApiClient]
 BUILTIN = ("operations", "describe", "watch")  # verbs that are the CLI's own, not operations
+DAEMON = {  # work with no core running, so they are handled before one is asked
+    "start": "Run core in the foreground.",
+    "stop": "Stop the running core.",
+    "reload": "Tell the running core to re-read its settings.",
+}
 
 
 def _globals(parser: argparse.ArgumentParser) -> None:
@@ -50,6 +55,8 @@ def build_parser(prog: str, ops: list[OpInfo]) -> argparse.ArgumentParser:
     desc = sub.add_parser("describe", help="Show one operation's input and output.", parents=[_parent()])
     desc.add_argument("name")
     sub.add_parser("watch", help="Follow core's events as they happen.", parents=[_parent()])
+    for verb, text in DAEMON.items():
+        sub.add_parser(verb, help=text)
     groups: dict[str, argparse._SubParsersAction[argparse.ArgumentParser]] = {}
     for op in sorted(ops, key=lambda o: o.cli_path):
         path = op.cli_path
@@ -179,6 +186,19 @@ def _translate(exc: Exception) -> CliError:
     return CliError(message, exit_for_error_code(code) if isinstance(code, str) else ExitCode.ERROR)
 
 
+def offline_ops() -> list[OpInfo]:
+    """Core's own operations, read from the registry with no core running: what ``--help`` lists
+    when there is no daemon to ask. Plugin commands are missing here; they appear while core runs."""
+    from oaken_core.operations.builtin import core_registry
+
+    return [
+        OpInfo(name=o.name, summary=o.summary, permission=o.permission, group=o.group, plugin=o.plugin,
+               agent_ok=o.agent_ok, streaming=o.streaming, input_schema=o.input_schema(),
+               output_schema=o.output_schema())
+        for o in core_registry().core()
+    ]  # fmt: skip
+
+
 async def amain(argv: list[str], *, prog: str = "oaken", client_factory: ClientFactory | None = None) -> int:
     """Run the CLI and return its exit code. ``client_factory`` is for tests and embedded use; the
     default talks to the running core found through its runtime file."""
@@ -206,12 +226,22 @@ async def amain(argv: list[str], *, prog: str = "oaken", client_factory: ClientF
     except SystemExit as exc:  # argparse: --help is 0, a usage error is 2
         return int(exc.code or 0) if isinstance(exc.code, int) else int(ExitCode.USAGE)
     except CliError as exc:  # includes CoreUnavailable
+        if isinstance(exc, CoreUnavailable) and _wants_help(argv):
+            parser = build_parser(prog, offline_ops())
+            parser.epilog = "Core is not running: these are core's own commands. A plugin's appear while it runs."
+            parser.print_help()
+            return int(ExitCode.OK)
         print(exc.message, file=sys.stderr)
         return int(exc.code)
     except Exception as exc:  # noqa: BLE001 - the top of the stack
         err = _translate(exc)
         print(err.message, file=sys.stderr)
         return int(err.code)
+
+
+def _wants_help(argv: list[str]) -> bool:
+    """No command, or a -h/--help: the person is asking what there is, not asking core to do it."""
+    return not argv or "-h" in argv or "--help" in argv
 
 
 def main(argv: list[str] | None = None, *, prog: str = "oaken", client_factory: ClientFactory | None = None) -> int:

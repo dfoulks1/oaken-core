@@ -125,3 +125,17 @@ def test_a_non_loopback_url_needs_remote() -> None:
     with pytest.raises(CliError, match="--remote"):
         discover(url="http://10.0.0.9:8123", token="t")
     assert discover(url="http://10.0.0.9:8123", token="t", allow_remote=True).base_url == "http://10.0.0.9:8123"
+
+
+async def test_help_lists_core_s_own_commands_even_when_no_core_is_running(capsys: pytest.CaptureFixture[str]) -> None:
+    def down(_a: Any) -> ApiClient:
+        raise CoreUnavailable()
+
+    for argv in ([], ["--help"], ["plugin", "--help"]):
+        code = await amain(argv, prog="oaken", client_factory=down)
+        out = capsys.readouterr()
+        assert code == 0, argv
+        assert {"start", "stop", "plugin", "queue", "status"} <= set(out.out.split()), argv
+    code = await amain([], prog="oaken", client_factory=down)
+    assert "Core is not running" in capsys.readouterr().out
+    assert await amain(["status"], prog="oaken", client_factory=down) == 3  # a real command still exits 3
