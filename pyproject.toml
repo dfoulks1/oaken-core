@@ -23,7 +23,7 @@ dependencies = [
 dev = ["pytest", "pytest-asyncio", "openapi-spec-validator"]
 
 [project.scripts]
-oaken-core = "oaken_core.cli.commands:main"
+oaken = "oaken_core.cli.commands:main"
 
 [project.entry-points."oaken_core.stores"]
 sqlite = "oaken_core.store:SqliteStore"

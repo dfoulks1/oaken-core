@@ -103,7 +103,7 @@ async def serve(
     core: Core | None = None
     try:
         core = await _bring_up(make(settings), runtime)
-        log.info("core running", port=core.port, version=__version__)
+        log.info("core running", port=core.port, console=f"http://127.0.0.1:{core.console_port}/", version=__version__)
         if ready is not None:
             ready.set()
         while not stop.is_set():
@@ -135,7 +135,7 @@ def run(settings: Settings | None = None) -> int:
         paths.remember_home()
         asyncio.run(serve(cfg, load_settings=Settings.load if settings is None else None))
     except (Conflict, ConfigError) as exc:
-        print(f"oaken-core: {exc}", file=sys.stderr)
+        print(f"oaken: {exc}", file=sys.stderr)
         return 1
     return 0
 

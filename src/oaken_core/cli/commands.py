@@ -179,7 +179,7 @@ def _translate(exc: Exception) -> CliError:
     return CliError(message, exit_for_error_code(code) if isinstance(code, str) else ExitCode.ERROR)
 
 
-async def amain(argv: list[str], *, prog: str = "oaken-core", client_factory: ClientFactory | None = None) -> int:
+async def amain(argv: list[str], *, prog: str = "oaken", client_factory: ClientFactory | None = None) -> int:
     """Run the CLI and return its exit code. ``client_factory`` is for tests and embedded use; the
     default talks to the running core found through its runtime file."""
     pre = argparse.ArgumentParser(prog=prog, add_help=False)
@@ -214,7 +214,7 @@ async def amain(argv: list[str], *, prog: str = "oaken-core", client_factory: Cl
         return int(err.code)
 
 
-def main(argv: list[str] | None = None, *, prog: str = "oaken-core", client_factory: ClientFactory | None = None) -> int:
+def main(argv: list[str] | None = None, *, prog: str = "oaken", client_factory: ClientFactory | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] in ("start", "stop", "reload"):  # these run with no core to ask
         from oaken_core.daemon.lifecycle import cli
