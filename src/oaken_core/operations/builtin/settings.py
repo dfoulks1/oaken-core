@@ -14,6 +14,7 @@ from oaken_core import paths
 from oaken_core.config_edit import refuse_secrets, save_table, set_table
 from oaken_core.errors import ConfigError, InvalidInput, NotFound
 from oaken_core.operations.context import OpContext
+from oaken_core.plugins.kinds import check_queue_kind
 from oaken_core.operations.registry import Change, Preview, operation
 from oaken_core.settings import Settings
 from oaken_core.settings_edit import SECTIONS, Section, key_of, section, settings_of, table_path
@@ -149,6 +150,9 @@ def _check_text(ctx: OpContext, text: str) -> None:
     except ConfigError as exc:
         raise ConfigError(exc.message) from None
     host = ctx.svc.host
+    for name, q in settings.queues.items():
+        if host is not None:
+            check_queue_kind(host.kinds, name, q.kind)
     for kind, named in settings.plugins.tables.items():
         for name, table in named.items():
             try:

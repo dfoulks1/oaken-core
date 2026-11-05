@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Named queues. One, ``default``, always exists and cannot be removed; more are made in code.
+"""Named queues. One, ``default``, always exists and cannot be removed; more are made in code or in
+``config.toml`` (``[queues.<name>]``). A made queue serves one analyzer kind: it is a pipeline stage.
 
 Jobs never pick a queue. A job goes where its subject's ``queue`` label says, or to ``default``
 when there is no label. ``default`` is also where intake runs: only triagers should work there.
@@ -20,6 +21,12 @@ class QueueSpec:
     name: str
     description: str = ""
     workers: int = 1  # concurrent workers the runner starts for this queue
+    kind: str = ""  # the one analyzer plugin kind this queue is the stage of ("" for ``default``)
+    label: str = ""  # its title in the console
+
+    @property
+    def title(self) -> str:
+        return self.label or self.name.replace("-", " ").replace("_", " ").capitalize()
 
 
 class Queues:
@@ -28,14 +35,14 @@ class Queues:
             DEFAULT: QueueSpec(DEFAULT, "Where unlabeled work starts: intake and triage", default_workers)
         }
 
-    def new_queue(self, name: str, description: str = "", workers: int = 1) -> QueueSpec:
+    def new_queue(self, name: str, description: str = "", workers: int = 1, *, kind: str = "", label: str = "") -> QueueSpec:
         if not _NAME.match(name):
             raise ConfigError(f"queue name {name!r} must match {_NAME.pattern}")
         if name in self._queues:
             raise ConfigError(f"queue {name!r} already exists")
         if workers < 1:
             raise ConfigError("a queue needs at least one worker")
-        spec = self._queues[name] = QueueSpec(name, description, workers)
+        spec = self._queues[name] = QueueSpec(name, description, workers, kind, label)
         return spec
 
     def get(self, name: str) -> QueueSpec:

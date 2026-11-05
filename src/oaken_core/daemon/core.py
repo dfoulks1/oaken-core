@@ -21,7 +21,7 @@ from oaken_core.changelog import ChangeLog
 from oaken_core.clock import Clock, SystemClock
 from oaken_core.console import Console, ConsoleServer
 from oaken_core.daemon.units import Lifecycle, ServiceUnit, unit
-from oaken_core.errors import Deferred, NotFound, PluginError, Unavailable
+from oaken_core.errors import ConfigError, Deferred, NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus
 from oaken_core.intake import Intake, IntakeItem
 from oaken_core.jobs import JobQueue, JobRunner
@@ -31,6 +31,7 @@ from oaken_core.logging import get_logger
 from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
 from oaken_core.operations.services import Services
+from oaken_core.plugins.kinds import check_queue_kind
 from oaken_core.plugins.host import Discover, PluginHost, discover_entry_points
 from oaken_core.plugins.jobs import register_plugin_jobs, seed_plugin_schedules
 from oaken_core.plugins.ops import plugin_operations
@@ -66,10 +67,12 @@ class Core:
         *,
         clock: Clock | None = None,
         discover: Discover = discover_entry_points,
+        queues_from_config: bool = True,
     ) -> None:
         self.settings = (settings or Settings()).model_copy(update={"version": __version__})
         self.clock = clock or SystemClock()
         self._discover = discover
+        self.queues_from_config = queues_from_config  # a product that fixes its own queues turns this off
         self.started: list[str] = []  # names of the units that are up, in order
         self._life: Lifecycle | None = None
         self._serving: asyncio.Task[None] | None = None
@@ -90,7 +93,7 @@ class Core:
         self.bus = EventBus()
         self.host = PluginHost(s.plugins, clock, self.bus, discover=self._discover, core_version=__version__)
         db = await self.host.start_store()
-        queues = Queues()
+        queues = self._make_queues()
         maker = LabelMaker.core()
         maker.set_validator("queue", queues.validate_label)
         changelog = ChangeLog(clock)
@@ -122,6 +125,18 @@ class Core:
         self.console = Console(self.client, svc)  # core's own: no plugin can switch it off
         self.console_server = ConsoleServer(self.console, s.console)
         self._life = Lifecycle(self._units())
+
+    def _make_queues(self) -> Queues:
+        """``default``, then the ``[queues.<name>]`` tables in the order the file lists them. Each serves one
+        analyzer kind that is registered; a product that fixes its own queues refuses the tables."""
+        queues = Queues()
+        tables = self.settings.queues
+        if tables and not self.queues_from_config:
+            raise ConfigError("this product defines its own queues: remove [queues.*] from config.toml")
+        for name, q in tables.items():
+            check_queue_kind(self.host.kinds, name, q.kind)
+            queues.new_queue(name, q.description, q.workers, kind=q.kind, label=q.label)
+        return queues
 
     def request_reload(self) -> None:
         """Ask the daemon to rebuild core on ``config.toml``. Half a second later, so the page that

@@ -63,6 +63,16 @@ class KindRegistry:
         return name in self._kinds
 
 
+def check_queue_kind(kinds: "KindRegistry", queue: str, kind: str) -> None:
+    """A queue is the stage of one analyzer kind: refuse a name core does not know, or a kind that is not
+    an analyzer (the embedder, a store, a provider: there is one of those, or no stage to put it in)."""
+    if kind not in kinds:
+        raise ConfigError(f"[queues.{queue}] kind {kind!r} is not a plugin kind (known: {', '.join(k.name for k in kinds)})")
+    if not kinds.get(kind).analyzer:
+        stages = ", ".join(k.name for k in kinds if k.analyzer)
+        raise ConfigError(f"[queues.{queue}] kind {kind!r} is not an analyzer, so it has no queue (analyzers: {stages})")
+
+
 SHIPPED = (
     KindSpec("store", "oaken_core.stores", ("open",), exclusive=True, first=True),
     KindSpec("auth", "oaken_core.auth", ("authenticate", "authorize"), exclusive=True),

@@ -112,6 +112,17 @@ class OperationsSettings(BaseModel):
     lift_never: list[str] = Field(default_factory=list)
 
 
+class QueueTable(BaseModel):
+    """``[queues.<name>]``: a queue, which is a pipeline stage for one kind of analyzer plugin."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: str  # an analyzer plugin kind (``triager``, ``enricher``, ``action``, or a product's own)
+    label: str = ""  # the console's title for it; the name, capitalised, when empty
+    description: str = ""
+    workers: int = Field(default=1, ge=1, le=64)
+
+
 class ApiSettings(BaseModel):
     """The authenticated door (API, MCP, gateways). The console is separate and loopback-only."""
 
@@ -179,6 +190,7 @@ class Settings(BaseModel):
     console: ConsoleSettings = Field(default_factory=ConsoleSettings)
     operations: OperationsSettings = Field(default_factory=OperationsSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
+    queues: dict[str, QueueTable] = Field(default_factory=dict)  # in flow order: the console's nav follows it
     plugins: PluginTables = Field(default_factory=PluginTables)
 
     @classmethod
