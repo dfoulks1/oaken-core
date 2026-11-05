@@ -394,3 +394,6 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .caps { table-layout: fixed; }
 .caps th:nth-child(1) { width: 13rem; } .caps th:nth-child(2) { width: 17rem; } .caps th:nth-child(3) { width: 7rem; } .caps th:nth-child(4) { width: 4.5rem; }
 .table td > .btn-icon { vertical-align: middle; }
+/* A button never matches what it sits on: inside a card or a dialog (both --surface) a plain button takes --surface-2. */
+.card .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger), .dialog .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger) { background: var(--surface-2); }
+.dialog-foot .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger) { background: var(--surface); }

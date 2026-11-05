@@ -12,12 +12,9 @@
 <div class="dialog" id="set-{{ loop.index }}" popover role="dialog" aria-labelledby="set-{{ loop.index }}-t">
   <div class="dialog-head"><h2 id="set-{{ loop.index }}-t">{{ p.name }} <span class="muted small">{{ p.kind }}</span></h2>
     <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="set-{{ loop.index }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
-  <div class="dialog-body">
-    <p class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "Healthy." if p.healthy else (p.detail or "Off.") }}</p>
-    {% if mc and (mc.sections or mc.llm) %}{{ settings_form(p, mc, back, "m" ~ loop.index ~ "-") }}
-    {% else %}<p class="muted">This plugin declares no settings.</p>{% endif %}
-  </div>
-  <div class="dialog-foot"><a href="/plugins/{{ p.kind }}/{{ p.name }}">Open its page</a><span class="muted">for its actions and pages</span></div>
+  <div class="dialog-body"><p class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "Healthy." if p.healthy else (p.detail or "Off.") }} <a href="/plugins/{{ p.kind }}/{{ p.name }}">Its page</a> <span class="muted">has its actions.</span></p></div>
+  {% if mc and (mc.sections or mc.llm) %}{{ settings_form(p, mc, back, "m" ~ loop.index ~ "-", "set-" ~ loop.index) }}
+  {% else %}<div class="dialog-body"><p class="muted">This plugin declares no settings.</p></div>{% endif %}
 </div>
 {% endfor %}
 {% endmacro %}

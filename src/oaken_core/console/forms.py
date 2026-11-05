@@ -25,6 +25,7 @@ class Field:
     help: str = ""
     required: bool = False
     integer: bool = False
+    default: Any = None  # what applies when the box is left empty; shown as the placeholder
 
 
 def from_ui(f: UiField) -> Field:
@@ -49,7 +50,7 @@ def from_schema(schema: Mapping[str, Any]) -> list[Field]:
             kind = "text"
         elif types == {"array"} and (prop.get("items") or {}).get("type") == "string":
             kind = "list"
-        out.append(Field(name, prop.get("title") or name, kind, choices, prop.get("description", ""), name in required, integer))
+        out.append(Field(name, prop.get("title") or name, kind, choices, prop.get("description", ""), name in required, integer, prop.get("default")))
     return out
 
 

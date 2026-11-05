@@ -3,7 +3,7 @@
 <h1>{{ status.name }} <span class="muted">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span></h1>
 <p class="{{ 'ok' if status.healthy else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
 {% if sections or llm %}
-{{ settings_form(status, {"sections": sections, "values": values, "llm": llm, "own": own}, "/plugins/" ~ status.kind ~ "/" ~ status.name) }}
+<div class="card">{{ settings_form(status, {"sections": sections, "values": values, "llm": llm, "own": own}, "/plugins/" ~ status.kind ~ "/" ~ status.name) }}</div>
 {% else %}
 <p class="muted">This plugin declares no settings.</p>
 {% if values %}<pre>{{ values|tojson(indent=2) }}</pre>{% endif %}

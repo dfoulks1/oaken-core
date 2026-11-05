@@ -171,8 +171,8 @@ async def test_a_plugin_action_shows_what_it_would_change_and_acts_only_on_the_s
 
 async def test_a_ui_spec_renders_as_a_form_and_as_json(rig: Rig) -> None:
     html = (await rig.c.get("/plugins/enricher/notes")).text
-    assert "<legend>Basics</legend>" in html and 'name="f_greeting"' in html and 'name="f_limit"' in html
-    assert "<legend>Other</legend>" in html and 'name="f_loud"' in html  # schema fields the spec did not place
+    assert '<h3 class="eyebrow">Basics</h3>' in html and 'name="f_greeting"' in html and 'name="f_limit"' in html
+    assert '<h3 class="eyebrow">Other</h3>' in html and 'name="f_loud"' in html  # schema fields the spec did not place
     assert "Say hi</button>" in html and "/pages/rules" in html
     data = (await rig.c.get("/json/plugins/enricher/notes/ui")).json()
     assert data["source"] == "ui" and data["spec"]["sections"][0]["title"] == "Basics"
@@ -184,7 +184,7 @@ async def test_a_ui_spec_renders_as_a_form_and_as_json(rig: Rig) -> None:
 
 async def test_a_bad_ui_spec_falls_back_to_the_schema_built_modal(rig: Rig) -> None:
     html = (await rig.c.get("/plugins/enricher/broken")).text
-    assert "<legend>Settings</legend>" in html and 'name="f_greeting"' in html and "/pages/" not in html
+    assert 'class="field"' in html and 'name="f_greeting"' in html and "/pages/" not in html
     data = (await rig.c.get("/json/plugins/enricher/broken/ui")).json()
     assert data["source"] == "schema" and data["spec"] is None and "limit" in data["schema"]["properties"]
     assert next(s for s in rig.core.host.statuses() if s.name == "broken").healthy  # the plugin stays healthy
@@ -471,3 +471,9 @@ async def test_the_gear_opens_that_plugins_settings_in_a_dialog_and_a_save_comes
     finally:
         await client.aclose()
         await core.host.stop()
+
+
+async def test_a_field_shows_the_schemas_default_as_its_placeholder(rig: Rig) -> None:
+    html = (await rig.c.get("/plugins/enricher/notes")).text
+    assert 'name="f_greeting"' in html and 'placeholder="hi"' in html  # Cfg.greeting defaults to "hi"
+    assert 'name="f_limit"' in html and 'placeholder="3"' in html
