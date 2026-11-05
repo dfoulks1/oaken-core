@@ -48,8 +48,14 @@ class Services:
     scheduler: Scheduler | None = None
     tracer: Tracer | None = None
     router: Any = None  # oaken_core.router.Router
+    eventlog: Any = None  # oaken_core.eventlog.EventLog (None: ``[log] events_file`` is empty)
     secrets: Any = None  # a ``SecretStore`` (the OS keyring); None where there is none
     reload: Callable[[], None] | None = None  # the daemon's reload (None: core was not started by it)
+
+    def need_eventlog(self) -> Any:
+        if self.eventlog is None:
+            raise Unavailable("the event log is off: set [log] events_file to turn it on")
+        return self.eventlog
 
     @property
     def version(self) -> str:

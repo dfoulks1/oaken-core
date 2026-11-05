@@ -32,6 +32,8 @@ from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
 from oaken_core.operations.services import Services
 from oaken_core.plugins.kinds import check_queue_kind
+from oaken_core.eventlog import EventLog, event_log_path
+from oaken_core.maintenance import register_maintenance_jobs
 from oaken_core.secrets import KeyringSecrets, SecretStore
 from oaken_core.plugins.host import Discover, PluginHost, discover_entry_points
 from oaken_core.plugins.jobs import register_plugin_jobs, seed_plugin_schedules
@@ -112,11 +114,13 @@ class Core:
         self.router = Router(db, clock, s.router, HostDirectory(self.host, s.router))
         self.host.router = self.router
         self.runner = JobRunner(queue)
+        register_maintenance_jobs(self.runner, db)
+        self.eventlog = EventLog(event_log_path(s.log.events_file), max_bytes=s.log.file_max_bytes, backups=s.log.file_backups) if s.log.events_file else None
         self.intake = Intake(queue, labels, db, changelog, triager_source=self._triagers, ingest=self._ingest, router=self.router)
         self.intake.register(self.runner)
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, queue=queue, labels=labels, changelog=changelog,
-                       bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
+                       bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))
         self.client = CoreClient(self.registry, svc)
@@ -227,7 +231,19 @@ class Core:
         async def start_jobs() -> None:
             self.runner.start()
 
+        async def start_events() -> None:
+            if self.eventlog is not None:
+                self._detach_eventlog = self.eventlog.attach(self.bus)
+
+        async def stop_events() -> None:
+            detach = getattr(self, "_detach_eventlog", None)
+            if detach is not None:
+                detach()
+            if self.eventlog is not None:
+                self.eventlog.close()
+
         return [
+            unit("events", start_events, stop_events),  # first, so the plugins' start-up is in the record
             unit("trace", none, stop_trace),
             unit("console", start_console, stop_console),  # before the host: a plugin that fails to start cannot take it down
             unit("host", start_host, self.host.stop),  # last to stop: the others write on the way out

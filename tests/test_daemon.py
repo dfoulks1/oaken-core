@@ -79,7 +79,7 @@ async def test_core_comes_up_serves_and_goes_down_in_reverse() -> None:
     core = Core(Settings(console={"port": 0}))
     await core.open()
     await core.start()
-    assert core.started == ["trace", "console", "host", "scheduler", "jobs", "mcp", "api"] and core.port and core.console_port
+    assert core.started == ["events", "trace", "console", "host", "scheduler", "jobs", "mcp", "api"] and core.port and core.console_port
     assert await health(core) == {"status": "ok"}
     await core.stop()
     assert core.started == [] and core.host.db is None

@@ -27,6 +27,7 @@ class LogSettings(BaseModel):
     file: str = ""  # also log to this file as JSON; relative paths sit under the data directory
     file_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024)
     file_backups: int = Field(default=5, ge=0, le=100)
+    events_file: str = "events.jsonl"  # every event, one JSON line each (``events tail``); empty turns it off
 
     @field_validator("level", mode="before")
     @classmethod
