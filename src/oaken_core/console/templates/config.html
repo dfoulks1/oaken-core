@@ -1,6 +1,21 @@
-{% extends "base.html" %}{% block title %}Config{% endblock %}
+{% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% block title %}Config{% endblock %}
 {% block body %}
 <h1>Config</h1>
-<p class="muted">The settings core is running on. Edit config.toml (or a plugin's settings page) and reload.</p>
-<pre>{{ settings }}</pre>
+<p class="muted">The settings core is running on. A change is saved to config.toml and reaches the running core when you reload it.</p>
+<form class="inline" method="post" action="/ui/core/reload">{{ csrf(token) }}<button class="btn btn-sm">Reload core</button> <span class="hint">Re-reads config.toml and restarts the plugins. A mistake in the file changes nothing.</span></form>
+{% for s in sections %}
+<div class="card">
+  <div class="card-head"><span class="mono">[{{ s.name }}]</span></div>
+  <div class="card-body">
+    <p class="muted">{{ s.summary }}</p>
+    <form method="post" action="/ui/config/{{ s.name }}">{{ csrf(token) }}
+      {% for f in s.fields %}{{ field(f, s.current.get(f.name)) }}{% endfor %}
+      <p><button class="btn btn-primary">Save [{{ s.name }}]</button></p>
+    </form>
+    {% if s.hand %}<table class="table"><tr><th>Set by hand</th><th>Now</th><th></th></tr>
+    {% for key, value, note in s.hand %}<tr><td class="mono">{{ key }}</td><td class="mono">{{ value }}</td><td class="muted">{{ note }}</td></tr>{% endfor %}</table>{% endif %}
+  </div>
+</div>
+{% endfor %}
+<details class="fold" id="raw"><summary>Everything, as JSON</summary><pre>{{ settings }}</pre></details>
 {% endblock %}

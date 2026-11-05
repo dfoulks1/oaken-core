@@ -47,6 +47,7 @@ from oaken_core.operations.services import Services
 from oaken_core.plugins.contracts import UiPage, UiSpec
 from oaken_core.plugins.host import HOST_KEYS
 from oaken_core.plugins.ui import reposition
+from oaken_core.settings_edit import SECTIONS, key_of, section, settings_of
 
 log = get_logger("oaken_core.console")
 HERE = Path(__file__).resolve().parent
@@ -87,7 +88,10 @@ class Console:
             Route("/json/queues", self.data(self.j_queues)),
             Route("/json/config", self.data(self.j_config)),
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
+            Route("/ui/core/reload", self.post(self.reload_core), methods=["POST"]),
+            Route("/ui/config/{section}", self.post(self.save_section), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/settings", self.post(self.save_settings), methods=["POST"]),
+            Route("/ui/plugins/{kind}/{name}/try", self.post(self.try_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/button", self.post(self.press), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/pages/{page}/{action}", self.post(self.submit_page), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/{verb}", self.post(self.plugin_verb), methods=["POST"]),
@@ -209,8 +213,31 @@ class Console:
     async def queues(self, request: Request) -> Response:
         return self.render("queues.html", **await self._op("queue_list"))
 
+    def _sections(self) -> list[dict[str, Any]]:
+        """Core's own settings as the page draws them: a form of the keys that may be changed here, and
+        a read-only list of the ones that are set by hand, with why."""
+        out = []
+        for sec in SECTIONS:
+            model = settings_of(sec, self.svc.settings)
+            values = model.model_dump(mode="json")
+            fields = [f for f in forms.from_schema(type(model).model_json_schema()) if key_of(sec, f.name).editable]
+            hand = [(k, values[k], key_of(sec, k).note) for k in type(model).model_fields if not key_of(sec, k).editable]
+            out.append({"name": sec.name, "summary": sec.summary, "fields": fields, "current": values, "hand": hand})
+        return out
+
     async def config(self, request: Request) -> Response:
-        return self.render("config.html", settings=json.dumps(self.svc.settings.model_dump(mode="json"), indent=2, sort_keys=True))
+        return self.render("config.html", sections=self._sections(), settings=json.dumps(self.svc.settings.model_dump(mode="json"), indent=2, sort_keys=True))
+
+    async def save_section(self, request: Request, form: dict[str, str]) -> Response:
+        """A core section's form: the typed values go to ``settings_set``, which checks the whole file,
+        shows what would change, and writes only the keys that differ from what is saved."""
+        name = request.path_params["section"]
+        sec = section(name)
+        fields = next(s["fields"] for s in self._sections() if s["name"] == sec.name)
+        out = await self._gated("settings_set", {"section": sec.name, "values": forms.parse(fields, form)}, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        return self.render("result.html", title=f"[{sec.name}]", back="/config", result={"changed": out.changed, "note": out.note})
 
     def _page(self, kind: str, name: str, page: str) -> UiPage:
         spec = self._host().plugin_ui(kind, name)
@@ -297,6 +324,12 @@ class Console:
             return out
         return self.render("result.html", title=p.title, back=back, result=out.model_dump(mode="json") if out else {})
 
+    async def reload_core(self, request: Request, form: dict[str, str]) -> Response:
+        out = await self._gated("core_reload", {}, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        return self.render("result.html", title="Reloading", back="/config", result={"note": out.note})
+
     async def set_look(self, request: Request, form: dict[str, str]) -> Response:
         """The theme menu: palette and mode, kept in ``[console]`` of ``config.toml`` (the one
         thing the browser never stores)."""
@@ -316,6 +349,17 @@ class Console:
         self.look = look
         back = _here.get()
         return RedirectResponse(back if back.startswith("/") and not back.startswith("//") else "/", 303)
+
+    async def try_settings(self, request: Request, form: dict[str, str]) -> Response:
+        """The settings modal's Test: the form's values on a throwaway copy of the plugin. Nothing is
+        saved and the running plugin is not touched, so there is nothing to confirm."""
+        kind, name = request.path_params["kind"], request.path_params["name"]
+        self._status(kind, name)
+        modal = self._modal(kind, name)
+        table = {k: v for k, v in self._host().tables.table(kind, name).items() if k in HOST_KEYS} | forms.parse(modal["fields"], form)
+        out = await self._op("plugin_test", {"kind": kind, "name": name, "config": table})
+        result = {"works": out["ok"], "detail": out["detail"] or ("started and reported healthy" if out["ok"] else "")}
+        return self.render("result.html", title=f"Test {name}", back=f"/plugins/{kind}/{name}", result=result)
 
     async def save_settings(self, request: Request, form: dict[str, str]) -> Response:
         """Write the plugin's table to ``config.toml`` and restart that plugin on it. Checked

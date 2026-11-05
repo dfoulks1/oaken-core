@@ -8,6 +8,7 @@ the host has loaded them, so only plugins that started contribute. Rewritten for
 """
 
 import asyncio
+from collections.abc import Callable
 from typing import Any
 
 from oaken_core import __version__, paths
@@ -73,6 +74,7 @@ class Core:
         self._life: Lifecycle | None = None
         self._serving: asyncio.Task[None] | None = None
         self._console_task: asyncio.Task[None] | None = None
+        self.reload_hook: Callable[[], None] | None = None  # armed by the daemon (``serve``)
 
     @property
     def port(self) -> int:
@@ -107,7 +109,7 @@ class Core:
         self.intake.register(self.runner)
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, queue=queue, labels=labels, changelog=changelog,
-                       bus=self.bus, agents=self.agents, host=self.host, scheduler=self.scheduler, tracer=self.tracer, router=self.router)  # fmt: skip
+                       bus=self.bus, agents=self.agents, host=self.host, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))
         self.client = CoreClient(self.registry, svc)
@@ -120,6 +122,13 @@ class Core:
         self.console = Console(self.client, svc)  # core's own: no plugin can switch it off
         self.console_server = ConsoleServer(self.console, s.console)
         self._life = Lifecycle(self._units())
+
+    def request_reload(self) -> None:
+        """Ask the daemon to rebuild core on ``config.toml``. Half a second later, so the page that
+        asked is answered before the console it came from is stopped."""
+        if self.reload_hook is None:
+            raise Unavailable("core was not started by the daemon, so there is nothing to reload it")
+        asyncio.get_running_loop().call_later(0.5, self.reload_hook)
 
     def _triagers(self) -> list[_Triager]:
         """The healthy triagers right now, so one that starts or stops counts from the next item."""

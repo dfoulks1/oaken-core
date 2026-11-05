@@ -6,8 +6,8 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from oaken_core import paths
-from oaken_core.config_edit import save_table
-from oaken_core.errors import InvalidInput
+from oaken_core.config_edit import refuse_secrets, save_table
+from oaken_core.errors import InvalidInput, NotFound
 from oaken_core.operations.builtin.queue import Empty, QueueRow
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.exposure import OP, PLUGIN, scope_of
@@ -157,6 +157,46 @@ async def plugin_add(ctx: OpContext, inp: PluginAddIn) -> PluginAddOut:
     return PluginAddOut(kind=inp.kind, name=inp.name, started=status.started, detail=status.detail)
 
 
+class ReloadOut(BaseModel):
+    reloading: bool
+    note: str
+
+
+async def _reload_preview(ctx: OpContext, inp: Empty) -> Preview:
+    return Preview(summary="Reload core: re-read config.toml and restart every plugin on it. A file with a mistake changes nothing.", changes=[Change(target="core", field="config.toml")], total_changes=1)  # fmt: skip
+
+
+@operation("core_reload", "Rebuild core on config.toml, in the same process. The file is checked first.",
+           permission="mutate", input=Empty, output=ReloadOut, mcp="never", group="core",
+           preview=_reload_preview)  # fmt: skip
+async def core_reload(ctx: OpContext, inp: Empty) -> ReloadOut:
+    need(ctx.svc.reload, "the daemon")()
+    return ReloadOut(reloading=True, note="reloading in a moment; the API and console keep their ports")
+
+
+class PluginTestIn(BaseModel):
+    kind: str
+    name: str = Field(description="The instance name, as listed by `plugin list`.")
+    config: dict[str, Any] = Field(default_factory=dict, description="The settings to try. Nothing is saved.")
+
+
+class PluginTestOut(BaseModel):
+    ok: bool
+    detail: str
+
+
+@operation("plugin_test", "Try settings on a throwaway copy of a plugin and say whether it works. Saves nothing; the running plugin is untouched.",
+           permission="read", input=PluginTestIn, output=PluginTestOut, mcp="never", group="plugin")  # fmt: skip
+async def plugin_test(ctx: OpContext, inp: PluginTestIn) -> PluginTestOut:
+    host = need(ctx.svc.host, "the plugin host")
+    refuse_secrets(inp.config)
+    row = next((s for s in host.statuses() if (s.kind, s.name) == (inp.kind, inp.name)), None)
+    if row is None:
+        raise NotFound(f"no {inp.kind} named {inp.name!r}")
+    probe = (await host.probe(row.plugin, inp.config, kind=inp.kind))[0]
+    return PluginTestOut(ok=probe.ok, detail=probe.detail)
+
+
 class ExposureRow(BaseModel):
     name: str
     plugin: str | None
@@ -253,4 +293,4 @@ async def ai_usage(ctx: OpContext, inp: UsageIn) -> UsageOut:
 
 
 OPERATIONS = (status, log_list, plugin_list, plugin_enable, plugin_disable, plugin_reload,
-              exposure_list, exposure_set, ai_usage, plugin_add)  # fmt: skip
+              exposure_list, exposure_set, ai_usage, plugin_add, plugin_test, core_reload)  # fmt: skip

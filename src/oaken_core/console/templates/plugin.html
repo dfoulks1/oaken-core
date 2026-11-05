@@ -5,7 +5,7 @@
 {% if sections %}
 <form method="post" action="/ui/plugins/{{ status.kind }}/{{ status.name }}/settings">{{ csrf(token) }}
 {% for title, fs in sections %}<fieldset><legend>{{ title }}</legend>{% for f in fs %}{{ field(f, values.get(f.name)) }}{% endfor %}</fieldset>{% endfor %}
-<button class="btn btn-primary">Save and restart plugin</button> <span class="hint">Writes config.toml. Secrets never go here.</span></form>
+<button class="btn btn-sm" formaction="/ui/plugins/{{ status.kind }}/{{ status.name }}/try">Test these settings</button> <button class="btn btn-primary">Save and restart plugin</button> <span class="hint">Writes config.toml. Secrets never go here.</span></form>
 {% else %}
 <p class="muted">This plugin declares no settings.</p>
 {% if values %}<pre>{{ values|tojson(indent=2) }}</pre>{% endif %}

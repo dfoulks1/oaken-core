@@ -47,7 +47,9 @@ async def _bring_up(core: Core, runtime: RuntimeFile) -> Core:
     return core
 
 
-async def _reload(core: Core, runtime: RuntimeFile, make: MakeCore, load: Callable[[], Settings] | None) -> Core:
+async def _reload(
+    core: Core, runtime: RuntimeFile, make: MakeCore, load: Callable[[], Settings] | None, hook: Callable[[], None]
+) -> Core:
     """Rebuild core on the configuration file, in this process (same pid and runtime file). The
     file is validated before anything is stopped, so a typo changes nothing; if the rebuilt core
     cannot start, the old settings are put back."""
@@ -64,17 +66,20 @@ async def _reload(core: Core, runtime: RuntimeFile, make: MakeCore, load: Callab
         log.info("reload: configuration unchanged")
         return core
     configure_logging(settings.log)
-    bound = core.port
+    bound, console_bound = core.port, core.console_port
     old = core.settings
     await core.stop()
     if settings.api.port == 0 and bound:  # no port asked for: keep the one clients already know
         settings = settings.model_copy(update={"api": settings.api.model_copy(update={"port": bound})})
+    if settings.console.port == 0 and console_bound:  # and the console page that is open in a browser
+        settings = settings.model_copy(update={"console": settings.console.model_copy(update={"port": console_bound})})
     try:
         fresh = await _bring_up(make(settings), runtime)
     except Exception as exc:  # noqa: BLE001 - whatever it was, the old core comes back
         log.error("reload failed; restoring the old configuration", error=str(exc))
         configure_logging(old.log)
         fresh = await _bring_up(make(old), runtime)
+    fresh.reload_hook = hook
     log.info("core reloaded", port=fresh.port)
     return fresh
 
@@ -103,6 +108,7 @@ async def serve(
     core: Core | None = None
     try:
         core = await _bring_up(make(settings), runtime)
+        core.reload_hook = reload.set
         log.info("core running", port=core.port, console=f"http://127.0.0.1:{core.console_port}/", version=__version__)
         if ready is not None:
             ready.set()
@@ -113,7 +119,7 @@ async def serve(
                 task.cancel()
             if reload.is_set() and not stop.is_set():
                 reload.clear()
-                core = await _reload(core, runtime, make, load_settings)
+                core = await _reload(core, runtime, make, load_settings, reload.set)
         log.info("core stopping")
     finally:
         for sig in installed:

@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
 """The core operations, and the function that puts them in a registry."""
 
-from oaken_core.operations.builtin import agents, labels, queue, system
+from oaken_core.operations.builtin import agents, labels, queue, settings, system
 from oaken_core.operations.registry import AnyOperation, OperationRegistry
 
 
 def core_operations() -> tuple[AnyOperation, ...]:
-    return (*queue.OPERATIONS, *agents.OPERATIONS, *labels.OPERATIONS, *system.OPERATIONS)
+    return (*queue.OPERATIONS, *agents.OPERATIONS, *labels.OPERATIONS, *system.OPERATIONS, *settings.OPERATIONS)
 
 
 def core_registry() -> OperationRegistry:

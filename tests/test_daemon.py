@@ -129,7 +129,7 @@ async def test_reload_rebuilds_on_the_new_settings_keeps_the_port_and_refuses_a_
     task = asyncio.create_task(lifecycle.serve(Settings(), runtime=runtime, stop=stop, ready=ready,
                                                reload=reload, load_settings=load, handle_signals=False))  # fmt: skip
     await asyncio.wait_for(ready.wait(), 20)
-    port = (read_runtime(runtime.path) or {})["port"]
+    port, console = (read_runtime(runtime.path) or {})["port"], (read_runtime(runtime.path) or {})["console_port"]
 
     async def reloaded() -> None:
         reload.set()
@@ -140,6 +140,7 @@ async def test_reload_rebuilds_on_the_new_settings_keeps_the_port_and_refuses_a_
     cfg[0] = Settings(jobs={"max_attempts": 9})
     await reloaded()
     assert (read_runtime(runtime.path) or {})["port"] == port
+    assert (read_runtime(runtime.path) or {})["console_port"] == console  # the page open in a browser stays put
     cfg[0] = None  # type: ignore[call-overload]
     await reloaded()
     assert (read_runtime(runtime.path) or {})["port"] == port  # still up on the old configuration
@@ -150,3 +151,49 @@ async def test_reload_rebuilds_on_the_new_settings_keeps_the_port_and_refuses_a_
 def test_stop_and_reload_with_no_core_running_say_so() -> None:
     assert not lifecycle.reload() and not lifecycle.stop_gracefully().running
     assert signal.SIGHUP  # the reload signal exists here
+
+
+async def test_the_core_reload_operation_proposes_then_rebuilds_core_on_the_file() -> None:
+    from oaken_core.operations.caller import CallerContext
+
+    stop, ready = asyncio.Event(), asyncio.Event()
+    cfg, made = [Settings()], []
+
+    def make(settings: Settings) -> Core:
+        made.append(Core(settings))
+        return made[-1]
+
+    runtime = RuntimeFile(paths.runtime_file(), SystemClock(), "t")
+    task = asyncio.create_task(lifecycle.serve(Settings(), make=make, runtime=runtime, stop=stop, ready=ready,
+                                               load_settings=lambda: cfg[0], handle_signals=False))  # fmt: skip
+    try:
+        await asyncio.wait_for(ready.wait(), 20)
+        cli, first = CallerContext.cli(), made[-1]
+        console = first.console_port  # read now: a stopped core's port reads 0
+        proposal = await first.client.call("core_reload", {}, cli)
+        assert proposal.proposal is not None and len(made) == 1  # a proposal changes nothing
+        cfg[0] = Settings(jobs={"max_attempts": 9})
+        done = await first.client.call("core_reload", {}, cli, confirm=True)
+        assert done.output.reloading  # type: ignore[union-attr]
+        for _ in range(100):
+            if len(made) == 2 and made[-1].started:
+                break
+            await asyncio.sleep(0.05)
+        assert len(made) == 2 and made[-1].settings.jobs.max_attempts == 9
+        assert made[-1].console_port == console  # the same console, after the reload
+    finally:
+        stop.set()
+        await asyncio.wait_for(task, 20)
+
+
+async def test_core_reload_says_so_when_core_was_not_started_by_the_daemon() -> None:
+    from oaken_core.errors import Unavailable
+    from oaken_core.operations.caller import CallerContext
+
+    core = Core(Settings())
+    await core.open()
+    try:
+        with pytest.raises(Unavailable, match="nothing to reload"):
+            await core.client.call("core_reload", {}, CallerContext.cli(), confirm=True)
+    finally:
+        await core.host.stop()

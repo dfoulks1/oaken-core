@@ -250,3 +250,44 @@ async def test_the_theme_menu_saves_palette_and_mode_to_config_and_refuses_unkno
     assert 'palette = "moss"' in (oaken_home / "config" / "config.toml").read_text()
     assert (await rig.post("/ui/look", palette="neon")).status_code == 422
     assert (await rig.post("/ui/look", palette="oak", back="//evil.example")).headers["location"] == "/"
+
+
+async def test_the_config_page_edits_a_core_section_through_a_proposal_and_a_second_click(rig: Rig, oaken_home: Path) -> None:
+    import tomllib
+
+    page = (await rig.c.get("/config")).text
+    assert 'action="/ui/config/jobs"' in page and "Reload core" in page
+    assert "enabled" in page and "set by hand" in page  # swarm.enabled is shown, not editable
+    assert 'name="f_enabled"' not in page and 'name="f_max_attempts"' in page
+    form = {"f_max_attempts": "7", "f_lease_seconds": "60"}  # lease_seconds is what it already was
+    first = await rig.post("/ui/config/jobs", **form)
+    assert first.status_code == 200 and "max_attempts" in first.text and "lease_seconds" not in first.text.split("</table>")[0].split("<table")[-1]
+    cfg = oaken_home / "config" / "config.toml"
+    assert not cfg.exists()  # the first click only shows what would change
+    second = await rig.post("/ui/config/jobs", confirm="1", **form)
+    assert second.status_code == 200 and "Reload core" in second.text
+    assert tomllib.loads(cfg.read_text())["jobs"] == {"max_attempts": 7}
+
+
+async def test_a_bad_value_in_a_core_section_is_refused_and_writes_nothing(rig: Rig, oaken_home: Path) -> None:
+    r = await rig.post("/ui/config/jobs", confirm="1", f_max_attempts="0")
+    assert r.status_code == 422 and "max_attempts" in r.text
+    assert not (oaken_home / "config" / "config.toml").exists()
+    assert (await rig.post("/ui/config/api", confirm="1", f_port="9")).status_code == 404  # api is not a section here
+
+
+async def test_reload_core_asks_first_and_says_when_core_is_not_run_by_the_daemon(rig: Rig) -> None:
+    assert "Reload core" in (await rig.post("/ui/core/reload")).text  # a proposal
+    r = await rig.post("/ui/core/reload", confirm="1")  # the rig's core was not started by the daemon
+    assert r.status_code == 503 and "nothing to reload" in r.text
+
+
+async def test_test_these_settings_tries_a_throwaway_copy_saves_nothing_and_needs_no_confirm(rig: Rig, oaken_home: Path) -> None:
+    ok = await rig.post("/ui/plugins/enricher/notes/try", f_greeting="yo", f_limit="5")
+    assert ok.status_code == 200 and "works" in ok.text and "true" in ok.text.lower()
+    bad = await rig.post("/ui/plugins/enricher/notes/try", f_greeting="yo", f_limit="lots")
+    assert bad.status_code == 422 and "limit" in bad.text.lower()  # the form is checked before anything starts
+    assert not (oaken_home / "config" / "config.toml").exists()  # nothing was saved
+    (running,) = [s for s in rig.core.host.statuses() if s.name == "notes"]
+    assert running.started  # and the live plugin was never touched
+    assert (await rig.post("/ui/plugins/enricher/ghost/try")).status_code == 404

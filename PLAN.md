@@ -87,6 +87,16 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   live updates (no script, so no SSE; reload the page).
   Not verified: any real browser (tests drive the ASGI app and one real loopback socket); the
   Origin `null` allowance is lifted as-is from oaken-mail and rests on the CSRF token.
+  Added later: the console edits core's own sections (`log`, `jobs`, `swarm`, `router`, `console`) through
+  operations `settings_get` and `settings_set` (CLI: `oaken settings ...`). `settings_edit.py` is the allowlist
+  (lifted in shape from oaken-mail): a key that opts an outside worker in, widens who may see confidential text
+  or moves a port is shown and set by hand. A change is compared with what the FILE holds (a hand edit not yet
+  reloaded may differ from the running core), the whole file has to load before anything is written, and only
+  the differing keys are written. `core_reload` (the console's Reload core, an operation like any other) asks the
+  daemon to rebuild on `config.toml` half a second later, so the page that asked is answered first; a reload
+  keeps the console on the same port. `plugin_test` (the settings modal's Test button) tries the form's values
+  on a throwaway copy of the plugin via `host.probe`. Dropped: oaken-mail's `env_overrides` (core's loader reads
+  no environment).
 - The unread parts were read for sizing (see Sizing).
 
 ## Decided

@@ -7,6 +7,7 @@ gets ``unavailable`` rather than a crash.
 """
 
 from dataclasses import dataclass
+from collections.abc import Callable
 from typing import Any, TypeVar
 
 from oaken_core.agents import AgentRegistry
@@ -47,6 +48,7 @@ class Services:
     scheduler: Scheduler | None = None
     tracer: Tracer | None = None
     router: Any = None  # oaken_core.router.Router
+    reload: Callable[[], None] | None = None  # the daemon's reload (None: core was not started by it)
 
     @property
     def version(self) -> str:
