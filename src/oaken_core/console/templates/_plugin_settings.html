@@ -1,0 +1,13 @@
+{% from "_fields.html" import field, csrf %}{% import "_macros.html" as m with context %}
+{# A plugin's settings as a form: its fields, the model instructions if it has them, and Test and Save. ``mc`` is what
+   the console knows of it; ``back`` is the page to return to; ``pre`` keeps ids unique when several are on one page. #}
+{% macro settings_form(status, mc, back, pre="") %}
+<form method="post" action="/ui/plugins/{{ status.kind }}/{{ status.name }}/settings">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}">
+{% for title, fs in mc.sections %}<fieldset><legend>{{ title }}</legend>{% for f in fs %}{{ field(f, mc["values"].get(f.name), pre) }}{% endfor %}</fieldset>{% endfor %}
+{% if mc.llm %}<fieldset><legend>Model instructions</legend>
+<p class="hint">Locked to what the plugin ships. Switch on to use your own; switch off to go back to the plugin's.</p>
+{{ m.toggle("unlock", mc.own.get("prompt") or mc.own.get("guard"), "Override the plugin's prompt and guard", "overriding", "plugin default") }}
+<label for="{{ pre }}prompt">Prompt</label><textarea id="{{ pre }}prompt" name="prompt">{{ mc.own.get("prompt") or mc.llm.prompt }}</textarea>
+<label for="{{ pre }}guard">Guard</label><textarea id="{{ pre }}guard" name="guard">{{ mc.own.get("guard") or mc.llm.guard }}</textarea></fieldset>{% endif %}
+<button class="btn btn-sm" formaction="/ui/plugins/{{ status.kind }}/{{ status.name }}/try">Test these settings</button> <button class="btn btn-primary">Save and restart plugin</button> <span class="hint">Writes config.toml. Secrets never go here.</span></form>
+{% endmacro %}

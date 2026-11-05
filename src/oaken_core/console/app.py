@@ -235,6 +235,25 @@ class Console:
                             "failed": r.get("failed", 0), "paused": r.get("paused", False)})
         return out, rows
 
+    @staticmethod
+    def _back(default: str) -> str:
+        """Where a form came from (its ``back`` field), if that is a page on this console; else ``default``."""
+        back = _here.get()
+        return back if back.startswith("/") and not back.startswith("//") and back != "/" else default
+
+    def _modals(self, plugins: list[Any]) -> dict[str, dict[str, Any]]:
+        """What each row's settings dialog shows (the same data as the plugin's own page). A plugin whose
+        settings cannot be read has none, and its dialog says so."""
+        out: dict[str, dict[str, Any]] = {}
+        for p in plugins:
+            try:
+                modal = self._modal(p.kind, p.name)
+                out[f"{p.kind}/{p.name}"] = {"sections": modal["sections"], "values": self._values(p.kind, p.name),
+                                              "llm": self._host().llm_defaults(p.kind, p.name), "own": self._host().tables.table(p.kind, p.name)}  # fmt: skip
+            except OakenError:
+                continue
+        return out
+
     async def stage(self, request: Request) -> Response:
         name = request.path_params["queue"]
         spec = next((q for q in self._stage_specs() if q.name == name), None)
@@ -242,7 +261,7 @@ class Console:
             raise NotFound(f"no stage named {name!r}")
         stages, rows = await self._flow()
         return self.render("stage.html", stage=spec, stages=stages, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
-                           plugins=[p for p in self._host().statuses() if p.kind == spec.kind])  # fmt: skip
+                           plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=self._modals(plugins))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
         """Every operation (the registry the CLI lists), by the part that offers it, with its MCP switch."""
@@ -270,14 +289,16 @@ class Console:
     async def pipeline(self, request: Request) -> Response:
         stage_kinds = {q.kind for q in self._stage_specs()}
         stages, _ = await self._flow()
-        return self.render("pipeline.html", stages=stages, plugins=[p for p in self._host().statuses() if p.kind not in stage_kinds])
+        plugins = [p for p in self._host().statuses() if p.kind not in stage_kinds]
+        return self.render("pipeline.html", stages=stages, plugins=plugins, modals=self._modals(plugins))
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()
         return self.render("overview.html", status=await self._op("status"), plugins=self._host().statuses(), stages=stages)
 
     async def plugins(self, request: Request) -> Response:
-        return self.render("plugins.html", plugins=self._host().statuses())
+        plugins = self._host().statuses()
+        return self.render("plugins.html", plugins=plugins, modals=self._modals(plugins))
 
     async def plugin(self, request: Request) -> Response:
         kind, name = request.path_params["kind"], request.path_params["name"]
@@ -460,7 +481,7 @@ class Console:
         table = self._host_part(kind, name, form) | forms.parse(modal["fields"], form)
         out = await self._op("plugin_test", {"kind": kind, "name": name, "config": table})
         result = {"works": out["ok"], "detail": out["detail"] or ("started and reported healthy" if out["ok"] else "")}
-        return self.render("result.html", title=f"Test {name}", back=f"/plugins/{kind}/{name}", result=result)
+        return self.render("result.html", title=f"Test {name}", back=self._back(f"/plugins/{kind}/{name}"), result=result)
 
     async def save_settings(self, request: Request, form: dict[str, str]) -> Response:
         """Write the plugin's table to ``config.toml`` and restart that plugin on it. Checked
@@ -491,4 +512,4 @@ class Console:
         host.tables.tables.setdefault(kind, {})[name] = table
         await host.reload(name)
         log.info("plugin settings saved from the console", kind=kind, name=name, keys=sorted(values))
-        return RedirectResponse(f"/plugins/{kind}/{name}", 303)
+        return RedirectResponse(self._back(f"/plugins/{kind}/{name}"), 303)

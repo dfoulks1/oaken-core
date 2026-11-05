@@ -1,13 +1,25 @@
-{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}
+{% from "_fields.html" import csrf %}{% from "_plugin_settings.html" import settings_form with context %}{% import "_macros.html" as m with context %}
 {# The plugins in ``plugins`` as a table with an enable switch and a reload button; ``back`` is the page a button returns to. #}
 {% macro plugin_table(plugins, back, empty="No plugins here.") %}
 <div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Name</th><th>Version</th><th>State</th><th></th></tr>
 {% for p in plugins %}<tr><td class="nowrap">{{ p.kind }}</td><td class="nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td><td>{{ p.version }}</td>
 <td class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "healthy" if p.healthy else (p.detail or "off") }}</td>
 <td class="nowrap">{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ ("/disable" if p.enabled else "/enable"), back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}
-<a class="btn btn-sm btn-icon" href="/plugins/{{ p.kind }}/{{ p.name }}" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</a>
+<button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button>
 <form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/reload">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon" title="Reload" aria-label="Reload {{ p.name }}">{{ m.icon("recycle") }}</button></form></td></tr>
 {% else %}<tr><td colspan="5" class="muted">{{ empty }}</td></tr>{% endfor %}</table></div>
+{% for p in plugins %}{% set mc = modals.get(p.kind ~ "/" ~ p.name) %}
+<div class="dialog" id="set-{{ loop.index }}" popover role="dialog" aria-labelledby="set-{{ loop.index }}-t">
+  <div class="dialog-head"><h2 id="set-{{ loop.index }}-t">{{ p.name }} <span class="muted small">{{ p.kind }}</span></h2>
+    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="set-{{ loop.index }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+  <div class="dialog-body">
+    <p class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "Healthy." if p.healthy else (p.detail or "Off.") }}</p>
+    {% if mc and (mc.sections or mc.llm) %}{{ settings_form(p, mc, back, "m" ~ loop.index ~ "-") }}
+    {% else %}<p class="muted">This plugin declares no settings.</p>{% endif %}
+  </div>
+  <div class="dialog-foot"><a href="/plugins/{{ p.kind }}/{{ p.name }}">Open its page</a><span class="muted">for its actions and pages</span></div>
+</div>
+{% endfor %}
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}

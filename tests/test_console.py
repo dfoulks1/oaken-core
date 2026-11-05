@@ -375,7 +375,9 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
         assert (await client.get("/stage/nope")).status_code == 404
         machinery = (await client.get("/pipeline")).text
         assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
-        assert 'aria-label="Settings for notes"' in stage.text and 'aria-label="Reload notes"' in stage.text and "switch-text" not in stage.text  # icon buttons (gear, cycle), no on/off word
+        assert 'aria-label="Settings for notes"' in stage.text and 'aria-label="Reload notes"' in stage.text  # icon buttons (gear, cycle)
+        row = stage.text[stage.text.index('href="/plugins/enricher/notes">notes'):]
+        assert "switch-text" not in row[: row.index("</tr>")]  # the row's switch has no on/off word
         assert all(stage.text.count(f'href="/plugins/{k}/{n}">{n}') == (1 if k == "enricher" else 0) for k, n in (("enricher", "notes"), ("store", "sqlite")))  # each plugin on one page
     finally:
         await client.aclose()
@@ -444,3 +446,26 @@ async def test_the_mcp_power_switch_turns_the_door_off_live_and_writes_the_confi
     assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["api"]["mcp_enabled"] is False
     await rig.post("/ui/mcp-power", mcp="on")
     assert "MCP is ON" in (await rig.c.get("/capabilities")).text
+
+
+# -- a settings dialog per plugin row ------------------------------------------------------------
+async def test_the_gear_opens_that_plugins_settings_in_a_dialog_and_a_save_comes_back_to_the_page(tmp_path: Path, oaken_home: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    try:
+        page = (await client.get("/stage/enrich")).text
+        assert 'popovertarget="set-1"' in page and 'id="set-1"' in page  # the gear and the dialog it opens
+        dialog = page[page.index('id="set-1"'):]
+        assert 'action="/ui/plugins/enricher/notes/settings"' in dialog and 'name="f_greeting"' in dialog
+        assert 'id="m1-f_greeting"' in dialog and 'name="back" value="/stage/enrich"' in dialog  # unique ids; returns here
+        pipe = (await client.get("/pipeline")).text
+        ids = [i for i in __import__("re").findall(r'id="(m\d+-f_[a-z_]+)"', pipe)]
+        assert len(ids) == len(set(ids))  # several dialogs on one page never share an id
+        saved = await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "/stage/enrich", "f_greeting": "yo", "f_limit": "5"})
+        assert saved.status_code == 303 and saved.headers["location"] == "/stage/enrich"
+        away = await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "//evil.example", "f_greeting": "yo", "f_limit": "5"})
+        assert away.headers["location"] == "/plugins/enricher/notes"  # only a page on this console
+    finally:
+        await client.aclose()
+        await core.host.stop()

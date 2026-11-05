@@ -1,10 +1,10 @@
-{% import "_macros.html" as m %}{% macro field(f, value) %}
-<label for="f_{{ f.name }}">{{ f.label }}{% if f.required %} *{% endif %}</label>
-{% if f.kind == "bool" %}{{ m.toggle("f_" ~ f.name, value, f.label, id="f_" ~ f.name) }}
-{% elif f.kind == "enum" %}<select id="f_{{ f.name }}" name="f_{{ f.name }}"><option value=""></option>{% for c in f.choices %}<option value="{{ c }}" {% if value|string == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
-{% elif f.kind in ("list", "json") %}<textarea id="f_{{ f.name }}" name="f_{{ f.name }}">{{ display(f, value) }}</textarea>
-{% elif f.kind == "number" %}<input type="number" step="any" id="f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}">
-{% else %}<input type="text" id="f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}">{% endif %}
+{% import "_macros.html" as m %}{% macro field(f, value, pre="") %}
+<label for="{{ pre }}f_{{ f.name }}">{{ f.label }}{% if f.required %} *{% endif %}</label>
+{% if f.kind == "bool" %}{{ m.toggle("f_" ~ f.name, value, f.label, id=pre ~ "f_" ~ f.name) }}
+{% elif f.kind == "enum" %}<select id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}"><option value=""></option>{% for c in f.choices %}<option value="{{ c }}" {% if value|string == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+{% elif f.kind in ("list", "json") %}<textarea id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}">{{ display(f, value) }}</textarea>
+{% elif f.kind == "number" %}<input type="number" step="any" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}">
+{% else %}<input type="text" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}">{% endif %}
 {% if f.help %}<div class="hint">{{ f.help }}</div>{% endif %}
 {% endmacro %}
 {% macro csrf(token) %}<input type="hidden" name="csrf" value="{{ token }}">{% endmacro %}
