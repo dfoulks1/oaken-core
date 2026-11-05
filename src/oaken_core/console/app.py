@@ -62,12 +62,16 @@ NAV = (("/", "Overview"), ("/plugins", "Plugins"), ("/queues", "Queues"), ("/con
 Handler = Callable[[Request], Awaitable[Response]]
 
 
+# One token for the life of the process, so a page left open across a core reload still posts.
+_PROCESS_TOKEN = secrets.token_urlsafe(32)
+
+
 class Console:
     """An ASGI app. ``bind(port)`` is called once the socket is open (the Host check needs it)."""
 
     def __init__(self, client: CoreClient, svc: Services) -> None:
         self.client, self.svc = client, svc
-        self.token = secrets.token_urlsafe(32)
+        self.token = _PROCESS_TOKEN
         self.look = {"palette": svc.settings.console.palette, "mode": svc.settings.console.mode}
         self.port = PortRef()
         self.env = jinja2.Environment(

@@ -250,6 +250,15 @@ async def test_the_plugins_list_shows_enabled_as_a_switch_that_posts_the_opposit
     assert 'role="switch"' in page and 'action="/ui/plugins/enricher/notes/disable"' in page
 
 
+async def test_a_page_open_across_a_core_reload_still_posts(rig: Rig, tmp_path: Path) -> None:
+    (tmp_path / "again").mkdir()
+    other = await make_core(tmp_path / "again", {})
+    try:
+        assert other.console.token == rig.core.console.token  # a rebuilt core keeps the process's token
+    finally:
+        await other.host.stop()
+
+
 async def test_disabling_every_plugin_leaves_the_console_up(rig: Rig) -> None:
     for s in rig.core.host.statuses():
         await rig.core.host.disable(s.name)
