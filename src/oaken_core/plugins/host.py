@@ -18,6 +18,7 @@ Plugins run in-process with full access and are not sandboxed.
 import asyncio
 import contextlib
 import inspect
+import re
 from collections.abc import Awaitable, Callable, Iterable
 from dataclasses import dataclass, replace
 from importlib.metadata import EntryPoint, entry_points
@@ -60,6 +61,7 @@ from oaken_core.trace import Tracer
 
 log = get_logger("oaken_core.plugins")
 
+_INSTANCE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
 HOST_KEYS = ("enabled", "plugin", "locality", "concurrency", "route")  # the host's settings, never the plugin's
 RELATIONS = frozenset({"self", "parent", "children"})  # a product adds more with register_relation
 
@@ -250,6 +252,23 @@ class PluginHost:
             except Exception as exc:
                 rec.disabled, rec.detail = True, f"failed to load: {exc}"
         return rec
+
+    def check_new_instance(self, kind: str, name: str, plugin: str, config: dict[str, Any]) -> list[str]:
+        """Why ``add_instance`` would refuse these, in plain words; empty when it would not. Nothing
+        is changed or started."""
+        spec = self.kinds.get(kind)
+        if not _INSTANCE_NAME.match(name):
+            return [f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)"]
+        if (kind, name) in self._records:
+            return [f"{kind} {name!r} already exists"]
+        base = self._records.get((spec.name, plugin))
+        if base is None or base.instance is None:
+            return [f"no usable {kind} plugin named {plugin!r}" + (f" ({base.detail})" if base else "")]
+        try:
+            self._validate_config(base.instance, {k: v for k, v in config.items() if k not in HOST_KEYS})
+        except PluginError as exc:
+            return [str(exc)]
+        return []
 
     async def add_instance(self, kind: str, name: str, plugin: str, config: dict[str, Any]) -> None:
         """Start another named instance of ``plugin`` now, on ``config`` (a console form's "add a

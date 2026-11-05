@@ -8,8 +8,10 @@ table it was asked about. It does no I/O and no validation of the result: the ca
 whole file through ``Settings`` before it writes anything.
 """
 
+import os
 import re
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from typing import Any, cast
 
 import tomlkit
@@ -230,3 +232,19 @@ def remove_table(text: str, path: Sequence[str]) -> str:
     if parent is not None and path[-1] in parent:
         del parent[path[-1]]
     return tomlkit.dumps(doc)
+
+
+def save_table(config_path: Path, path: Sequence[str], values: Mapping[str, Any]) -> None:
+    """Write the table at ``path`` into ``config_path`` (made if absent), atomically, leaving the rest
+    of the file as it was. Secrets are refused (``set_table``)."""
+    try:
+        text = config_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        text = ""
+    except OSError as exc:
+        raise ConfigError(f"cannot read {config_path}: {exc}") from exc
+    updated = set_table(text, path, values)
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = config_path.with_name(config_path.name + f".{os.getpid()}.tmp")
+    tmp.write_text(updated, encoding="utf-8")
+    os.replace(tmp, config_path)

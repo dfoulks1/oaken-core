@@ -45,7 +45,7 @@ async def run(ops: Ops, capsys: pytest.CaptureFixture[str], *argv: str) -> tuple
 async def test_the_command_tree_is_the_registry_and_a_plugin_verb_appears_only_while_it_is_loaded(ops: Ops, capsys: pytest.CaptureFixture[str]) -> None:
     code, out, _ = await run(ops, capsys, "operations", "--json")
     names = {r["command"] for r in json.loads(out)}
-    assert code == 0 and {"queue requeue", "queue pause", "agent create", "label set", "status"} <= names
+    assert code == 0 and {"queue requeue", "queue pause", "agent create", "label set", "status", "plugin add"} <= names
     assert "greeter hi" not in names  # the plugin has not loaded
     ops.registry.attach_plugins(greeter)  # it loads
     code, out, _ = await run(ops, capsys, "greeter", "hi", "--who", "Drew", "--shout", "--json")

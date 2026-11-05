@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from oaken_core import paths
+from oaken_core.config_edit import save_table
 from oaken_core.errors import InvalidInput
 from oaken_core.operations.builtin.queue import Empty, QueueRow
 from oaken_core.operations.context import OpContext
@@ -117,6 +119,44 @@ async def plugin_reload(ctx: OpContext, inp: PluginRef) -> PluginAffected:
     return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").reload(inp.name))
 
 
+class PluginAddIn(BaseModel):
+    kind: str = Field(description="The plugin kind, e.g. embedder or llm_backend.")
+    name: str = Field(description="The new instance's name; it is what the config table is called.")
+    plugin: str = Field(description="The installed plugin to make an instance of.")
+    config: dict[str, Any] = Field(default_factory=dict, description="Its settings. Secrets are refused.")
+
+
+class PluginAddOut(BaseModel):
+    kind: str
+    name: str
+    started: bool
+    detail: str
+
+
+async def _plugin_add_preview(ctx: OpContext, inp: PluginAddIn) -> Preview:
+    problems = need(ctx.svc.host, "the plugin host").check_new_instance(inp.kind, inp.name, inp.plugin, inp.config)
+    if problems:
+        raise InvalidInput("; ".join(problems))
+    changes = [Change(target=f"{inp.kind}.{inp.name}", field="plugin", after=inp.plugin)]
+    changes += [Change(target=f"{inp.kind}.{inp.name}", field=k) for k in sorted(inp.config)]  # names only, never values
+    return Preview(summary=f"Add {inp.kind} {inp.name} (an instance of {inp.plugin}) and write it to config.toml", changes=changes, total_changes=len(changes))
+
+
+@operation("plugin_add", "Add a named instance of an installed plugin: checked, written to config.toml, started.",
+           permission="mutate", input=PluginAddIn, output=PluginAddOut, mcp="never", group="plugin",
+           preview=_plugin_add_preview)  # fmt: skip
+async def plugin_add(ctx: OpContext, inp: PluginAddIn) -> PluginAddOut:
+    host = need(ctx.svc.host, "the plugin host")
+    problems = host.check_new_instance(inp.kind, inp.name, inp.plugin, inp.config)
+    if problems:
+        raise InvalidInput("; ".join(problems))
+    table = {**inp.config, "plugin": inp.plugin}
+    save_table(paths.config_dir() / "config.toml", ["plugins", inp.kind, inp.name], table)  # refuses a secret first
+    await host.add_instance(inp.kind, inp.name, inp.plugin, inp.config)
+    status = next(s for s in host.statuses() if (s.kind, s.name) == (inp.kind, inp.name))
+    return PluginAddOut(kind=inp.kind, name=inp.name, started=status.started, detail=status.detail)
+
+
 class ExposureRow(BaseModel):
     name: str
     plugin: str | None
@@ -213,4 +253,4 @@ async def ai_usage(ctx: OpContext, inp: UsageIn) -> UsageOut:
 
 
 OPERATIONS = (status, log_list, plugin_list, plugin_enable, plugin_disable, plugin_reload,
-              exposure_list, exposure_set, ai_usage)  # fmt: skip
+              exposure_list, exposure_set, ai_usage, plugin_add)  # fmt: skip
