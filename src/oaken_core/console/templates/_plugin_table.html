@@ -1,16 +1,35 @@
 {% from "_fields.html" import csrf %}{% from "_plugin_settings.html" import settings_form with context %}{% import "_macros.html" as m with context %}
 {# The plugins in ``plugins`` as a table with an enable switch and a reload button; ``back`` is the page a button returns to. #}
-{% macro plugin_table(plugins, back, empty="No plugins here.", title="Plugins") %}
+{% macro plugin_row(p, i, back, show_kind) %}
+<tr>
+<td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{% if p.plugin != p.name %} <span class="muted small">· {{ p.plugin }}</span>{% endif %}{% if show_kind %} <span class="muted small">{{ p.kind }}</span>{% endif %}</td>
+<td>{% if p.healthy %}<span class="badge badge-ok">healthy</span>{% elif p.enabled %}<span class="badge badge-danger">down</span>{% else %}<span class="badge badge-warn">off</span>{% endif %}{% if not p.healthy and p.detail %}<div class="health-detail muted small">{{ p.detail }}</div>{% endif %}</td>
+<td class="nowrap">{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ ("/disable" if p.enabled else "/enable"), back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}</td>
+<td class="right nowrap"><div class="row actions-cell"><button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ i }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button>
+<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/reload">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon" title="Reload" aria-label="Reload {{ p.name }}">{{ m.icon("recycle") }}</button></form></div></td>
+</tr>
+{% endmacro %}
+
+{# The plugins in ``plugins`` as cards: the ones in the pipeline first, then the inactive ones folded away. ``back`` is the
+   page a button returns to; ``show_kind`` adds the kind beside a name, for a page that mixes kinds. #}
+{% macro plugin_table(plugins, back, empty="No plugins here.", title="Plugins", show_kind=False) %}
+{% set inactive = plugins|rejectattr("enabled")|list %}
 <div class="card">
-<div class="card-head"><span>{{ title }}</span><span class="muted small">{{ plugins|length }}</span></div>
-<div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Name</th><th>Version</th><th>State</th><th></th></tr>
-{% for p in plugins %}<tr><td class="nowrap">{{ p.kind }}</td><td class="nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td><td>{{ p.version }}</td>
-<td class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "healthy" if p.healthy else (p.detail or "off") }}</td>
-<td class="nowrap">{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ ("/disable" if p.enabled else "/enable"), back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}
-<button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button>
-<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/reload">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon" title="Reload" aria-label="Reload {{ p.name }}">{{ m.icon("recycle") }}</button></form></td></tr>
-{% else %}<tr><td colspan="5" class="muted">{{ empty }}</td></tr>{% endfor %}</table></div>
+<div class="card-head"><span>{{ title }}</span><span class="muted small">{{ plugins|length - inactive|length }}</span></div>
+<div class="table-wrap"><table class="table">
+<thead><tr><th>Plugin</th><th>Health</th><th>Enabled</th><th class="right">Actions</th></tr></thead>
+<tbody>
+{% for p in plugins %}{% if p.enabled %}{{ plugin_row(p, loop.index, back, show_kind) }}{% endif %}{% else %}<tr><td colspan="4" class="muted">{{ empty }}</td></tr>{% endfor %}
+{% if plugins and not (plugins|length - inactive|length) %}<tr><td colspan="4" class="muted">Nothing here is in the pipeline: every plugin below is inactive.</td></tr>{% endif %}
+</tbody></table></div>
+<div class="card-foot muted">Turn a plugin off to take it out of the pipeline for now; turn it on to put it back.</div>
 </div>
+{% if inactive %}
+<details class="card fold"><summary class="card-head">{{ inactive|length }} inactive (disabled)</summary>
+<div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>Health</th><th>Enabled</th><th class="right">Actions</th></tr></thead><tbody>
+{% for p in plugins %}{% if not p.enabled %}{{ plugin_row(p, loop.index, back, show_kind) }}{% endif %}{% endfor %}
+</tbody></table></div></details>
+{% endif %}
 {% for p in plugins %}{% set mc = modals.get(p.kind ~ "/" ~ p.name) %}
 <div class="dialog" id="set-{{ loop.index }}" popover role="dialog" aria-labelledby="set-{{ loop.index }}-t">
   <div class="dialog-head"><h2 id="set-{{ loop.index }}-t">{{ p.name }} <span class="muted small">{{ p.kind }}</span></h2>

@@ -286,11 +286,26 @@ class Console:
         await self.client.call("mcp_power", {"enabled": form.get("mcp") == "on"}, UI, confirm=True)
         return RedirectResponse("/capabilities", 303)
 
+    @staticmethod
+    def _kind_label(kind: str) -> str:
+        """``llm_backend`` as ``LLM backends``: the words of the kind, in the plural, with LLM in capitals."""
+        words = ["LLM" if w == "llm" else w for w in kind.split("_")]
+        words[0] = words[0] if words[0] == "LLM" else words[0].capitalize()
+        return " ".join(words) + ("" if words[-1].endswith("s") else "s")
+
     async def pipeline(self, request: Request) -> Response:
+        """The machinery: a tab for each kind of plugin that is not a stage's (stores, providers, models, embedders...),
+        each a card of its plugins. A stage's own plugins are on its page."""
         stage_kinds = {q.kind for q in self._stage_specs()}
         stages, _ = await self._flow()
-        plugins = [p for p in self._host().statuses() if p.kind not in stage_kinds]
-        return self.render("pipeline.html", stages=stages, plugins=plugins, modals=self._modals(plugins))
+        every = self._host().statuses()
+        kinds = [k.name for k in self._host().kinds if k.name not in stage_kinds]
+        tab = request.query_params.get("tab", "")
+        if tab not in kinds:  # no tab, or one that is not machinery here: the first kind that has something in it
+            tab = next((k for k in kinds if any(p.kind == k for p in every)), kinds[0] if kinds else "")
+        plugins = [p for p in every if p.kind == tab]
+        tabs = [(k, self._kind_label(k), sum(p.kind == k and p.enabled for p in every)) for k in kinds]
+        return self.render("pipeline.html", stages=stages, tabs=tabs, tab=tab, label=self._kind_label(tab) if tab else "", plugins=plugins, modals=self._modals(plugins))
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()

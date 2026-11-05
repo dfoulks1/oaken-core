@@ -539,3 +539,26 @@ async def test_every_confirm_step_posts_back_to_the_route_that_asked(tmp_path: P
     finally:
         await client.aclose()
         await core.host.stop()
+
+
+# -- the Pipeline page: a tab per kind of machinery, like oaken-mail's ----------------------------------------
+async def test_the_pipeline_has_a_tab_for_each_kind_of_machinery_and_not_for_a_stage(tmp_path: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        page = (await client.get("/pipeline")).text
+        tabs = page[page.index('aria-label="Kinds of machinery"'):]
+        tabs = tabs[: tabs.index("</nav>")]
+        assert "Stores" in tabs and "LLM backends" in tabs and "Vector stores" in tabs  # machinery, named in words
+        assert "Enrichers" not in tabs and "Sieve" not in tabs  # a stage has its own page; Sieve is a product's
+        assert 'aria-current="page">Stores' in page and "sqlite" in page  # the first kind with something in it
+        stores = (await client.get("/pipeline?tab=store")).text
+        assert "sqlite" in stores and 'class="badge badge-ok">healthy' in stores  # health as a badge
+        assert "Plugin</th><th>Health</th><th>Enabled</th>" in stores  # mail's four columns
+        assert (await client.get("/pipeline?tab=nonsense")).status_code == 200  # an unknown tab is the default one
+        await client.post("/ui/plugins/enricher/notes/disable", data={"csrf": core.console.token})
+        stage = (await client.get("/stage/enrich")).text
+        assert "inactive (disabled)" in stage and "notes" in stage  # a plugin that is off is folded away, not lost
+    finally:
+        await client.aclose()
+        await core.host.stop()
