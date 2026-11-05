@@ -139,6 +139,8 @@ class ConsoleSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     port: int = Field(default=0, ge=0, le=65535)  # 0: pick a free one and publish it
+    palette: Literal["auto", "oak", "maple", "birch", "acorn", "moss", "stone", "sky", "stream", "contrast"] = "auto"
+    mode: Literal["auto", "light", "dark"] = "auto"
 
 
 class RouterSettings(BaseModel):

@@ -135,7 +135,7 @@ async def test_the_overview_plugins_queues_and_config_pages_render(rig: Rig) -> 
     assert "notes" in (await rig.c.get("/plugins")).text
     assert (await rig.c.get("/json/status")).json()["plugins_total"] >= 2
     assert (await rig.c.get("/json/queues")).json()["queues"][0]["queue"] == "default"
-    assert (await rig.c.get("/json/config")).json()["console"] == {"port": 0}
+    assert (await rig.c.get("/json/config")).json()["console"] == {"port": 0, "palette": "auto", "mode": "auto"}
     assert (await rig.c.get("/plugins/enricher/nope")).status_code == 404
 
 
@@ -240,3 +240,13 @@ async def test_the_console_listens_on_loopback_only_and_nothing_can_change_that(
             assert (await c.get(f"http://127.0.0.1:{core.console_port}/", headers={"host": "evil.example"})).status_code == 400
     finally:
         await core.stop()
+
+
+async def test_the_theme_menu_saves_palette_and_mode_to_config_and_refuses_unknown_ones(rig: Rig, oaken_home: Path) -> None:
+    r = await rig.post("/ui/look", palette="moss", mode="dark", back="/queues")
+    assert r.status_code == 303 and r.headers["location"] == "/queues"
+    page = (await rig.c.get("/queues")).text
+    assert 'data-palette="moss" data-mode="dark"' in page and 'aria-current="page">Queues' in page
+    assert 'palette = "moss"' in (oaken_home / "config" / "config.toml").read_text()
+    assert (await rig.post("/ui/look", palette="neon")).status_code == 422
+    assert (await rig.post("/ui/look", palette="oak", back="//evil.example")).headers["location"] == "/"

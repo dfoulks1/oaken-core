@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% block title %}{{ p.title }}{% endblock %}
 {% block body %}
 <h1>{{ p.title }}</h1>
-{% for m in messages %}<div class="msg">{{ m }}</div>{% endfor %}
+{% for m in messages %}<div class="alert alert-ok">{{ m }}</div>{% endfor %}
 {% set base = "/ui/plugins/" ~ kind ~ "/" ~ name ~ "/pages/" ~ p.name %}
 {% if fields %}
 <form method="post" action="{{ base }}/{{ 'submit' if p.submit else 'test' }}">{{ csrf(token) }}
@@ -10,8 +10,8 @@
 {% endif %}
 {% if p.order and rows %}
 <form method="post" action="{{ base }}/order">{{ csrf(token) }}<input type="hidden" name="ids" value="{{ rows|map(attribute='id')|join(',') }}">
-<table><tr><th>#</th><th>Item</th></tr>{% for r in rows %}<tr><td><input class="pos" type="text" name="pos_{{ r.id }}" value="{{ loop.index }}" aria-label="position of {{ r.label }}"></td><td>{{ r.label }}</td></tr>{% endfor %}</table>
-<p><button>Update</button></p></form>
-{% elif rows %}<table>{% for r in rows %}<tr><td>{{ r.label }}</td></tr>{% endfor %}</table>{% endif %}
+<div class="table-wrap"><table class="table"><tr><th>#</th><th>Item</th></tr>{% for r in rows %}<tr><td><input class="pos" type="text" name="pos_{{ r.id }}" value="{{ loop.index }}" aria-label="position of {{ r.label }}"></td><td>{{ r.label }}</td></tr>{% endfor %}</table></div>
+<p><button class="btn btn-sm">Update</button></p></form>
+{% elif rows %}<table>{% for r in rows %}<tr><td>{{ r.label }}</td></tr>{% endfor %}</table></div>{% endif %}
 <p><a href="/plugins/{{ kind }}/{{ name }}">Back</a></p>
 {% endblock %}

@@ -13,11 +13,14 @@ pipeline), the position-box ordering (``plugins.ui.reposition``) and the Origin 
 """
 
 import dataclasses
+import hashlib
 import hmac
 import json
 import os
 import secrets
+import tomllib
 from collections.abc import Awaitable, Callable
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +51,11 @@ from oaken_core.plugins.ui import reposition
 log = get_logger("oaken_core.console")
 HERE = Path(__file__).resolve().parent
 UI = CallerContext.ui()
+PALETTES = ("auto", "oak", "maple", "birch", "acorn", "moss", "stone", "sky", "stream", "contrast")
+MODES = ("auto", "light", "dark")
+CSS_VERSION = hashlib.sha256((HERE / "static" / "oaken.css").read_bytes()).hexdigest()[:10]
+_here: ContextVar[str] = ContextVar("console_here", default="/")  # the page being drawn, for nav and "back"
+
 NAV = (("/", "Overview"), ("/plugins", "Plugins"), ("/queues", "Queues"), ("/config", "Config"))
 
 Handler = Callable[[Request], Awaitable[Response]]
@@ -59,6 +67,7 @@ class Console:
     def __init__(self, client: CoreClient, svc: Services) -> None:
         self.client, self.svc = client, svc
         self.token = secrets.token_urlsafe(32)
+        self.look = {"palette": svc.settings.console.palette, "mode": svc.settings.console.mode}
         self.port = PortRef()
         self.env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True, undefined=jinja2.StrictUndefined
@@ -77,6 +86,7 @@ class Console:
             Route("/json/plugins/{kind}/{name}/ui", self.data(self.j_ui)),
             Route("/json/queues", self.data(self.j_queues)),
             Route("/json/config", self.data(self.j_config)),
+            Route("/ui/look", self.post(self.set_look), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/settings", self.post(self.save_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/button", self.post(self.press), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/pages/{page}/{action}", self.post(self.submit_page), methods=["POST"]),
@@ -93,7 +103,9 @@ class Console:
 
     # -- plumbing ------------------------------------------------------------------------------
     def render(self, template: str, http: int = 200, **ctx: Any) -> HTMLResponse:
-        html = self.env.get_template(template).render(nav=NAV, token=self.token, version=self.svc.version, **ctx)
+        html = self.env.get_template(template).render(
+            nav=NAV, token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
+            modes=MODES, css_version=CSS_VERSION, here=_here.get(), **ctx)
         return HTMLResponse(html, status_code=http)
 
     def fail(self, exc: BaseException) -> Response:
@@ -104,6 +116,7 @@ class Console:
 
     def page(self, fn: Handler) -> Handler:
         async def wrapped(request: Request) -> Response:
+            _here.set(request.url.path)
             try:
                 return await fn(request)
             except Exception as exc:  # noqa: BLE001 - every error becomes a page, never a crash
@@ -129,6 +142,7 @@ class Console:
         async def wrapped(request: Request) -> Response:
             try:
                 form = {k: str(v) for k, v in (await request.form()).items()}
+                _here.set(form.pop("back", "/"))  # the macros' guard() names the page to return to
                 if not hmac.compare_digest(form.pop("csrf", ""), self.token):
                     raise PermissionDenied("this form is missing its token; reload the page and try again")
                 return await fn(request, form)
@@ -282,6 +296,26 @@ class Console:
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=p.title, back=back, result=out.model_dump(mode="json") if out else {})
+
+    async def set_look(self, request: Request, form: dict[str, str]) -> Response:
+        """The theme menu: palette and mode, kept in ``[console]`` of ``config.toml`` (the one
+        thing the browser never stores)."""
+        look = {k: form.get(k, self.look[k]) for k in self.look}
+        if look["palette"] not in PALETTES or look["mode"] not in MODES:
+            raise InvalidInput("unknown palette or mode")
+        try:
+            text = self.config_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            text = ""
+        except OSError as exc:
+            raise ConfigError(f"cannot read {self.config_path}: {exc}") from exc
+        table = {**tomllib.loads(text).get("console", {}), **look}
+        tmp = self.config_path.with_name(self.config_path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(set_table(text, ["console"], table), encoding="utf-8")
+        os.replace(tmp, self.config_path)
+        self.look = look
+        back = _here.get()
+        return RedirectResponse(back if back.startswith("/") and not back.startswith("//") else "/", 303)
 
     async def save_settings(self, request: Request, form: dict[str, str]) -> Response:
         """Write the plugin's table to ``config.toml`` and restart that plugin on it. Checked

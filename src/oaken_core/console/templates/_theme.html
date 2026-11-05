@@ -1,0 +1,22 @@
+{# The theme dropdown: a hover/focus menu of forms, no script. Needs the macros imported as `m`. #}
+<div class="menu theme">
+  <button type="button" class="menu-btn" aria-haspopup="true" aria-label="Theme: {{ look.palette }}, {{ look.mode }}"><span class="sw" data-palette="{{ look.palette }}" data-mode="{{ look.mode }}"></span> Theme</button>
+  <div class="theme-pop">
+    <form method="post" action="/ui/look">
+      {{ m.guard(here) }}<input type="hidden" name="mode" value="{{ look.mode }}">
+      <p class="eyebrow">Palette</p>
+      {% for p in palettes %}
+      <button class="theme-opt" type="submit" name="palette" value="{{ p }}"{% if p == look.palette %} aria-current="true"{% endif %}>
+        <span class="sw" data-palette="{{ p }}" data-mode="{{ look.mode }}"></span>{{ "auto (birch)" if p == "auto" else p }}
+      </button>
+      {% endfor %}
+    </form>
+    <form method="post" action="/ui/look">
+      {{ m.guard(here) }}<input type="hidden" name="palette" value="{{ look.palette }}">
+      <p class="eyebrow">Mode</p>
+      <div class="row">
+      {% for o in modes %}<button class="btn btn-sm{% if o == look.mode %} btn-primary{% endif %}" type="submit" name="mode" value="{{ o }}">{{ o }}</button>{% endfor %}
+      </div>
+    </form>
+  </div>
+</div>

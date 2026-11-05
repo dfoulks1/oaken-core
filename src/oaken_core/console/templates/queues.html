@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block title %}Queues{% endblock %}
 {% block body %}
 <h1>Queues</h1>
-<table><tr><th>Queue</th><th>Queued</th><th>Running</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
-{% for q in queues %}<tr><td>{{ q.queue }}{% if q.paused %} <span class="mute">(paused)</span>{% endif %}</td><td>{{ q.queued }}</td><td>{{ q.running }}</td><td class="{{ 'bad' if q.failed }}">{{ q.failed }}</td>
-<td>{{ "%.0fs"|format(q.oldest_queued_seconds) if q.oldest_queued_seconds is not none else "" }}</td><td>{{ q.last_error or "" }}</td></tr>{% endfor %}</table>
+<div class="table-wrap"><table class="table"><tr><th>Queue</th><th>Queued</th><th>Running</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
+{% for q in queues %}<tr><td>{{ q.queue }}{% if q.paused %} <span class="muted">(paused)</span>{% endif %}</td><td>{{ q.queued }}</td><td>{{ q.running }}</td><td class="{{ 'bad' if q.failed }}">{{ q.failed }}</td>
+<td>{{ "%.0fs"|format(q.oldest_queued_seconds) if q.oldest_queued_seconds is not none else "" }}</td><td>{{ q.last_error or "" }}</td></tr>{% endfor %}</table></div>
 {% endblock %}

@@ -5,6 +5,6 @@
 {% elif f.kind in ("list", "json") %}<textarea id="f_{{ f.name }}" name="f_{{ f.name }}">{{ display(f, value) }}</textarea>
 {% elif f.kind == "number" %}<input type="number" step="any" id="f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}">
 {% else %}<input type="text" id="f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}">{% endif %}
-{% if f.help %}<div class="help">{{ f.help }}</div>{% endif %}
+{% if f.help %}<div class="hint">{{ f.help }}</div>{% endif %}
 {% endmacro %}
 {% macro csrf(token) %}<input type="hidden" name="csrf" value="{{ token }}">{% endmacro %}

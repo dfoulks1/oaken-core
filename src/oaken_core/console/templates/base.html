@@ -1,8 +1,23 @@
+{# The frame every console page shares (lifted from oaken-mail's _base.html). No script. #}
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Console{% endblock %} · Oaken Core</title>
-<link rel="stylesheet" href="/static/console.css"></head>
+<html lang="en" data-palette="{{ look.palette }}" data-mode="{{ look.mode }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}Console{% endblock %} · Oaken Core</title>
+  <link rel="stylesheet" href="/static/oaken.css?v={{ css_version }}">
+</head>
 <body>
-<header><b>OAKEN CORE</b><nav>{% for href, label in nav %}<a href="{{ href }}">{{ label }}</a>{% endfor %}</nav><span class="mute">v{{ version }}</span></header>
-<main>{% block body %}{% endblock %}</main>
-</body></html>
+{% import "_macros.html" as m with context %}
+<a class="skip" href="#main">Skip to the page</a>
+{% include "_icons.html" %}
+<header class="hd">
+  <a class="brand" href="/" aria-label="Oaken Core home"><span class="wordmark">Oaken<span>Core</span></span></a>
+  <nav class="nav" aria-label="Pages">{% for href, label in nav %}<a href="{{ href }}"{% if href == here or (href != "/" and here.startswith(href ~ "/")) %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+  {% include "_theme.html" %}
+</header>
+<div class="wrap"><main id="main">{% block body %}{% endblock %}</main></div>
+<footer class="foot"><p>Oaken Core {{ version }} · this machine only</p></footer>
+</body>
+</html>

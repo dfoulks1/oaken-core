@@ -1,0 +1,47 @@
+{# Form helpers for the console. Import with context so they can see the form token:
+   {% import "_macros.html" as m with context %} #}
+{% macro guard(back) -%}
+  <input type="hidden" name="csrf" value="{{ csrf }}"><input type="hidden" name="back" value="{{ back }}">
+{%- endmacro %}
+
+{# A form that posts to /ui/<action> and comes back to <back>. Its fields are the caller's. #}
+{% macro post(action, back, cls="inline") -%}
+  <form class="{{ cls }}" method="post" action="/ui/{{ action }}">{{ guard(back) }}{{ caller() }}</form>
+{%- endmacro %}
+
+{# An on/off switch that is its own small form: pressing it posts the opposite value. #}
+{% macro switch(action, back, on, label, fields, value_name="mcp", on_value="on", off_value="off", disabled=False, reason="", text=True) -%}
+  <form class="inline" method="post" action="/ui/{{ action }}">{{ guard(back) }}
+    {%- for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor -%}
+    <input type="hidden" name="{{ value_name }}" value="{{ off_value if on else on_value }}">
+    <button class="switch" type="submit" role="switch" aria-checked="{{ 'true' if on else 'false' }}"
+            aria-label="{{ label }}"{% if disabled %} disabled title="{{ reason }}"{% endif %}><span class="knob"></span></button>
+    {% if text %}<span class="switch-text">{{ "on" if on else "off" }}</span>{% endif %}
+  </form>
+{%- endmacro %}
+
+{# A pill toggle that lives inside a form: a hidden checkbox posts like any checkbox, so nothing
+   submits on click. ``attrs`` is extra attributes for the input (e.g. data-unlock). #}
+{% macro toggle(name, on, label, on_text="on", off_text="off", attrs="", id="") -%}
+  <label class="toggle"><input type="checkbox"{% if id %} id="{{ id }}"{% endif %}{% if name %} name="{{ name }}" value="1"{% endif %}{% if on %} checked{% endif %} aria-label="{{ label }}" {{ attrs | safe }}>
+    <span class="switch" aria-hidden="true"><span class="knob"></span></span>
+    <span class="switch-text"><span class="t-on">{{ on_text }}</span><span class="t-off">{{ off_text }}</span></span></label>
+{%- endmacro %}
+
+{# A destructive button that asks first, with no script: a panel opens on hover or focus. #}
+{% macro confirm(action, back, label, question, yes, fields, icon="") -%}
+  <div class="menu">
+    <button type="button" class="btn btn-danger btn-sm menu-btn{% if icon %} btn-icon{% endif %}" aria-haspopup="true"{% if icon %} aria-label="{{ label }}" title="{{ label }}"{% endif %}>{% if icon %}{{ icon_(icon) }}{% else %}{{ label }}{% endif %}</button>
+    <div class="confirm-pop">
+      <p>{{ question }}</p>
+      <form class="inline" method="post" action="/ui/{{ action }}">{{ guard(back) }}
+        {%- for k, v in fields.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor -%}
+        <button class="btn btn-danger btn-sm" type="submit">{{ yes }}</button>
+      </form>
+    </div>
+  </div>
+{%- endmacro %}
+
+{% macro icon_(name) -%}<svg class="icon" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{%- endmacro %}
+
+{% macro icon(name) -%}<svg class="icon" aria-hidden="true"><use href="#i-{{ name }}"/></svg>{%- endmacro %}
