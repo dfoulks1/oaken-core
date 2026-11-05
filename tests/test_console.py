@@ -394,7 +394,7 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
         assert 'popovertarget="add-stage"' in page and 'action="/ui/queues/add"' in page  # a button, and the form it opens
         assert 'value="triager"' in page and 'value="action"' in page
         assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
-        assert page.index("<h2>Queues</h2>") < page.index('popovertarget="add-stage"') < page.index("<h2>Plugins</h2>")  # by the Queues table
+        assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index("<span>Plugins</span>")  # by the Queues table
         assert 'popovertarget="add-stage"' not in (await client.get("/pipeline")).text  # only on General
         form = {"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"}  # a title only: the name comes from it
         first = await client.post("/ui/queues/add", data=form)

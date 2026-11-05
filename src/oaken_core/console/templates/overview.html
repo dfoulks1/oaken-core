@@ -3,11 +3,16 @@
 <h1>General</h1>
 {{ flow(stages) }}
 <p>Plugins: <b class="{{ 'ok' if status.plugins_healthy == status.plugins_total else 'bad' }}">{{ status.plugins_healthy }} of {{ status.plugins_total }} healthy</b>.</p>
-<div class="section-head"><h2>Queues</h2>{{ add_stage_button() }}</div>{{ add_stage_dialog() }}
+{{ add_stage_dialog() }}
+<div class="card">
+<div class="card-head"><span>Queues</span><span class="row"><span class="muted small">{{ status.queues|length }}</span>{{ add_stage_button() }}</span></div>
 <div class="table-wrap"><table class="table"><tr><th>Queue</th><th>Queued</th><th>Running</th><th>Failed</th><th>State</th></tr>
 {% for q in status.queues %}<tr><td>{{ q.queue }}</td><td>{{ q.queued }}</td><td>{{ q.running }}</td><td class="{{ 'bad' if q.failed }}">{{ q.failed }}</td><td>{{ "paused" if q.paused else "running" }}</td></tr>{% endfor %}</table></div>
-<h2>Plugins</h2>
+</div>
+<div class="card">
+<div class="card-head"><span>Plugins</span><span class="muted small">{{ plugins|length }}</span></div>
 <div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Name</th><th>State</th></tr>
 {% for p in plugins %}<tr><td>{{ p.kind }}</td><td><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td>
 <td class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "healthy" if p.healthy else (p.detail or "off") }}</td></tr>{% endfor %}</table></div>
+</div>
 {% endblock %}
