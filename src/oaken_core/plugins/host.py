@@ -816,6 +816,15 @@ class PluginHost:
             for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))
         ]
 
+    def provider_of(self, name: str) -> str:
+        """The dotted path of the class behind the plugin instance ``name`` (``pkg.module.Class``), or its
+        entry point's name when nothing has been instantiated. Several kinds may share a name; the first wins."""
+        for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name)):
+            if r.name == name:
+                cls = type(r.instance) if r.instance is not None else None
+                return f"{cls.__module__}.{cls.__qualname__}" if cls else r.plugin
+        return ""
+
     def usable(self, kind: str) -> dict[str, Any]:
         """Every started, healthy plugin of ``kind`` by instance name, in name order."""
         return {

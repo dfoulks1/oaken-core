@@ -17,7 +17,7 @@
     <tbody>
     {% for o in rows %}<tr>
       <td class="mono nowrap">{{ o.name }}</td>
-      <td class="mono">{{ o.plugin or "core" }}</td>
+      <td class="mono small">{{ o.provider }}</td>
       <td>{% if o.permission == "mutate" %}<span class="badge badge-warn">mutate</span>{% elif o.permission == "send" %}<span class="badge badge-danger">send</span>{% else %}<span class="badge badge-ok">read</span>{% endif %}</td>
       <td>{{ m.switch("expose", "/capabilities", o.exposed, "Expose " ~ o.name ~ " over MCP", {"name": o.name}, "mcp", "on", "off", not o.allowed, "Never offered over MCP: no setting can change that", false) }}</td>
       <td class="muted">{{ o.summary }}</td>

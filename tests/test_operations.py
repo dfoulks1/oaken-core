@@ -182,3 +182,8 @@ def test_cli_paths_and_group_rules(ops: Ops) -> None:
 
     with pytest.raises(OperationDefinitionError, match="must prefix"):
         Operation(name="thing", summary="x", permission="read", input=E, output=E, handler=h, group="queue")
+
+
+async def test_exposure_list_names_each_operations_provider(ops: Ops) -> None:
+    rows = {o.name: o for o in (await ops.client.call("exposure_list", {}, CLI)).output.operations}  # type: ignore[union-attr]
+    assert rows["cache_clear"].provider == "core.provider.cache" and rows["status"].provider == "core.provider.general"

@@ -417,6 +417,8 @@ async def test_capabilities_lists_every_operation_by_who_offers_it_and_switches_
     assert "Core: queue" in page and "enricher plugins" in page  # core by group; a plugin's under its kind
     assert 'class="mono nowrap">notes.hi' in page  # the loader put the plugin's operation here
     assert 'aria-label="Expose queue_list over MCP"' in page
+    assert "core.provider.queue" in page and "core.provider.cache" in page  # a core operation's provider is core.provider.<group>
+    assert any(f'class="mono small">{c}</td>' in page for c in ("tests.test_console.Notes", "test_console.Notes"))  # a plugin's is its class
     assert page.index(">Config<") < page.index(">Capabilities<")  # mail's nav order
     # a row's switch turns an operation on for MCP, and back
     on = await rig.post("/ui/expose", name="notes.hi", mcp="on")

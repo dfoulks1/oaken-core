@@ -207,10 +207,18 @@ class ExposureRow(BaseModel):
     exposed: bool  # is it on now?
     group: str = ""  # the CLI group it sits under ("" for a core operation with none)
     summary: str = ""
+    provider: str = ""  # who offers it: ``core.provider.<group>``, or the plugin class's dotted path
 
 
 class ExposureListOut(BaseModel):
     operations: list[ExposureRow]
+
+
+def provider_of(ctx: OpContext, op: Any) -> str:
+    if op.plugin is None:
+        return f"core.provider.{op.group or 'general'}"
+    host = ctx.svc.host
+    return (host.provider_of(op.plugin) if host is not None else "") or op.plugin
 
 
 @operation("exposure_list", "Which operations MCP may reach, and which are on.", permission="read",
@@ -219,7 +227,8 @@ async def exposure_list(ctx: OpContext, inp: Empty) -> ExposureListOut:
     exp, chosen = ctx.exposure, await ctx.exposure.settings()
     return ExposureListOut(operations=[
         ExposureRow(name=o.name, plugin=o.plugin, permission=o.permission, ceiling=o.mcp,
-                    allowed=exp.allowed(o), exposed=exp.effective(o, chosen), group=o.group, summary=o.summary)
+                    allowed=exp.allowed(o), exposed=exp.effective(o, chosen), group=o.group, summary=o.summary,
+                    provider=provider_of(ctx, o))
         for o in ctx.registry.all()
     ])  # fmt: skip
 
