@@ -119,11 +119,12 @@ class RuntimeFile:
         self._held = False
         self._started: datetime = clock.now()
 
-    def _payload(self, port: int) -> str:
+    def _payload(self, port: int, console_port: int = 0) -> str:
         data: dict[str, Any] = {
             "pid": self.pid,
             "host": "127.0.0.1",
             "port": port,
+            "console_port": console_port,
             "version": self.version,
             "started_at": self._started.strftime("%Y-%m-%dT%H:%M:%S.")
             + f"{self._started.microsecond // 1000:03d}Z",
@@ -151,11 +152,11 @@ class RuntimeFile:
             return
         raise Conflict("another core is starting; try again")
 
-    def publish(self, port: int) -> None:
+    def publish(self, port: int, console_port: int = 0) -> None:
         """Say where core listens. Written to a sibling and renamed, so a reader sees the old file
         or the new one, never half of it."""
         tmp = self.path.with_name(self.path.name + f".{self.pid}.tmp")
-        _private_write(tmp, self._payload(port), exclusive=False)
+        _private_write(tmp, self._payload(port, console_port), exclusive=False)
         os.replace(tmp, self.path)
 
     def read(self) -> dict[str, Any] | None:

@@ -34,6 +34,39 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   allow-lists (mail's provider idea), the `trial` wizard, per-method tracing wrappers, mail's
   declarative `PluginTable` store (plugins get `ctx.db` and a migrations folder instead; shortcut: not
   sandboxed), and `ctx.llm` (step 5). The registry still carries mail's `marks_read` (step 4 drops it).
+- Step 5: the model router (`oaken_core/router/`). `Router.ask(route, call, request, output)` runs the
+  ladder: answer cache, near-duplicate shortcut (`needs_vec` only, via `embed` and `nearest`), a
+  capped small-model call, one escalation on low confidence (`confidence` field) or a bad answer.
+  Backends are `[plugins.llm_backend.<name>]` tables (`plugin`, `locality`, `concurrency`; unset
+  locality means hosted); an analyzer's `[...<name>.route]` table names backend, model, `fallback`,
+  `escalate`. Each backend has its own semaphore. Confidential: local always, lan if in
+  `[router] lan_allowlist`, hosted never; a disallowed backend is skipped, none left raises
+  `ConfidentialRefused`. Cache key (analyzer, version, content hash, effective model), table
+  `answer_cache`; ledger `llm_ledger`, reported by operation `ai_usage` (mcp off). `BaseAnalyzer.ask`
+  (triager, enricher, action bases). `Verdict.learn` and the `nearjunk` triager (rank 40, entry
+  point); the junk index is off unless `[router] junk_index`. Stubs: `router/stub.py`. 274 tests pass.
+  Skipped on purpose: a human decline adding its vector; moving the embedder and vector-store
+  contracts' real plugins (plugins repo); a wait state for `needs_vec` jobs (the call raises
+  `Unavailable` and the job retries with backoff); per-call trace of the ladder.
+  Not wired: `Intake` is not built in the daemon yet, so nothing passes it `router` or the host's
+  triagers (they need a `name`). Unmeasured: the savings, until a real backend runs.
+- Step 6: the console (`oaken_core/console/`). Core's own, no plugin involved: its own listener on a
+  hard-coded 127.0.0.1 (`[console] port` only; `extra="forbid"` refuses a host), its own unit in the
+  daemon, started before the host so a failing plugin cannot take it down. Guard: Host (name and
+  port), loopback peer, Origin and Sec-Fetch-Site on any post, form content type, CSRF token on every
+  post, a CSP with no script. Server-rendered Jinja (new dependency `jinja2`, plus explicit
+  `python-multipart`). Pages: overview, plugins, a plugin's settings modal, plugin pages, queues,
+  config; JSON beside: `/json/status|plugins|queues|config` and `/json/plugins/<kind>/<name>/ui`
+  (the `UiSpec`, or the schema when the spec is absent or refused). A mutate shows its proposal and
+  waits for a second click (the same gate as the CLI). Settings save writes `config.toml` (secrets
+  refused, `config_model` checked) and restarts only that plugin. `console_port` is in `runtime.json`.
+  `BaseAuth` and `remote_ok` stay on the API door. 283 tests pass.
+  Skipped on purpose: lifting oaken-mail's templates (all mail copy; written new and small), the
+  pipeline and stage views (nothing to show until a product has stages), editing core's own sections
+  of `config.toml` from the console (read-only page), pause and requeue buttons on the queue page, and
+  live updates (no script, so no SSE; reload the page).
+  Not verified: any real browser (tests drive the ASGI app and one real loopback socket); the
+  Origin `null` allowance is lifted as-is from oaken-mail and rests on the CSRF token.
 - The unread parts were read for sizing (see Sizing).
 
 ## Decided

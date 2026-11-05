@@ -215,4 +215,9 @@ async def amain(argv: list[str], *, prog: str = "oaken-core", client_factory: Cl
 
 
 def main(argv: list[str] | None = None, *, prog: str = "oaken-core", client_factory: ClientFactory | None = None) -> int:
-    return asyncio.run(amain(list(sys.argv[1:] if argv is None else argv), prog=prog, client_factory=client_factory))
+    args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] in ("start", "stop", "reload"):  # these run with no core to ask
+        from oaken_core.daemon.lifecycle import cli
+
+        return cli(args)
+    return asyncio.run(amain(args, prog=prog, client_factory=client_factory))
