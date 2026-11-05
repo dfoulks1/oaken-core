@@ -95,10 +95,12 @@ class Intake:
         triagers: Sequence[Triager] = (),
         ingest: IngestFn | None = None,
         router: Any = None,
+        triager_source: Callable[[], Sequence[Triager]] | None = None,
     ) -> None:
         self.router = router  # the model router, for ``Verdict.learn``
         self.queue, self.labels, self.db, self.changelog = queue, labels, db, changelog
         self.triagers = sorted(triagers, key=lambda t: (t.rank, t.name))
+        self.triager_source = triager_source  # asked on every job, so a plugin that comes or goes counts
         self.ingest = ingest
 
     def register(self, runner: JobRunner) -> None:
@@ -118,11 +120,15 @@ class Intake:
         await self.queue.enqueue(KIND, payload, subject=subject, queue=DEFAULT, actor=actor)
         return subject
 
+    def _order(self) -> list[Triager]:
+        found = self.triager_source() if self.triager_source else self.triagers
+        return sorted(found, key=lambda t: (t.rank, t.name))
+
     async def _triage_job(self, p: IntakePayload, job: Job) -> IntakeResult:
         item = IntakeItem(p.subject_id, p.source, p.body, p.labels)
         who, verdict = SYSTEM, None
         try:
-            for t in self.triagers:
+            for t in self._order():
                 verdict = await t.triage(item)
                 if verdict is not None:
                     who = Actor("system", t.name)

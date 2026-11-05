@@ -30,7 +30,7 @@ from oaken_core import __version__
 from oaken_core.actors import Actor
 from oaken_core.clock import Clock
 from oaken_core.db import Database, migrate
-from oaken_core.errors import NotFound, PluginError
+from oaken_core.errors import NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import LabelError, LabelMaker, LabelStore
 from oaken_core.logging import get_logger
@@ -176,6 +176,7 @@ class PluginHost:
         self.kinds = kinds or KindRegistry.shipped()
         self.tracer: Tracer | None = None  # set by core: the opt-in trace
         self.router: Any = None  # set by core: the model router, handed to plugins as ``ctx.router``
+        self.intake: Any = None  # set by core: ``Intake``, behind ``ctx.submit``
         self._discover = discover
         self.health_interval = health_interval
         self.call_timeout = call_timeout
@@ -399,6 +400,14 @@ class PluginHost:
         tracer = self.tracer
         return {} if tracer is None else {"trace": tracer.emit, "tracing": lambda: tracer.enabled}
 
+    def _submitter(self, rec: _Record) -> Any:
+        async def submit(source: str, body: Any, *, labels: dict[str, str] | None = None) -> str:
+            if self.intake is None:
+                raise Unavailable("intake is not running")
+            return str(await self.intake.submit(source, body, labels=labels, actor=Actor("system", rec.name)))
+
+        return submit
+
     def _config(self, rec: _Record) -> dict[str, Any]:
         return {k: v for k, v in self.tables.table(rec.kind, rec.name).items() if k not in HOST_KEYS}
 
@@ -450,7 +459,7 @@ class PluginHost:
         ctx = PluginContext(
             name=rec.name, kind=rec.kind, plugin=rec.plugin, clock=self.clock,
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
-            db=None if spec.first else self.db, labels=labels, router=self.router,
+            db=None if spec.first else self.db, labels=labels, router=self.router, submit=self._submitter(rec),
             route=dict(self.tables.table(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
         )  # fmt: skip
         rec.ctx = ctx

@@ -8,6 +8,7 @@ the host has loaded them, so only plugins that started contribute. Rewritten for
 """
 
 import asyncio
+from typing import Any
 
 from oaken_core import __version__, paths
 from oaken_core.agents import AgentRegistry
@@ -19,9 +20,11 @@ from oaken_core.changelog import ChangeLog
 from oaken_core.clock import Clock, SystemClock
 from oaken_core.console import Console, ConsoleServer
 from oaken_core.daemon.units import Lifecycle, ServiceUnit, unit
-from oaken_core.errors import Unavailable
+from oaken_core.errors import Deferred, NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus
+from oaken_core.intake import Intake, IntakeItem
 from oaken_core.jobs import JobQueue, JobRunner
+from oaken_core.ids import SubjectId
 from oaken_core.labels import LabelMaker, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.operations.builtin import core_registry
@@ -37,6 +40,20 @@ from oaken_core.settings import Settings
 from oaken_core.trace import Tracer
 
 log = get_logger("oaken_core.daemon")
+
+class _Triager:
+    """A plugin triager as intake wants it: with the name the host knows it by."""
+
+    def __init__(self, name: str, plugin: Any) -> None:
+        self.name, self.plugin = name, plugin
+
+    @property
+    def rank(self) -> int:
+        return int(self.plugin.rank)
+
+    async def triage(self, item: IntakeItem) -> Any:
+        return await self.plugin.triage(item)
+
 
 JOB_GRACE = 30.0  # seconds running jobs get to finish at stop; then their leases are released
 
@@ -80,12 +97,15 @@ class Core:
         queue = JobQueue(db, clock, queues, labels=labels, changelog=changelog, settings=s.jobs, swarm=s.swarm, bus=self.bus)
         self.agents = AgentRegistry(db, clock, s.swarm, self.bus)
         self.scheduler = Scheduler(db, queue, clock)
-        self.runner = JobRunner(queue)
         self.tracer = Tracer(paths.data_dir() / "trace.jsonl", clock, max_bytes=s.log.file_max_bytes, backups=s.log.file_backups)
         self.tracer.bus = self.bus
         self.host.tracer = self.tracer
         self.router = Router(db, clock, s.router, HostDirectory(self.host, s.router))
         self.host.router = self.router
+        self.runner = JobRunner(queue)
+        self.intake = Intake(queue, labels, db, changelog, triager_source=self._triagers, ingest=self._ingest, router=self.router)
+        self.intake.register(self.runner)
+        self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, queue=queue, labels=labels, changelog=changelog,
                        bus=self.bus, agents=self.agents, host=self.host, scheduler=self.scheduler, tracer=self.tracer, router=self.router)  # fmt: skip
         self.registry = core_registry()
@@ -100,6 +120,19 @@ class Core:
         self.console = Console(self.client, svc)  # core's own: no plugin can switch it off
         self.console_server = ConsoleServer(self.console, s.console)
         self._life = Lifecycle(self._units())
+
+    def _triagers(self) -> list[_Triager]:
+        """The healthy triagers right now, so one that starts or stops counts from the next item."""
+        return [_Triager(name, plugin) for name, plugin in self.host.named_triagers().items()]
+
+    async def _ingest(self, item: IntakeItem) -> SubjectId:
+        """Hand an accepted item to the active ingestor. With none, the item waits in intake (it is
+        deferred, not failed): core has no nouns, so a product plugin has to say where items go."""
+        try:
+            ingestor = self.host.get("ingestor")
+        except (PluginError, NotFound) as exc:
+            raise Deferred(f"no ingestor is running ({exc})", self.settings.router.wait_seconds) from None
+        return SubjectId(str(await ingestor.ingest(item)))
 
     def _units(self) -> list[ServiceUnit]:
         async def none() -> None:

@@ -85,6 +85,9 @@ class PluginContext:
     # backend and model it asks, its fallbacks and its input budget. None in a bare test context.
     router: Any = None
     route: dict[str, Any] = field(default_factory=dict)
+    # ``await ctx.submit(source, body, labels={...})`` puts an item into intake (triage, then the
+    # ingestor) and returns its provisional subject id. A provider's way in. None in a bare context.
+    submit: Callable[..., Awaitable[str]] | None = None
     _subscriptions: list[Callable[[], None]] = field(
         default_factory=list, repr=False, compare=False
     )

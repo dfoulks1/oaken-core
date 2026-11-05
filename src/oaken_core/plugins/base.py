@@ -236,6 +236,15 @@ class BaseEmbedder(BasePlugin):
         raise NotImplementedError("an embedder must implement embed()")
 
 
+class BaseIngestor(BasePlugin):
+    """Stores an item intake accepted and returns its real ``SubjectId``. The product's own: core
+    knows nothing about what an item is. One is active at a time."""
+
+    @_default
+    async def ingest(self, item: Any) -> Any:
+        raise NotImplementedError("an ingestor must implement ingest()")
+
+
 class BaseTriager(BaseAnalyzer):
     """Rates an intake item before it is stored. Lowest ``rank`` first; the first verdict wins."""
 

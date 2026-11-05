@@ -75,4 +75,6 @@ SHIPPED = (
     KindSpec("triager", "oaken_core.triagers", ("version", "needs_llm", "rank", "triage"), analyzer=True),
     KindSpec("enricher", "oaken_core.enrichers", ("version", "needs_llm", "enrich"), analyzer=True),
     KindSpec("action", "oaken_core.actions", ("version", "needs_llm", "routes", "act"), analyzer=True),
+    # Where an accepted intake item is stored. Core has no nouns, so a product supplies this one.
+    KindSpec("ingestor", "oaken_core.ingestors", ("ingest",), exclusive=True),
 )

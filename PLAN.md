@@ -62,8 +62,14 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   refuses a remote URL itself (the router's `locality` decides who may see what). `BaseEmbedder` is new.
   `oaken_core/testing/contracts.py` starts the contract suites with the embedder's. Not lifted yet: the
   LLM backend (`llm.py`), the live test.
-  Not wired: `Intake` is not built in the daemon yet, so nothing passes it `router` or the host's
-  triagers (they need a `name`). Unmeasured: the savings, until a real backend runs.
+  Intake is wired into the daemon: it is built in `Core.open`, registered on the runner, handed the
+  router, and asks the host for the healthy triagers on every item (so one that starts or stops counts
+  from the next). A new exclusive kind, `ingestor` (`BaseIngestor.ingest(item) -> SubjectId`), is where an
+  accepted item is stored: core has no nouns, so a product supplies it. With none running an accepted item
+  is `Deferred` (waits, never fails, `[router] wait_seconds`) and flows once one starts. `ctx.submit(source,
+  body, labels=...)` is a plugin's way into intake (actor `system`, labelled with the plugin's name).
+  `oaken --help` lists core's own commands from the registry when no daemon is running.
+  Unmeasured: the savings, until a real backend runs.
 - Step 6: the console (`oaken_core/console/`). Core's own, no plugin involved: its own listener on a
   hard-coded 127.0.0.1 (`[console] port` only; `extra="forbid"` refuses a host), its own unit in the
   daemon, started before the host so a failing plugin cannot take it down. Guard: Host (name and
