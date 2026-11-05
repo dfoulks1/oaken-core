@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Where Oaken keeps its files. ``OAKEN_HOME`` relocates everything under one root."""
+"""Where Oaken keeps its files. ``OAKEN_HOME`` (or the product's own variable, see ``identity``) relocates
+everything under one root."""
 
 import contextlib
 import os
@@ -7,8 +8,7 @@ from pathlib import Path
 
 import platformdirs
 
-APP = "oaken"
-HOME_ENV = "OAKEN_HOME"
+from oaken_core import identity
 
 
 POINTER_ENV = "OAKEN_STATE_DIR"  # where the last-known-home pointer lives (tests redirect it)
@@ -18,7 +18,7 @@ POINTER_FILE = "last_home"
 def _pointer_path() -> Path:
     base = os.environ.get(POINTER_ENV)
     return (
-        Path(base).expanduser() if base else Path(platformdirs.user_state_dir(APP))
+        Path(base).expanduser() if base else Path(platformdirs.user_state_dir(identity.app))
     ) / POINTER_FILE
 
 
@@ -37,7 +37,7 @@ def remember_home() -> bool:
     """Record the current home as the last known good one. ``True`` if something was written.
     Only done when ``OAKEN_HOME`` is set explicitly: the platform default needs no pointer."""
     home = _home()
-    if home is None or os.environ.get(HOME_ENV) is None:
+    if home is None or os.environ.get(identity.home_env()) is None:
         return False
     target = _pointer_path()
     if _remembered() == home:
@@ -53,7 +53,7 @@ def remember_home() -> bool:
 def home_source() -> tuple[str, Path | None]:
     """How the home was chosen: ``env`` (``OAKEN_HOME``), ``remembered`` (the last known good
     home, used when the variable is unset) or ``default`` (the platform folders)."""
-    raw = os.environ.get(HOME_ENV)
+    raw = os.environ.get(identity.home_env())
     if raw:
         return "env", Path(raw).expanduser().resolve()
     remembered = _remembered()
@@ -76,23 +76,23 @@ def _ensure(path: Path) -> Path:
 def data_dir() -> Path:
     """Databases and other durable state."""
     home = _home()
-    return _ensure(home / "data" if home else Path(platformdirs.user_data_dir(APP)))
+    return _ensure(home / "data" if home else Path(platformdirs.user_data_dir(identity.app)))
 
 
 def plugins_dir() -> Path:
     """Folders plugins own, ``<kind>/<name>/<folder>`` beneath it (ADR 0016)."""
     home = _home()
-    return _ensure(home / "plugins" if home else Path(platformdirs.user_data_dir(APP)) / "plugins")
+    return _ensure(home / "plugins" if home else Path(platformdirs.user_data_dir(identity.app)) / "plugins")
 
 
 def config_dir() -> Path:
     """``config.toml`` lives here."""
     home = _home()
-    return _ensure(home / "config" if home else Path(platformdirs.user_config_dir(APP)))
+    return _ensure(home / "config" if home else Path(platformdirs.user_config_dir(identity.app)))
 
 
 def runtime_file(name: str = "runtime.json") -> Path:
     """A file for the running core (port and token). Its directory is created, the file is not."""
     home = _home()
-    base = home / "run" if home else Path(platformdirs.user_runtime_dir(APP, ensure_exists=False))
+    base = home / "run" if home else Path(platformdirs.user_runtime_dir(identity.app, ensure_exists=False))
     return _ensure(base) / name

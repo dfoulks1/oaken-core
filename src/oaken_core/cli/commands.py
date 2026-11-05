@@ -24,6 +24,7 @@ import sys
 from collections.abc import Callable
 from typing import Any
 
+from oaken_core import identity
 from oaken_core.cli.client import ApiClient, CallResult, OpInfo
 from oaken_core.cli.exits import CliError, CoreUnavailable, ExitCode, exit_for_error_code
 from oaken_core.cli.output import print_json, print_table, print_text
@@ -244,10 +245,10 @@ def _wants_help(argv: list[str]) -> bool:
     return not argv or "-h" in argv or "--help" in argv
 
 
-def main(argv: list[str] | None = None, *, prog: str = "oaken", client_factory: ClientFactory | None = None) -> int:
+def main(argv: list[str] | None = None, *, prog: str | None = None, client_factory: ClientFactory | None = None, make: Any = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if args and args[0] in ("start", "stop", "reload"):  # these run with no core to ask
         from oaken_core.daemon.lifecycle import cli
 
-        return cli(args)
-    return asyncio.run(amain(args, prog=prog, client_factory=client_factory))
+        return cli(args, make) if make is not None else cli(args)
+    return asyncio.run(amain(args, prog=prog or identity.prog, client_factory=client_factory))

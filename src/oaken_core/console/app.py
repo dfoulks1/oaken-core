@@ -31,12 +31,13 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
-from oaken_core import paths
+from oaken_core import identity, paths
 from oaken_core.api.errors import status_for
 from oaken_core.config_edit import refuse_secrets, set_table
 from oaken_core.console import forms
 from oaken_core.console.forms import Field
 from oaken_core.console.guard import ConsoleGuard, PortRef
+from oaken_core import identity
 from oaken_core.errors import ConfigError, InvalidInput, NotFound, OakenError, PermissionDenied
 from oaken_core.logging import get_logger
 from oaken_core.operations.caller import CallerContext
@@ -111,7 +112,7 @@ class Console:
     # -- plumbing ------------------------------------------------------------------------------
     def render(self, template: str, http: int = 200, **ctx: Any) -> HTMLResponse:
         html = self.env.get_template(template).render(
-            nav=NAV, token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
+            nav=NAV, app_title=identity.title, wordmark=identity.wordmark(), token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
             modes=MODES, css_version=CSS_VERSION, here=_here.get(), **ctx)
         return HTMLResponse(html, status_code=http)
 

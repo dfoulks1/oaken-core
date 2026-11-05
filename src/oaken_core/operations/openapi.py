@@ -12,6 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from oaken_core import identity
 from oaken_core.operations.gate import Proposal
 from oaken_core.operations.registry import AnyOperation, Change
 
@@ -41,7 +42,7 @@ def _model(schemas: dict[str, Any], model: type[BaseModel], key: str) -> dict[st
 
 
 def build_openapi(
-    operations: Iterable[AnyOperation], *, title: str = "Oaken Core", version: str = "1"
+    operations: Iterable[AnyOperation], *, title: str | None = None, version: str = "1"
 ) -> dict[str, Any]:
     schemas: dict[str, Any] = {}
     proposal = _model(schemas, Proposal, "Proposal")
@@ -120,7 +121,7 @@ def build_openapi(
     }
     return {
         "openapi": "3.1.0",
-        "info": {"title": title, "version": version},
+        "info": {"title": title or identity.title, "version": version},
         "paths": paths,
         "components": {"schemas": schemas},
     }

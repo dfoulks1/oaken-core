@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from oaken_core import __version__, paths
+from oaken_core import __version__, identity, paths
 from oaken_core.api.runtime import RuntimeFile, pid_alive, read_runtime
 from oaken_core.clock import SystemClock
 from oaken_core.daemon.core import Core
@@ -132,16 +132,16 @@ async def serve(
             runtime.release()
 
 
-def run(settings: Settings | None = None) -> int:
+def run(settings: Settings | None = None, make: MakeCore = Core) -> int:
     """Foreground entry point: 0 for a clean stop, 1 if core is already running or the
     configuration is wrong."""
     try:
         cfg = settings or Settings.load()
         configure_logging(cfg.log)
         paths.remember_home()
-        asyncio.run(serve(cfg, load_settings=Settings.load if settings is None else None))
+        asyncio.run(serve(cfg, make=make, load_settings=Settings.load if settings is None else None))
     except (Conflict, ConfigError) as exc:
-        print(f"oaken: {exc}", file=sys.stderr)
+        print(f"{identity.prog}: {exc}", file=sys.stderr)
         return 1
     return 0
 
@@ -206,11 +206,11 @@ def reload(runtime: Path | None = None) -> bool:
     return found is not None and _signal(found, signal.SIGHUP, "signal")
 
 
-def cli(argv: list[str]) -> int:
+def cli(argv: list[str], make: MakeCore = Core) -> int:
     """``start`` (foreground), ``stop`` and ``reload``: the verbs that work with no core running."""
     verb = argv[0]
     if verb == "start":
-        return run()
+        return run(make=make)
     if verb == "stop":
         result = stop_gracefully()
         print("stopped" if result.running else "core is not running")
