@@ -219,9 +219,9 @@ class Console:
         return [q for q in self.svc.queues.all() if q.kind]
 
     def _nav(self) -> list[tuple[str, str]]:
-        """General, a link per stage in pipeline order, the machinery, and the config."""
+        """General, the machinery, then a link per stage in the order they were made, then Config and Capabilities."""
         stages = [(f"/stage/{q.name}", q.title) for q in self._stage_specs()]
-        return [("/", "General"), *stages, ("/pipeline", "Pipeline"), ("/config", "Config"), ("/capabilities", "Capabilities")]
+        return [("/", "General"), ("/pipeline", "Pipeline"), *stages, ("/config", "Config"), ("/capabilities", "Capabilities")]
 
     async def _flow(self) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
         """Intake, then each stage, with what waits in it; and the queue rows by name."""

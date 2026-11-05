@@ -370,7 +370,7 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
         home = (await client.get("/")).text
-        assert home.index(">General<") < home.index(">Enrichment<") < home.index(">Pipeline<") < home.index(">Config<")
+        assert home.index(">General<") < home.index(">Pipeline<") < home.index(">Enrichment<") < home.index(">Config<") < home.index(">Capabilities<")  # stages sit right of Pipeline
         assert "Queues<" not in home.split("</header>")[0]
         stage = await client.get("/stage/enrich")
         assert stage.status_code == 200 and 'aria-current="page">Enrichment' in stage.text
