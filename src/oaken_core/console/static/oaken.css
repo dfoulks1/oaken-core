@@ -394,6 +394,7 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .caps { table-layout: fixed; }
 .caps th:nth-child(1) { width: 13rem; } .caps th:nth-child(2) { width: 17rem; } .caps th:nth-child(3) { width: 7rem; } .caps th:nth-child(4) { width: 4.5rem; }
 .table td > .btn-icon { vertical-align: middle; }
-/* A button never matches what it sits on: inside a card or a dialog (both --surface) a plain button takes --surface-2. */
-.card .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger), .dialog .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger) { background: var(--surface-2); }
-.dialog-foot .btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger) { background: var(--surface); }
+/* A button never fades into what it sits on, whatever that is (page, card, dialog footer): the primary is solid accent, and
+   every other button is an accent outline on a faint accent tint. Only the close X of a dialog is bare (btn-ghost). */
+.btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger) { color: var(--brand); border-color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
+.btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger):hover { background: color-mix(in srgb, var(--brand) 16%, var(--surface)); border-color: var(--brand); }
