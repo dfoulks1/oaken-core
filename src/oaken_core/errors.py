@@ -83,6 +83,17 @@ class Unavailable(OakenError):
     code = "unavailable"
 
 
+class Deferred(Unavailable):
+    """Not now, and not a failure: the job goes back to the queue for ``retry_after`` seconds and the
+    attempt is not counted. Raised when a thing it needs is down (an embedder) or spent (a budget)."""
+
+    code = "deferred"
+
+    def __init__(self, message: str = "", retry_after: float = 30.0) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
 class ConfidentialRefused(PermissionDenied):
     """A confidential call has no backend it may reach. The router refuses; it never falls back to
     a remote box."""

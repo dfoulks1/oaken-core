@@ -177,7 +177,14 @@ class BaseAnalyzer(BasePlugin):
 
     version: ClassVar[str] = "1"
     needs_llm: ClassVar[bool] = False
-    needs_vec: ClassVar[bool] = False  # uses the embedder and vector store (core-only, never an agent's)
+
+
+class BaseVecAnalyzer(BaseAnalyzer):
+    """Add to a kind's base for an analyzer that uses the embedder and vector store, only through
+    the router (``embed``, ``nearest``): ``class Mine(BaseVecAnalyzer, BaseTriager)``. Its jobs run
+    in core, never on an agent, and wait while no embedder or vector store is healthy."""
+
+    needs_vec: ClassVar[bool] = True
 
 
 class BaseLLMAnalyzer(BaseAnalyzer):
@@ -213,7 +220,7 @@ class BaseLLMAnalyzer(BaseAnalyzer):
         router = self.ctx.router
         if router is None:
             raise PluginError(f"{self.ctx.name}: no model router in this context")
-        call = Call(self.ctx.name, str(self.version), content_hash, confidential, self.needs_vec, text)
+        call = Call(self.ctx.name, str(self.version), content_hash, confidential, getattr(self, "needs_vec", False), text)
         return await router.ask(self._route(), call, request, output)
 
 

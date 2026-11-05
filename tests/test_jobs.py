@@ -5,7 +5,7 @@ import pytest
 from pydantic import BaseModel
 
 from oaken_core.actors import SYSTEM, USER
-from oaken_core.errors import InvalidInput, InvalidResult
+from oaken_core.errors import Deferred, InvalidInput, InvalidResult
 from oaken_core.jobs import PermanentJobError
 
 from .conftest import Kit
@@ -160,3 +160,18 @@ async def test_stats_show_depth_age_and_the_last_error(kit: Kit) -> None:
     (default,) = await kit.queue.stats()
     assert (default.queued, default.failed) == (1, 0)
     assert default.oldest_queued_seconds == 120 and default.last_error is None
+
+
+async def test_a_deferred_job_waits_without_spending_an_attempt_and_never_fails(kit: Kit) -> None:
+    async def wait(p: Ping, job: object) -> None:
+        raise Deferred("no healthy embedder", 60)
+
+    kit.runner.register("k", Ping, wait)
+    enq = await kit.queue.enqueue("k", Ping(), max_attempts=1)
+    for _ in range(3):  # a failing job with one attempt would be dead after the first
+        await kit.runner.drain()
+        job = await kit.queue.get(enq.job_id)
+        assert job and job.status == "queued" and job.attempts == 0 and "embedder" in (job.last_error or "")
+        assert job.run_after - kit.clock.now() == timedelta(seconds=60)
+        assert await kit.runner.drain() == 0  # not yet due
+        kit.clock.advance(seconds=61)

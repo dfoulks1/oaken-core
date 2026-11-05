@@ -27,10 +27,10 @@ from pydantic import BaseModel, ValidationError
 
 from oaken_core.clock import Clock
 from oaken_core.db import Database
-from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, Unavailable
+from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, Deferred, Unavailable
 from oaken_core.logging import get_logger
 from oaken_core.plugins.contracts import Hit, LLMRequest, LLMResponse, VectorItem
-from oaken_core.router.store import AnswerCache, CacheEntry, Ledger, LedgerRow
+from oaken_core.router.store import AnswerCache, CacheEntry, Ledger, LedgerRow, Spend, SpendRow
 from oaken_core.settings import RouterSettings
 from oaken_core.untrusted import UntrustedText
 
@@ -83,6 +83,7 @@ class Route:
     escalate_backend: str = ""
     escalate_model: str = ""
     input_tokens: int = 0  # 0: the router's default budget
+    daily_tokens: int = 0  # 0: no spend budget. Else the most tokens this analyzer may spend a (UTC) day
     min_confidence: float | None = None
 
     @classmethod
@@ -101,6 +102,7 @@ class Route:
             escalate_backend=str(esc.get("backend", base.escalate_backend)),
             escalate_model=str(esc.get("model", base.escalate_model)),
             input_tokens=int(cfg.get("input_tokens", base.input_tokens)),
+            daily_tokens=int(cfg.get("daily_tokens", base.daily_tokens)),
             min_confidence=cfg.get("min_confidence", base.min_confidence),
         )
 
@@ -160,6 +162,7 @@ class Router:
         self.settings, self.directory = settings, directory
         self.cache = AnswerCache(db, clock)
         self.ledger = Ledger(db, clock)
+        self.spend = Spend(db, clock)
         self._gates: dict[str, asyncio.Semaphore] = {}
 
     # -- who may answer ------------------------------------------------------------------------
@@ -215,10 +218,16 @@ class Router:
                 return value
 
         pick = pick or self.resolve(route, call)
+        if await self._over(route, call):  # the cache and the shortcuts are free; a model call is not
+            await self.spend.add(call.analyzer, deferrals=1)
+            raise Deferred(f"{call.analyzer}: today's token budget is spent", self.spend.seconds_to_reset())
         value = await self._answer(route, call, request, output, pick)
         if vector is not None:
             await self._remember(call, vector)
         return value
+
+    async def _over(self, route: Route, call: Call) -> bool:
+        return route.daily_tokens > 0 and await self.spend.tokens(call.analyzer) >= route.daily_tokens
 
     async def _answer(self, route: Route, call: Call, request: LLMRequest, output: type[T], pick: Resolved) -> T:
         """The small model's answer, then at most one escalation. Stores the answer that stands."""
@@ -229,7 +238,7 @@ class Router:
             await self._store(call, pick.model, first[1])
             return first[0]
         big = None
-        if route.escalate_backend:
+        if route.escalate_backend and not await self._over(route, call):  # over budget: keep the small answer
             try:
                 big = self.resolve(replace(route, backend=route.escalate_backend, fallback=(), model=route.escalate_model), call)
             except (Unavailable, ConfidentialRefused) as exc:  # nothing bigger may answer: keep what we have
@@ -277,6 +286,7 @@ class Router:
             tin = resp.input_tokens or estimate(_text(req))
             tout = resp.output_tokens or estimate(resp.text or json.dumps(resp.data))
             await self.ledger.add(call.analyzer, ran, cand.name, calls=1, tokens_in=tin, tokens_out=tout)
+            await self.spend.add(call.analyzer, tin + tout)
             value = _validate(output, resp)
             if isinstance(value, str):
                 return None, value
@@ -324,7 +334,7 @@ class Router:
     def _embedder(self, confidential: bool) -> Entry:
         entry = self.directory.embedder()
         if entry is None or entry.plugin is None:
-            raise Unavailable("no healthy embedder")
+            raise Deferred("no healthy embedder", self.settings.wait_seconds)
         if not self.allowed(entry, confidential):
             raise ConfidentialRefused(f"embedder {entry.name!r} may not see a confidential item")
         return entry
@@ -332,7 +342,7 @@ class Router:
     def _vectors(self) -> Any:
         store = self.directory.vectors()
         if store is None:
-            raise Unavailable("no healthy vector store")
+            raise Deferred("no healthy vector store", self.settings.wait_seconds)
         return store
 
     def vec_ready(self) -> bool:
@@ -387,6 +397,9 @@ class Router:
     # -- the ledger ----------------------------------------------------------------------------
     async def usage(self, analyzer: str | None = None) -> list[LedgerRow]:
         return await self.ledger.rows(analyzer)
+
+    async def spent_today(self, analyzer: str | None = None) -> list[SpendRow]:
+        return await self.spend.rows(analyzer)
 
 
 def _text(request: LLMRequest) -> str:

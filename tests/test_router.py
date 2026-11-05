@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from oaken_core.actors import USER
 from oaken_core.clock import FakeClock
 from oaken_core.db import Database
-from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, Unavailable
+from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, Deferred, Unavailable
 from oaken_core.ids import SubjectId
 from oaken_core.intake import KIND, Intake, IntakeItem, Verdict
 from oaken_core.operations.caller import CallerContext
@@ -161,9 +161,9 @@ async def test_a_near_duplicate_is_answered_from_its_neighbour_with_no_model_cal
 async def test_a_needs_vec_call_waits_when_the_embedder_is_down_and_refuses_a_hosted_one_for_confidential(core_db: Database, clock: FakeClock) -> None:
     router, d = rig(core_db, clock)
     d.add("desk", StubBackend(answer()))
-    with pytest.raises(Unavailable):
+    with pytest.raises(Deferred) as waiting:  # waits, with a delay, rather than failing
         await router.ask(Route("desk", "m"), call(needs_vec=True, text=TEXT), req(), Answer)
-    assert not router.vec_ready()
+    assert waiting.value.retry_after == 30 and not router.vec_ready()
     d.vec("hosted")
     assert router.vec_ready()
     with pytest.raises(ConfidentialRefused):
@@ -385,3 +385,34 @@ async def test_the_host_directory_reads_locality_and_concurrency_from_the_instan
         assert d.embedder() is None and d.vectors() is None
     finally:
         await host.stop()
+
+
+async def test_a_daily_token_budget_holds_the_job_back_until_midnight_and_cache_hits_stay_free(core_db: Database, clock: FakeClock) -> None:
+    router, d = rig(core_db, clock)
+    be = d.add("desk", StubBackend(answer()))
+    capped = Route("desk", "m", daily_tokens=200)  # a stub call costs 110
+    await router.ask(capped, call("a"), req(), Answer)
+    await router.ask(capped, call("b"), req(), Answer)  # 110 < 200 at the check: allowed, now 220 spent
+    with pytest.raises(Deferred) as held:
+        await router.ask(capped, call("c"), req(), Answer)
+    assert 0 < held.value.retry_after <= 86400 and len(be.calls) == 2
+    await router.ask(capped, call("a"), req(), Answer)  # a cache hit costs nothing, so it still answers
+    assert len(be.calls) == 2
+    (row,) = await router.spent_today("triage")
+    assert (row.tokens, row.deferrals) == (220, 1)
+    await router.ask(Route("desk", "m"), call("c"), req(), Answer)  # no budget set: unlimited
+    clock.advance(seconds=held.value.retry_after + 1)  # the next day
+    await router.ask(capped, call("d"), req(), Answer)
+    assert len(be.calls) == 4
+
+
+async def test_a_budget_belongs_to_one_analyzer_and_an_over_budget_one_does_not_escalate(core_db: Database, clock: FakeClock) -> None:
+    router, d = rig(core_db, clock)
+    small = d.add("desk", StubBackend(answer("unsure", 0.1)))
+    big = d.add("big", StubBackend(answer("sure")))
+    other = Call("enrich", "1", "x")
+    route = Route("desk", "s", escalate_backend="big", escalate_model="b", daily_tokens=100)
+    first = await router.ask(route, call("q"), req(), Answer)  # the first call spends 110 of 100
+    assert first.label == "unsure" and big.calls == []  # over budget after it: no escalation, keep the small answer
+    assert (await router.ask(Route("desk", "s", daily_tokens=100), other, req(), Answer)).label == "unsure"  # its own budget
+    assert len(small.calls) == 2

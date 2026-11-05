@@ -33,6 +33,7 @@ from oaken_core.changelog import ChangeLog
 from oaken_core.clock import Clock, fmt_ts, parse_ts
 from oaken_core.db import Database, Tx
 from oaken_core.errors import (
+    Deferred,
     InvalidInput,
     InvalidResult,
     NotFound,
@@ -502,6 +503,24 @@ class JobQueue:
         await self.announce(_Change(job.id, job.kind, job.queue, status, job.subject))
         return status
 
+    async def defer(self, job_id: JobId, worker: str, reason: str, seconds: float) -> bool:
+        """Put a running job back for ``seconds``, its attempt not counted: it is waiting, not failing."""
+        now = self.clock.now()
+        async with self.db.transaction() as tx:
+            row = await tx.fetchone(
+                "SELECT kind, queue, subject FROM jobs WHERE id = ? AND locked_by = ? AND status = 'running'",
+                (job_id, worker),
+            )
+            if row is None:
+                return False
+            await tx.execute(
+                "UPDATE jobs SET status = 'queued', run_after = ?, attempts = attempts - 1, last_error = ?,"
+                " locked_by = NULL, locked_until = NULL, updated_at = ? WHERE id = ?",
+                (fmt_ts(now + timedelta(seconds=seconds)), scrub_error(reason), fmt_ts(now), job_id),
+            )
+        await self.announce(_Change(job_id, row["kind"], row["queue"], "queued", row["subject"]))
+        return True
+
     async def _finish(
         self,
         job_id: JobId,
@@ -901,6 +920,8 @@ class JobRunner:
             raise
         except (PermanentJobError, InvalidResult) as exc:  # a retry would only repeat it
             await q.fail(job.id, worker, exc, permanent=True)
+        except Deferred as exc:  # waiting, not failing
+            await q.defer(job.id, worker, exc.message, exc.retry_after)
         except Exception as exc:
             log.warning("job failed", job_id=job.id, kind=job.kind, attempt=job.attempts,
                         error=type(exc).__name__)  # fmt: skip

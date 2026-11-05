@@ -163,6 +163,7 @@ class RouterSettings(BaseModel):
     default_input_tokens: int = Field(default=2000, ge=1)  # an analyzer's input budget, unless it sets one
     default_output_tokens: int = Field(default=256, ge=1)  # a length cap, unless the request sets one
     call_timeout_seconds: float = Field(default=120.0, gt=0)
+    wait_seconds: float = Field(default=30.0, gt=0)  # how long a job waits for an embedder or vector store
 
 
 class Settings(BaseModel):

@@ -48,6 +48,14 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   Skipped on purpose: a human decline adding its vector; moving the embedder and vector-store
   contracts' real plugins (plugins repo); a wait state for `needs_vec` jobs (the call raises
   `Unavailable` and the job retries with backoff); per-call trace of the ladder.
+  Added after step 5 (uncommitted at the time of writing): `BaseLLMAnalyzer` and `BaseVecAnalyzer` are mixins
+  beside a kind's base (`class Mine(BaseLLMAnalyzer, BaseTriager)`); `BaseAnalyzer` is deterministic.
+  A job that needs a thing that is down or spent raises `Deferred(retry_after)`: it goes back to the queue,
+  its attempt is not counted, it never fails (`needs_vec` with no embedder or vector store waits this way;
+  `[router] wait_seconds`). An analyzer's route may set `daily_tokens` (0, the default, is no budget):
+  once today's (UTC) spend reaches it, a model call is deferred until midnight, an escalation is skipped,
+  and cache and shortcut hits stay free. Table `llm_spend`, reported by `ai_usage` as `spent_today`.
+  Input budgets were already built (`input_tokens`, cut to the backend's `context_window`).
   Not wired: `Intake` is not built in the daemon yet, so nothing passes it `router` or the host's
   triagers (they need a `name`). Unmeasured: the savings, until a real backend runs.
 - Step 6: the console (`oaken_core/console/`). Core's own, no plugin involved: its own listener on a

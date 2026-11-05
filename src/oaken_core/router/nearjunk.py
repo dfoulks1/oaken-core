@@ -7,11 +7,10 @@ from typing import ClassVar
 
 from oaken_core.errors import Unavailable
 from oaken_core.intake import IntakeItem, Verdict, item_text
-from oaken_core.plugins.base import BaseTriager
+from oaken_core.plugins.base import BaseTriager, BaseVecAnalyzer
 
 
-class NearJunk(BaseTriager):
-    needs_vec: ClassVar[bool] = True
+class NearJunk(BaseVecAnalyzer, BaseTriager):
     rank: ClassVar[int] = 40
     version: ClassVar[str] = "1"
 

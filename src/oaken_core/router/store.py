@@ -7,6 +7,7 @@ here a row is a running counter per (analyzer, model, backend), which is what a 
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from oaken_core.clock import Clock, fmt_ts
 from oaken_core.db import Database
@@ -89,3 +90,46 @@ class Ledger:
             (analyzer, analyzer),
         )
         return [LedgerRow(**{k: r[k] for k in LedgerRow.__dataclass_fields__}) for r in found]
+
+
+@dataclass(frozen=True)
+class SpendRow:
+    analyzer: str
+    day: str
+    tokens: int
+    deferrals: int
+
+
+class Spend:
+    """What each analyzer has spent today (UTC), for the optional ``daily_tokens`` budget."""
+
+    def __init__(self, db: Database, clock: Clock) -> None:
+        self.db, self.clock = db, clock
+
+    def today(self) -> str:
+        return self.clock.now().strftime("%Y-%m-%d")
+
+    async def tokens(self, analyzer: str) -> int:
+        row = await self.db.fetchone("SELECT tokens FROM llm_spend WHERE analyzer = ? AND day = ?", (analyzer, self.today()))
+        return 0 if row is None else int(row["tokens"])
+
+    async def add(self, analyzer: str, tokens: int = 0, deferrals: int = 0) -> None:
+        await self.db.execute(
+            "INSERT INTO llm_spend (analyzer, day, tokens, deferrals) VALUES (?,?,?,?)"
+            " ON CONFLICT (analyzer, day) DO UPDATE SET tokens = tokens + excluded.tokens,"
+            " deferrals = deferrals + excluded.deferrals",
+            (analyzer, self.today(), tokens, deferrals),
+        )
+
+    def seconds_to_reset(self) -> float:
+        now = self.clock.now()
+        nxt = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+        return (nxt - now).total_seconds()
+
+    async def rows(self, analyzer: str | None = None) -> list[SpendRow]:
+        found = await self.db.fetchall(
+            "SELECT analyzer, day, tokens, deferrals FROM llm_spend WHERE day = ? AND (? IS NULL OR analyzer = ?)"
+            " ORDER BY analyzer",
+            (self.today(), analyzer, analyzer),
+        )
+        return [SpendRow(r["analyzer"], r["day"], int(r["tokens"]), int(r["deferrals"])) for r in found]
