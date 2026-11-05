@@ -349,6 +349,8 @@ class PluginHost:
         if name:
             return name
         names = sorted(n for k, n in self._records if k == kind)
+        if len(names) > 1:  # a fallback steps aside for a plugin the product installed
+            names = [n for n in names if not getattr(self._records[(kind, n)].factory, "fallback", False)] or names
         if len(names) == 1:
             return names[0]
         return "sqlite" if kind == "store" and ("store", "sqlite") in self._records else None

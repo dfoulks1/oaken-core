@@ -50,6 +50,7 @@ class Services:
     router: Any = None  # oaken_core.router.Router
     eventlog: Any = None  # oaken_core.eventlog.EventLog (None: ``[log] events_file`` is empty)
     queues_from_config: bool = True  # False: the product fixes its own queues; none can be added
+    intake: Any = None  # oaken_core.intake.Intake: the front door
     secrets: Any = None  # a ``SecretStore`` (the OS keyring); None where there is none
     reload: Callable[[], None] | None = None  # the daemon's reload (None: core was not started by it)
 

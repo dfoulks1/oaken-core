@@ -152,6 +152,9 @@ class BasePlugin:
     # Whether the plugin runs when its table does not say ``enabled``. A plugin that should be
     # opt-in (it costs money, or reaches a network) sets this False.
     enabled_default: ClassVar[bool] = True
+    # A fallback is used only while no other plugin of its kind is installed: a kind with one active picks the
+    # only non-fallback one, so a product's plugin replaces core's default without any [active] setting.
+    fallback: ClassVar[bool] = False
     # Settings the plugin cannot run without. While its table lacks any, the host leaves it
     # switched off with the reason shown, and starts it when they are set.
     requires_config: ClassVar[tuple[str, ...]] = ()

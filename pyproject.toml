@@ -40,6 +40,9 @@ sqlite-vec = "oaken_core.vec_sqlite:SqliteVecStore"
 ollama = "oaken_core.ollama:OllamaLLM"
 ollama-remote = "oaken_core.ollama:OllamaRemoteLLM"
 
+[project.entry-points."oaken_core.ingestors"]
+items = "oaken_core.items:ItemsIngestor"
+
 [project.entry-points."oaken_core.triagers"]
 nearjunk = "oaken_core.router.nearjunk:NearJunk"
 
