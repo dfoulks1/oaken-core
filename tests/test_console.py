@@ -237,6 +237,19 @@ async def test_prompt_and_guard_are_locked_until_unlocked_and_only_for_llm_plugi
     assert "prompt" not in tomllib.loads(path.read_text())["plugins"]["enricher"]["notes"]
 
 
+async def test_a_bool_setting_is_a_pill_toggle_that_still_posts_like_a_checkbox(rig: Rig) -> None:
+    page = (await rig.c.get("/plugins/enricher/notes")).text
+    assert 'class="toggle"' in page and 'name="f_loud"' in page
+    path = paths.config_dir() / "config.toml"
+    await rig.post("/ui/plugins/enricher/notes/settings", f_loud="1")
+    assert tomllib.loads(path.read_text())["plugins"]["enricher"]["notes"]["loud"] is True
+
+
+async def test_the_plugins_list_shows_enabled_as_a_switch_that_posts_the_opposite_verb(rig: Rig) -> None:
+    page = (await rig.c.get("/plugins")).text
+    assert 'role="switch"' in page and 'action="/ui/plugins/enricher/notes/disable"' in page
+
+
 async def test_disabling_every_plugin_leaves_the_console_up(rig: Rig) -> None:
     for s in rig.core.host.statuses():
         await rig.core.host.disable(s.name)
