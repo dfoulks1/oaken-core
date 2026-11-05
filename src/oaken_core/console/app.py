@@ -15,7 +15,6 @@ pipeline), the position-box ordering (``plugins.ui.reposition``) and the Origin 
 import dataclasses
 import hashlib
 import hmac
-import json
 import os
 import secrets
 import tomllib
@@ -47,7 +46,6 @@ from oaken_core.operations.services import Services
 from oaken_core.plugins.contracts import UiPage, UiSpec
 from oaken_core.plugins.host import HOST_KEYS
 from oaken_core.plugins.ui import reposition
-from oaken_core.settings_edit import SECTIONS, key_of, section, settings_of
 
 log = get_logger("oaken_core.console")
 HERE = Path(__file__).resolve().parent
@@ -85,19 +83,16 @@ class Console:
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
             Route("/plugins/{kind}/{name}/pages/{page}", self.page(self.plugin_page)),
             Route("/queues", self.page(self.queues)),
-            Route("/config", self.page(self.config)),
-            Route("/config/file", self.page(self.config_file)),
+            Route("/config", self.page(self.config_file)),
             Route("/json/status", self.data(self.j_status)),
             Route("/json/plugins", self.data(self.j_plugins)),
             Route("/json/plugins/{kind}/{name}/ui", self.data(self.j_ui)),
             Route("/json/queues", self.data(self.j_queues)),
             Route("/json/config", self.data(self.j_config)),
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
-            Route("/ui/core/reload", self.post(self.reload_core), methods=["POST"]),
             Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
             Route("/ui/config-file/save", self.post(self.config_file_save), methods=["POST"]),
             Route("/ui/config-file/reload", self.post(self.config_file_reload), methods=["POST"]),
-            Route("/ui/config/{section}", self.post(self.save_section), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/settings", self.post(self.save_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/try", self.post(self.try_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/button", self.post(self.press), methods=["POST"]),
@@ -222,21 +217,6 @@ class Console:
     async def queues(self, request: Request) -> Response:
         return self.render("queues.html", **await self._op("queue_list"))
 
-    def _sections(self) -> list[dict[str, Any]]:
-        """Core's own settings as the page draws them: a form of the keys that may be changed here, and
-        a read-only list of the ones that are set by hand, with why."""
-        out = []
-        for sec in SECTIONS:
-            model = settings_of(sec, self.svc.settings)
-            values = model.model_dump(mode="json")
-            fields = [f for f in forms.from_schema(type(model).model_json_schema()) if key_of(sec, f.name).editable]
-            hand = [(k, values[k], key_of(sec, k).note) for k in type(model).model_fields if not key_of(sec, k).editable]
-            out.append({"name": sec.name, "summary": sec.summary, "fields": fields, "current": values, "hand": hand})
-        return out
-
-    async def config(self, request: Request) -> Response:
-        return self.render("config.html", sections=self._sections(), settings=json.dumps(self.svc.settings.model_dump(mode="json"), indent=2, sort_keys=True))
-
     def _file_page(self, text: str | None = None, flash: tuple[str, str] | None = None) -> Response:
         """The whole-file editor. ``text`` is what the person typed, kept when a check fails."""
         exists = self.config_path.is_file()
@@ -268,18 +248,7 @@ class Console:
 
     async def config_file_reload(self, request: Request, form: dict[str, str]) -> Response:
         out = (await self.client.call("core_reload", {}, UI, confirm=True)).output
-        return self.render("result.html", title="Reloading", back="/config/file", result={"note": out.note})  # type: ignore[union-attr]
-
-    async def save_section(self, request: Request, form: dict[str, str]) -> Response:
-        """A core section's form: the typed values go to ``settings_set``, which checks the whole file,
-        shows what would change, and writes only the keys that differ from what is saved."""
-        name = request.path_params["section"]
-        sec = section(name)
-        fields = next(s["fields"] for s in self._sections() if s["name"] == sec.name)
-        out = await self._gated("settings_set", {"section": sec.name, "values": forms.parse(fields, form)}, form, request.url.path)
-        if isinstance(out, Response):
-            return out
-        return self.render("result.html", title=f"[{sec.name}]", back="/config", result={"changed": out.changed, "note": out.note})
+        return self.render("result.html", title="Reloading", back="/config", result={"note": out.note})  # type: ignore[union-attr]
 
     def _page(self, kind: str, name: str, page: str) -> UiPage:
         spec = self._host().plugin_ui(kind, name)
@@ -365,12 +334,6 @@ class Console:
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=p.title, back=back, result=out.model_dump(mode="json") if out else {})
-
-    async def reload_core(self, request: Request, form: dict[str, str]) -> Response:
-        out = await self._gated("core_reload", {}, form, request.url.path)
-        if isinstance(out, Response):
-            return out
-        return self.render("result.html", title="Reloading", back="/config", result={"note": out.note})
 
     async def set_look(self, request: Request, form: dict[str, str]) -> Response:
         """The theme menu: palette and mode, kept in ``[console]`` of ``config.toml`` (the one
