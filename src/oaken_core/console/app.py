@@ -207,6 +207,7 @@ class Console:
         modal = self._modal(kind, name)
         values = self._values(kind, name)
         return self.render("plugin.html", status=self._status(kind, name), values=values, display=forms.display,
+                           llm=self._host().llm_defaults(kind, name), own=self._host().tables.table(kind, name),
                            pages=modal["spec"].pages if modal["spec"] else (), buttons=modal["spec"].buttons if modal["spec"] else (),
                            **modal)  # fmt: skip
 
@@ -350,13 +351,26 @@ class Console:
         back = _here.get()
         return RedirectResponse(back if back.startswith("/") and not back.startswith("//") else "/", 303)
 
+    def _instructions(self, kind: str, name: str, form: dict[str, str]) -> dict[str, str]:
+        """The ``prompt`` and ``guard`` the form asks for. They are the owner's only if the unlock box is
+        ticked (and the box is not empty); otherwise the plugin's own apply. A plugin that does not
+        ``needs_llm`` has none, whatever the form says."""
+        if self._host().llm_defaults(kind, name) is None or "unlock" not in form:
+            return {}
+        return {k: form[k].strip() for k in ("prompt", "guard") if form.get(k, "").strip()}
+
+    def _host_part(self, kind: str, name: str, form: dict[str, str]) -> dict[str, Any]:
+        """The host's keys as saved, with ``prompt`` and ``guard`` taken from the form."""
+        keep = {k: v for k, v in self._host().tables.table(kind, name).items() if k in HOST_KEYS and k not in ("prompt", "guard")}
+        return keep | self._instructions(kind, name, form)
+
     async def try_settings(self, request: Request, form: dict[str, str]) -> Response:
         """The settings modal's Test: the form's values on a throwaway copy of the plugin. Nothing is
         saved and the running plugin is not touched, so there is nothing to confirm."""
         kind, name = request.path_params["kind"], request.path_params["name"]
         self._status(kind, name)
         modal = self._modal(kind, name)
-        table = {k: v for k, v in self._host().tables.table(kind, name).items() if k in HOST_KEYS} | forms.parse(modal["fields"], form)
+        table = self._host_part(kind, name, form) | forms.parse(modal["fields"], form)
         out = await self._op("plugin_test", {"kind": kind, "name": name, "config": table})
         result = {"works": out["ok"], "detail": out["detail"] or ("started and reported healthy" if out["ok"] else "")}
         return self.render("result.html", title=f"Test {name}", back=f"/plugins/{kind}/{name}", result=result)
@@ -369,11 +383,11 @@ class Console:
         self._status(kind, name)
         host = self._host()
         modal = self._modal(kind, name)
-        if not modal["fields"]:
+        if not modal["fields"] and host.llm_defaults(kind, name) is None:
             raise InvalidInput(f"{name} declares no settings to edit")
         values = forms.parse(modal["fields"], form)
         refuse_secrets(values)
-        table = {k: v for k, v in host.tables.table(kind, name).items() if k in HOST_KEYS} | values
+        table = self._host_part(kind, name, form) | values
         problems = host.check_config(name, table)
         if problems:
             raise InvalidInput("; ".join(problems))

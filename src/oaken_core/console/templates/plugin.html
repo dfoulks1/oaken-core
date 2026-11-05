@@ -1,10 +1,15 @@
-{% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% block title %}{{ status.name }}{% endblock %}
+{% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% import "_macros.html" as m with context %}{% block title %}{{ status.name }}{% endblock %}
 {% block body %}
 <h1>{{ status.name }} <span class="muted">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span></h1>
 <p class="{{ 'ok' if status.healthy else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
-{% if sections %}
+{% if sections or llm %}
 <form method="post" action="/ui/plugins/{{ status.kind }}/{{ status.name }}/settings">{{ csrf(token) }}
 {% for title, fs in sections %}<fieldset><legend>{{ title }}</legend>{% for f in fs %}{{ field(f, values.get(f.name)) }}{% endfor %}</fieldset>{% endfor %}
+{% if llm %}<fieldset><legend>Model instructions</legend>
+<p class="hint">Locked to what the plugin ships. Switch on to use your own; switch off to go back to the plugin's.</p>
+{{ m.toggle("unlock", own.get("prompt") or own.get("guard"), "Override the plugin's prompt and guard", "overriding", "plugin default") }}
+<label for="prompt">Prompt</label><textarea id="prompt" name="prompt">{{ own.get("prompt") or llm.prompt }}</textarea>
+<label for="guard">Guard</label><textarea id="guard" name="guard">{{ own.get("guard") or llm.guard }}</textarea></fieldset>{% endif %}
 <button class="btn btn-sm" formaction="/ui/plugins/{{ status.kind }}/{{ status.name }}/try">Test these settings</button> <button class="btn btn-primary">Save and restart plugin</button> <span class="hint">Writes config.toml. Secrets never go here.</span></form>
 {% else %}
 <p class="muted">This plugin declares no settings.</p>

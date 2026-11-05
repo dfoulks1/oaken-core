@@ -8,11 +8,12 @@ from pydantic import BaseModel
 from oaken_core.actors import SYSTEM, USER
 from oaken_core.changelog import ChangeLog
 from oaken_core.clock import FakeClock
+from oaken_core.logging import get_logger
 from oaken_core.errors import NotFound, PluginError
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore
 from oaken_core.plugins.base import BaseLLMAnalyzer, BasePlugin, BaseTriager, command
-from oaken_core.plugins.contracts import Health, PluginOpContext
+from oaken_core.plugins.contracts import Health, PluginContext, PluginOpContext
 from oaken_core.plugins.host import PluginHost
 from oaken_core.plugins.kinds import KindRegistry, KindSpec
 from oaken_core.settings import PluginTables
@@ -460,5 +461,11 @@ async def test_an_llm_analyzer_is_a_kind_base_plus_base_llm_analyzer_in_either_o
     assert A.rank == 50 and A.prompt == "" and A.guard == ""
     assert not hasattr(BaseTriager, "ask")  # a deterministic analyzer has no model door
     plain = A()
+    plain.prompt = "mine"  # type: ignore[misc]
+    plain.ctx = PluginContext(name="a", kind="triager", plugin="a", clock=FakeClock(), log=get_logger("t"), config={}, bus=None, prompt="owner's")  # type: ignore[arg-type]
+    assert plain.effective_prompt() == "owner's" and plain.effective_guard() == ""
+    plain.ctx = PluginContext(name="a", kind="triager", plugin="a", clock=FakeClock(), log=get_logger("t"), config={}, bus=None)  # type: ignore[arg-type]
+    assert plain.effective_prompt() == "mine"
+    del plain.ctx
     with pytest.raises(AttributeError):  # ctx is set by start()
         await plain.ask(None, BaseModel, content_hash="h")

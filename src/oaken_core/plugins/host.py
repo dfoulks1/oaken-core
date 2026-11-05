@@ -62,7 +62,7 @@ from oaken_core.trace import Tracer
 log = get_logger("oaken_core.plugins")
 
 _INSTANCE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
-HOST_KEYS = ("enabled", "plugin", "locality", "concurrency", "route")  # the host's settings, never the plugin's
+HOST_KEYS = ("enabled", "plugin", "locality", "concurrency", "route", "prompt", "guard")  # the host's settings, never the plugin's
 RELATIONS = frozenset({"self", "parent", "children"})  # a product adds more with register_relation
 
 Discover = Callable[[str], Iterable[EntryPoint]]
@@ -461,6 +461,8 @@ class PluginHost:
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
             db=None if spec.first else self.db, labels=labels, router=self.router, submit=self._submitter(rec),
             route=dict(self.tables.table(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
+            prompt=str(self.tables.table(rec.kind, rec.name).get("prompt") or ""),
+            guard=str(self.tables.table(rec.kind, rec.name).get("guard") or ""),
         )  # fmt: skip
         rec.ctx = ctx
         try:
@@ -765,6 +767,15 @@ class PluginHost:
             log.error("plugin ui refused", kind=kind, name=name, problems=problems)
             return None
         return cast("UiSpec | None", spec)
+
+    def llm_defaults(self, kind: str, name: str) -> dict[str, str] | None:
+        """The ``prompt`` and ``guard`` a plugin ships, if it ``needs_llm``; else None. The console
+        shows them locked until the owner overrides them."""
+        rec = self._records.get((kind, name))
+        inst = rec.instance if rec else None
+        if inst is None or not getattr(inst, "needs_llm", False):
+            return None
+        return {"prompt": str(getattr(inst, "prompt", "")), "guard": str(getattr(inst, "guard", ""))}
 
     def config_schema(self, kind: str, name: str) -> dict[str, Any] | None:
         """JSON Schema of a plugin's settings, if it declares ``config_model`` (pydantic)."""

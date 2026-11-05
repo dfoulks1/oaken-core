@@ -195,13 +195,20 @@ class BaseLLMAnalyzer(BaseAnalyzer):
     Declare the default ``route`` as a dict (``{"backend": "desk", "model": "qwen3", "fallback":
     ["laptop"], "escalate": {"backend": "big", "model": "qwen3-72b"}}``); the owner overrides it
     in ``[plugins.<kind>.<name>.route]``. ``prompt`` is the instruction the model gets and
-    ``guard`` the standing rules around outside text; the owner's override is the plugin's
-    ``prompt`` and ``guard`` settings."""
+    ``guard`` the standing rules around outside text. Read them with ``effective_prompt()`` and
+    ``effective_guard()``: the owner's override (``prompt`` and ``guard`` in the plugin's table) wins."""
 
     needs_llm: ClassVar[bool] = True
     prompt: ClassVar[str] = ""
     guard: ClassVar[str] = ""
     route: ClassVar[dict[str, Any]] = {}
+
+    def effective_prompt(self) -> str:
+        """The owner's override if there is one, else the plugin's ``prompt``."""
+        return self.ctx.prompt or self.prompt
+
+    def effective_guard(self) -> str:
+        return self.ctx.guard or self.guard
 
     def _route(self) -> "Route":
         from oaken_core.router.router import Route
