@@ -18,6 +18,7 @@ from oaken_core.clock import Clock
 from oaken_core.db import Database
 from oaken_core.errors import PluginError
 from oaken_core.events import Event, EventBus, PluginEvent
+from oaken_core.untrusted import UntrustedText
 
 if TYPE_CHECKING:
     from oaken_core.labels import LabelStore
@@ -80,6 +81,10 @@ class PluginContext:
     trace: Callable[..., None] = _no_trace
     tracing: Callable[[], bool] = _not_tracing
     folders: Mapping[str, Path] = field(default_factory=dict)
+    # The model router (``oaken_core.router.Router``) and this plugin's ``route`` table: which
+    # backend and model it asks, its fallbacks and its input budget. None in a bare test context.
+    router: Any = None
+    route: dict[str, Any] = field(default_factory=dict)
     _subscriptions: list[Callable[[], None]] = field(
         default_factory=list, repr=False, compare=False
     )
@@ -323,7 +328,47 @@ class PluginScheduledTask:
     cron: str | None = None
 
 
-@runtime_checkable
+# -- Models and vectors -------------------------------------------------------------------------
+# A backend runs a model; an embedder turns text into vectors; a vector store finds the nearest.
+# Analyzers never call these directly: they go through the router (``BaseAnalyzer.ask``).
+
+
+@dataclass(frozen=True)
+class LLMRequest:
+    """``system`` is a static instruction. Outside text only ever appears in ``user``, as
+    ``UntrustedText`` (plain ``str`` parts are for the application's own words)."""
+
+    system: str
+    user: tuple[str | UntrustedText, ...] = ()
+    json_schema: dict[str, Any] | None = None
+    max_output_tokens: int | None = None
+    temperature: float = 0.0
+    think: bool | None = None  # False: answer without reasoning; None: the backend decides
+
+
+@dataclass(frozen=True)
+class LLMResponse:
+    text: str = ""
+    data: dict[str, Any] | None = None  # parsed JSON when a schema was requested
+    input_tokens: int = 0
+    output_tokens: int = 0
+    model_id: str = ""
+    thinking: str = ""
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class VectorItem:
+    """One vector under a ``key`` (a content hash). A store never mixes collections."""
+
+    key: str
+    vector: tuple[float, ...]
+
+
+@dataclass(frozen=True)
+class Hit:
+    key: str
+    score: float  # cosine similarity: 1.0 is the same direction
 
 
 @runtime_checkable

@@ -83,6 +83,13 @@ class Unavailable(OakenError):
     code = "unavailable"
 
 
+class ConfidentialRefused(PermissionDenied):
+    """A confidential call has no backend it may reach. The router refuses; it never falls back to
+    a remote box."""
+
+    code = "confidential_refused"
+
+
 class ConfirmationInvalid(PermissionDenied):
     """A confirmation token that is unknown, used already, expired, or for a different call."""
 

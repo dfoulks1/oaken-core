@@ -4,9 +4,14 @@
 Only what core needs today. Products add their sections through the plugin ``config_model``.
 """
 
-from typing import Literal
+import tomllib
+from pathlib import Path
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
+from oaken_core import paths
+from oaken_core.errors import ConfigError
 
 Level = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 
@@ -127,6 +132,37 @@ class ApiSettings(BaseModel):
     mcp_max_result_bytes: int = Field(default=256_000, ge=1024)
 
 
+class ConsoleSettings(BaseModel):
+    """The console always binds 127.0.0.1. There is no host setting on purpose: ``extra="forbid"``
+    refuses one, so nothing in the config file can widen the bind."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    port: int = Field(default=0, ge=0, le=65535)  # 0: pick a free one and publish it
+
+
+class RouterSettings(BaseModel):
+    """The model router: the cost ladder's knobs. Backends are ``[plugins.llm_backend.<name>]``
+    tables (``plugin``, ``url``, ``locality``, ``concurrency``); an analyzer's own ``route`` table
+    names the backend and model it asks."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # LAN backends a confidential call may reach, by instance name. Local ones always may; hosted
+    # ones never.
+    lan_allowlist: list[str] = Field(default_factory=list)
+    embedder: str = ""  # instance name; empty: the first healthy one
+    vector_store: str = ""
+    shortcuts: bool = True  # near-duplicate reuse (only for analyzers that declare needs_vec)
+    near_duplicate_score: float = Field(default=0.97, ge=0, le=1)
+    junk_index: bool = False  # keep vector + hash of rejected items, to reject near matches later
+    nearjunk_score: float = Field(default=0.95, ge=0, le=1)
+    min_confidence: float = Field(default=0.6, ge=0, le=1)  # below it, escalate once
+    default_input_tokens: int = Field(default=2000, ge=1)  # an analyzer's input budget, unless it sets one
+    default_output_tokens: int = Field(default=256, ge=1)  # a length cap, unless the request sets one
+    call_timeout_seconds: float = Field(default=120.0, gt=0)
+
+
 class Settings(BaseModel):
     """Core's whole configuration. Products add their sections through plugin ``config_model``s."""
 
@@ -136,6 +172,29 @@ class Settings(BaseModel):
     log: LogSettings = Field(default_factory=LogSettings)
     jobs: JobsSettings = Field(default_factory=JobsSettings)
     swarm: SwarmSettings = Field(default_factory=SwarmSettings)
+    router: RouterSettings = Field(default_factory=RouterSettings)
+    console: ConsoleSettings = Field(default_factory=ConsoleSettings)
     operations: OperationsSettings = Field(default_factory=OperationsSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
     plugins: PluginTables = Field(default_factory=PluginTables)
+
+    @classmethod
+    def load(cls, path: Path | None = None) -> "Settings":
+        """Read ``config.toml`` (a missing file is the defaults). Beside the core sections:
+        ``[plugins.<kind>.<name>]`` are plugin tables, ``[active]`` picks the plugin for a kind,
+        ``[mcp.allowed]`` is the operations turned on for MCP."""
+        path = path or paths.config_dir() / "config.toml"
+        try:
+            raw: dict[str, Any] = tomllib.loads(path.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            raw = {}
+        except (OSError, tomllib.TOMLDecodeError) as exc:
+            raise ConfigError(f"cannot read {path}: {exc}") from exc
+        active, mcp, tables = raw.pop("active", {}), raw.pop("mcp", {}), raw.pop("plugins", {})
+        if "allowed" in mcp:
+            raw["operations"] = {**raw.get("operations", {}), "mcp_allowed": mcp["allowed"]}
+        raw["plugins"] = {"active": active, "tables": tables}
+        try:
+            return cls.model_validate(raw)
+        except ValidationError as exc:
+            raise ConfigError(f"{path}: {exc}") from exc

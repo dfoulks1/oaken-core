@@ -63,6 +63,8 @@ class Verdict:
     kind: Literal["accept", "reject", "unsure"]
     reason: str = ""
     labels: dict[str, str] = field(default_factory=dict)  # written to the provisional subject
+    # Reject and learn: embed the item (vector and hash only) and do nothing else. Needs a reject.
+    learn: bool = False
 
 
 class Triager(Protocol):
@@ -72,6 +74,11 @@ class Triager(Protocol):
     async def triage(self, item: IntakeItem) -> Verdict | None:
         """A verdict, or None to pass to the next triager."""
         ...
+
+
+def item_text(item: IntakeItem) -> str:
+    """The text of an item's body, for embedding. An item with no text of its own is its JSON."""
+    return item.body if isinstance(item.body, str) else json.dumps(item.body, sort_keys=True, default=str)
 
 
 IngestFn = Callable[[IntakeItem], Awaitable[SubjectId]]
@@ -87,7 +94,9 @@ class Intake:
         *,
         triagers: Sequence[Triager] = (),
         ingest: IngestFn | None = None,
+        router: Any = None,
     ) -> None:
+        self.router = router  # the model router, for ``Verdict.learn``
         self.queue, self.labels, self.db, self.changelog = queue, labels, db, changelog
         self.triagers = sorted(triagers, key=lambda t: (t.rank, t.name))
         self.ingest = ingest
@@ -133,6 +142,8 @@ class Intake:
         except LabelError as exc:  # a triager bug: a retry would repeat it
             raise PermanentJobError(str(exc)) from exc
         if verdict.kind == "reject":
+            if verdict.learn and self.router is not None:
+                await self._learn(item)
             await self._reject(item, verdict, who)
             return IntakeResult(verdict="reject")
         if self.ingest is None:
@@ -146,6 +157,11 @@ class Intake:
                                 "reason": verdict.reason}),
             )  # fmt: skip
         return IntakeResult(verdict=verdict.kind, subject_id=real)
+
+    async def _learn(self, item: IntakeItem) -> None:
+        """Keep the junk's vector and hash. A failure backs intake up (the job retries) rather than
+        drop the lesson. No-op while ``[router] junk_index`` is off."""
+        await self.router.learn_junk(item_text(item), confidential=item.labels.get("confidential") == "true")
 
     async def _reject(self, item: IntakeItem, verdict: Verdict, who: Actor) -> None:
         """Drop the item. The log row holds no content: only a hash, so a mistake can be

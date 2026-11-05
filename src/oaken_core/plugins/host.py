@@ -60,7 +60,7 @@ from oaken_core.trace import Tracer
 
 log = get_logger("oaken_core.plugins")
 
-HOST_KEYS = ("enabled", "plugin")  # the host's settings, never the plugin's
+HOST_KEYS = ("enabled", "plugin", "locality", "concurrency", "route")  # the host's settings, never the plugin's
 RELATIONS = frozenset({"self", "parent", "children"})  # a product adds more with register_relation
 
 Discover = Callable[[str], Iterable[EntryPoint]]
@@ -173,6 +173,7 @@ class PluginHost:
         self.bus = bus
         self.kinds = kinds or KindRegistry.shipped()
         self.tracer: Tracer | None = None  # set by core: the opt-in trace
+        self.router: Any = None  # set by core: the model router, handed to plugins as ``ctx.router``
         self._discover = discover
         self.health_interval = health_interval
         self.call_timeout = call_timeout
@@ -430,7 +431,8 @@ class PluginHost:
         ctx = PluginContext(
             name=rec.name, kind=rec.kind, plugin=rec.plugin, clock=self.clock,
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
-            db=None if spec.first else self.db, labels=labels, **self._trace_hooks(),
+            db=None if spec.first else self.db, labels=labels, router=self.router,
+            route=dict(self.tables.table(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
         )  # fmt: skip
         rec.ctx = ctx
         try:

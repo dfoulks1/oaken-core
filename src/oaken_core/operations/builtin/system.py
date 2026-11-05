@@ -170,5 +170,39 @@ async def exposure_set(ctx: OpContext, inp: ExposureSetIn) -> ExposureSetOut:
     return ExposureSetOut(before=before)
 
 
+class UsageIn(BaseModel):
+    analyzer: str | None = None
+
+
+class UsageRow(BaseModel):
+    analyzer: str
+    model: str
+    backend: str
+    calls: int
+    tokens_in: int
+    tokens_out: int
+    cache_hits: int
+    shortcut_hits: int
+    escalations: int
+    tokens_saved: int
+
+
+class UsageOut(BaseModel):
+    rows: list[UsageRow]
+    calls: int
+    tokens_spent: int
+    tokens_saved: int
+    answered_without_a_model: int  # cache hits plus shortcut hits
+
+
+@operation("ai_usage", "What the model router spent and saved: calls, tokens, cache and shortcut hits, escalations.",
+           permission="read", input=UsageIn, output=UsageOut, mcp="off", group="ai")  # fmt: skip
+async def ai_usage(ctx: OpContext, inp: UsageIn) -> UsageOut:
+    rows = [UsageRow(**r.__dict__) for r in await need(ctx.svc.router, "the model router").usage(inp.analyzer)]
+    return UsageOut(rows=rows, calls=sum(r.calls for r in rows), tokens_spent=sum(r.tokens_in + r.tokens_out for r in rows),
+                    tokens_saved=sum(r.tokens_saved for r in rows),
+                    answered_without_a_model=sum(r.cache_hits + r.shortcut_hits for r in rows))  # fmt: skip
+
+
 OPERATIONS = (status, log_list, plugin_list, plugin_enable, plugin_disable, plugin_reload,
-              exposure_list, exposure_set)  # fmt: skip
+              exposure_list, exposure_set, ai_usage)  # fmt: skip

@@ -16,7 +16,7 @@ host loads the plugin, and a plugin that fails to load takes its commands with i
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, ClassVar, Literal, TypeVar
+from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -33,7 +33,11 @@ from oaken_core.plugins.contracts import (
     UiSpec,
 )
 
+if TYPE_CHECKING:
+    from oaken_core.router.router import Route
+
 F = TypeVar("F", bound=Callable[..., Any])
+M = TypeVar("M", bound=BaseModel)
 
 
 def _default(fn: F) -> F:
@@ -167,12 +171,42 @@ class BaseStore(BasePlugin):
         raise NotImplementedError("a store must implement open()")
 
 
-class BaseTriager(BasePlugin):
-    """Rates an intake item before it is stored. Lowest ``rank`` first; the first verdict wins."""
+class BaseAnalyzer(BasePlugin):
+    """What triagers, enrichers and actions share: a place to ask a model through the router.
+
+    Declare the default ``route`` as a dict (``{"backend": "desk", "model": "qwen3", "fallback":
+    ["laptop"], "escalate": {"backend": "big", "model": "qwen3-72b"}}``); the owner overrides it
+    in ``[plugins.<kind>.<name>.route]``."""
 
     version: ClassVar[str] = "1"
     needs_llm: ClassVar[bool] = False
     needs_vec: ClassVar[bool] = False  # uses the embedder and vector store (core-only, never an agent's)
+    route: ClassVar[dict[str, Any]] = {}
+
+    def _route(self) -> "Route":
+        from oaken_core.router.router import Route
+
+        return Route.from_config(self.ctx.route, Route.from_config(self.route))
+
+    async def ask(
+        self, request: Any, output: type[M], *, content_hash: str, confidential: bool = False, text: str = ""
+    ) -> M:
+        """One question through the router: the cache, then (if ``needs_vec`` and ``text`` is given)
+        a near-duplicate's answer, then the model. The answer is validated against ``output``; a bad
+        one fails the job and stores nothing. The cache key is (this analyzer, ``version``,
+        ``content_hash``, the effective model). ``confidential`` keeps the call off remote boxes."""
+        from oaken_core.router.router import Call
+
+        router = self.ctx.router
+        if router is None:
+            raise PluginError(f"{self.ctx.name}: no model router in this context")
+        call = Call(self.ctx.name, str(self.version), content_hash, confidential, self.needs_vec, text)
+        return await router.ask(self._route(), call, request, output)
+
+
+class BaseTriager(BaseAnalyzer):
+    """Rates an intake item before it is stored. Lowest ``rank`` first; the first verdict wins."""
+
     rank: ClassVar[int] = 50
 
     @_default
@@ -180,20 +214,14 @@ class BaseTriager(BasePlugin):
         raise NotImplementedError("a triager must implement triage()")
 
 
-class BaseEnricher(BasePlugin):
-    version: ClassVar[str] = "1"
-    needs_llm: ClassVar[bool] = False
-    needs_vec: ClassVar[bool] = False
+class BaseEnricher(BaseAnalyzer):
 
     @_default
     async def enrich(self, target: Any) -> Any:
         raise NotImplementedError("an enricher must implement enrich()")
 
 
-class BaseAction(BasePlugin):
-    version: ClassVar[str] = "1"
-    needs_llm: ClassVar[bool] = False
-    needs_vec: ClassVar[bool] = False
+class BaseAction(BaseAnalyzer):
     routes: ClassVar[tuple[str, ...]] = ()
 
     @_default

@@ -14,6 +14,8 @@ dependencies = [
     "platformdirs>=4.13.5",
     "pydantic>=2.14.1",
     "starlette>=1.9.0",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
     "tomlkit>=0.13.2",
 ]
 
@@ -25,6 +27,9 @@ oaken-core = "oaken_core.cli.commands:main"
 
 [project.entry-points."oaken_core.stores"]
 sqlite = "oaken_core.store:SqliteStore"
+
+[project.entry-points."oaken_core.triagers"]
+nearjunk = "oaken_core.router.nearjunk:NearJunk"
 
 [build-system]
 requires = ["hatchling"]
