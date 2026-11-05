@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% block title %}{{ status.name }}{% endblock %}
+{% block body %}
+<h1>{{ status.name }} <span class="mute">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span></h1>
+<p class="{{ 'ok' if status.healthy else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
+{% if sections %}
+<form method="post" action="/ui/plugins/{{ status.kind }}/{{ status.name }}/settings">{{ csrf(token) }}
+{% for title, fs in sections %}<fieldset><legend>{{ title }}</legend>{% for f in fs %}{{ field(f, values.get(f.name)) }}{% endfor %}</fieldset>{% endfor %}
+<button class="primary">Save and restart plugin</button> <span class="help">Writes config.toml. Secrets never go here.</span></form>
+{% else %}
+<p class="mute">This plugin declares no settings.</p>
+{% if values %}<pre>{{ values|tojson(indent=2) }}</pre>{% endif %}
+{% endif %}
+{% if buttons %}<h2>Actions</h2>{% for b in buttons %}<form class="row" method="post" action="/ui/plugins/{{ status.kind }}/{{ status.name }}/button">{{ csrf(token) }}<input type="hidden" name="operation" value="{{ b.operation }}"><button>{{ b.label }}</button></form> {% endfor %}{% endif %}
+{% if pages %}<h2>Pages</h2><ul>{% for p in pages %}<li><a href="/plugins/{{ status.kind }}/{{ status.name }}/pages/{{ p.name }}">{{ p.title }}</a></li>{% endfor %}</ul>{% endif %}
+<p class="mute">As data: <a href="/json/plugins/{{ status.kind }}/{{ status.name }}/ui">JSON</a></p>
+{% endblock %}

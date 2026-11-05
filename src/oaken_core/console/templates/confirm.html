@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% from "_fields.html" import csrf %}{% block title %}Confirm{% endblock %}
+{% block body %}
+<h1>Confirm</h1>
+<div class="msg">{{ proposal.summary }}</div>
+{% if proposal.changes %}<table><tr><th>Target</th><th>Field</th><th>Before</th><th>After</th></tr>
+{% for c in proposal.changes %}<tr><td>{{ c.target }}</td><td>{{ c.field }}</td><td>{{ c.before }}</td><td>{{ c.after }}</td></tr>{% endfor %}</table>
+{% if proposal.total_changes > proposal.changes|length %}<p class="mute">{{ proposal.total_changes }} changes in all.</p>{% endif %}{% endif %}
+<form method="post" action="{{ back }}">{{ csrf(token) }}{% for k, v in carried.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+<input type="hidden" name="confirm" value="1"><button class="primary">Do it</button> <a class="btn" href="/">Cancel</a></form>
+{% endblock %}

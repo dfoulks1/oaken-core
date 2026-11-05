@@ -1,0 +1,9 @@
+{% extends "base.html" %}{% from "_fields.html" import csrf %}{% block title %}Plugins{% endblock %}
+{% block body %}
+<h1>Plugins</h1>
+<table><tr><th>Kind</th><th>Name</th><th>Version</th><th>State</th><th></th></tr>
+{% for p in plugins %}<tr><td>{{ p.kind }}</td><td><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td><td>{{ p.version }}</td>
+<td class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'mute' }}">{{ "healthy" if p.healthy else (p.detail or "off") }}</td>
+<td>{% for verb in (["disable"] if p.enabled else ["enable"]) + ["reload"] %}<form class="row" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/{{ verb }}">{{ csrf(token) }}<button>{{ verb|capitalize }}</button></form> {% endfor %}</td></tr>
+{% else %}<tr><td colspan="5" class="mute">No plugins installed.</td></tr>{% endfor %}</table>
+{% endblock %}

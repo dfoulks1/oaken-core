@@ -1,0 +1,8 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Console{% endblock %} · Oaken Core</title>
+<link rel="stylesheet" href="/static/console.css"></head>
+<body>
+<header><b>OAKEN CORE</b><nav>{% for href, label in nav %}<a href="{{ href }}">{{ label }}</a>{% endfor %}</nav><span class="mute">v{{ version }}</span></header>
+<main>{% block body %}{% endblock %}</main>
+</body></html>
