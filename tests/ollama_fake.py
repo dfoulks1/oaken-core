@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """A pretend Ollama server for the tests: the real API shapes, answered in memory.
 
-Lifted from oaken-mail ``oaken_ollama/tests/conftest.py`` (cf3b187), minus chat for now. The fixtures in
+Lifted from oaken-mail ``oaken_ollama/tests/conftest.py`` (cf3b187). The fixtures in
 ``fixtures/ollama`` are written from Ollama's API documentation, not recorded from a running server.
 Nothing here touches the network and no model is ever downloaded.
 """
 
 import hashlib
 import json
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ class FakeOllama:
     tags: dict[str, Any] = field(default_factory=lambda: fixture("tags.json"))
     calls: list[tuple[str, str, Any]] = field(default_factory=list)
     fail: list[int | Exception] = field(default_factory=list)
+    chat_reply: Callable[[dict[str, Any]], dict[str, Any]] | None = None
 
     @property
     def transport(self) -> httpx2.MockTransport:
@@ -59,7 +61,11 @@ class FakeOllama:
         if path == "/api/tags":
             return httpx2.Response(200, json=self.tags)
         if path == "/api/show":
-            return httpx2.Response(200, json=fixture("show_embed.json"))
+            return httpx2.Response(200, json=fixture("show_embed.json" if "embed" in body["model"] else "show_llm.json"))
         if path == "/api/embed":
             return httpx2.Response(200, json={"embeddings": [vector(t) for t in body["input"]]})
+        if path == "/api/chat":
+            if self.chat_reply:
+                return httpx2.Response(200, json=self.chat_reply(body))
+            return httpx2.Response(200, json=fixture("chat_json.json" if "format" in body else "chat_text.json"))
         return httpx2.Response(404, json={"error": "not found"})

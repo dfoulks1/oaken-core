@@ -26,6 +26,8 @@ from oaken_core.labels import BaseLabel
 from oaken_core.plugins.contracts import (
     PLUGIN_API_VERSION,
     Health,
+    LLMRequest,
+    LLMResponse,
     PluginContext,
     PluginJobHandler,
     PluginOperation,
@@ -241,6 +243,29 @@ class BaseEmbedder(BasePlugin):
     @_default
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
         raise NotImplementedError("an embedder must implement embed()")
+
+
+class BaseLLMBackend(BasePlugin):
+    """Runs a chat model. The router calls ``generate``; where the model runs (``locality``) is the
+    instance's table, not the class, so the owner decides who may send it what."""
+
+    model_id: str = ""
+    context_window: int = 0
+
+    def thinking_for(self, request: LLMRequest) -> bool | None:
+        """Whether to let the model reason on this call, or None to leave it to the model. A ``think``
+        in the plugin's own settings wins over what the request asks for."""
+        chosen = getattr(self.config, "think", None) if self.config is not None else None
+        return chosen if isinstance(chosen, bool) else request.think
+
+    @_default
+    async def generate(self, request: LLMRequest, *, model: str | None = None) -> LLMResponse:
+        raise NotImplementedError("an LLM backend must implement generate()")
+
+    async def available_models(self) -> list[str]:
+        """The model ids it can run right now, for a picker to offer. The default is the one it started
+        with; a backend that can enumerate (Ollama's ``/api/tags``) overrides this."""
+        return [self.model_id] if self.model_id else []
 
 
 class BaseIngestor(BasePlugin):

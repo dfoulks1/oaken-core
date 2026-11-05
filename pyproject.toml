@@ -31,6 +31,10 @@ sqlite = "oaken_core.store:SqliteStore"
 [project.entry-points."oaken_core.embedders"]
 ollama = "oaken_core.ollama:OllamaEmbedder"
 
+[project.entry-points."oaken_core.llm_backends"]
+ollama = "oaken_core.ollama:OllamaLLM"
+ollama-remote = "oaken_core.ollama:OllamaRemoteLLM"
+
 [project.entry-points."oaken_core.triagers"]
 nearjunk = "oaken_core.router.nearjunk:NearJunk"
 

@@ -1,0 +1,7 @@
+{
+  "model": "qwen2.5:3b",
+  "message": {"role": "assistant", "content": "{\"ok\": true}"},
+  "done": true,
+  "prompt_eval_count": 31,
+  "eval_count": 6
+}
