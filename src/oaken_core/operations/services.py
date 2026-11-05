@@ -48,6 +48,7 @@ class Services:
     scheduler: Scheduler | None = None
     tracer: Tracer | None = None
     router: Any = None  # oaken_core.router.Router
+    secrets: Any = None  # a ``SecretStore`` (the OS keyring); None where there is none
     reload: Callable[[], None] | None = None  # the daemon's reload (None: core was not started by it)
 
     @property

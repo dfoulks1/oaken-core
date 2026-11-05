@@ -45,6 +45,7 @@ from oaken_core.plugins.contracts import (
     PluginScheduledTask,
     UiSpec,
 )
+from oaken_core.secrets import PluginSecrets
 from oaken_core.plugins.kinds import KindRegistry, KindSpec
 from oaken_core.plugins.ui import check_ui
 from oaken_core.plugins.validate import (
@@ -177,6 +178,7 @@ class PluginHost:
         self.tracer: Tracer | None = None  # set by core: the opt-in trace
         self.router: Any = None  # set by core: the model router, handed to plugins as ``ctx.router``
         self.intake: Any = None  # set by core: ``Intake``, behind ``ctx.submit``
+        self.secrets: Any = None  # set by core: a ``SecretStore``, handed to each plugin as its own ``ctx.secrets``
         self._discover = discover
         self.health_interval = health_interval
         self.call_timeout = call_timeout
@@ -460,6 +462,7 @@ class PluginHost:
             name=rec.name, kind=rec.kind, plugin=rec.plugin, clock=self.clock,
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
             db=None if spec.first else self.db, labels=labels, router=self.router, submit=self._submitter(rec),
+            secrets=PluginSecrets(self.secrets, rec.kind, rec.name) if self.secrets is not None else None,
             route=dict(self.tables.table(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
             prompt=str(self.tables.table(rec.kind, rec.name).get("prompt") or ""),
             guard=str(self.tables.table(rec.kind, rec.name).get("guard") or ""),

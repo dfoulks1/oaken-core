@@ -32,6 +32,7 @@ from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
 from oaken_core.operations.services import Services
 from oaken_core.plugins.kinds import check_queue_kind
+from oaken_core.secrets import KeyringSecrets, SecretStore
 from oaken_core.plugins.host import Discover, PluginHost, discover_entry_points
 from oaken_core.plugins.jobs import register_plugin_jobs, seed_plugin_schedules
 from oaken_core.plugins.ops import plugin_operations
@@ -68,10 +69,12 @@ class Core:
         clock: Clock | None = None,
         discover: Discover = discover_entry_points,
         queues_from_config: bool = True,
+        secrets: SecretStore | None = None,
     ) -> None:
         self.settings = (settings or Settings()).model_copy(update={"version": __version__})
         self.clock = clock or SystemClock()
         self._discover = discover
+        self.secrets: SecretStore = secrets or KeyringSecrets()
         self.queues_from_config = queues_from_config  # a product that fixes its own queues turns this off
         self.started: list[str] = []  # names of the units that are up, in order
         self._life: Lifecycle | None = None
@@ -92,6 +95,7 @@ class Core:
         s, clock = self.settings, self.clock
         self.bus = EventBus()
         self.host = PluginHost(s.plugins, clock, self.bus, discover=self._discover, core_version=__version__)
+        self.host.secrets = self.secrets
         db = await self.host.start_store()
         queues = self._make_queues()
         maker = LabelMaker.core()
@@ -112,7 +116,7 @@ class Core:
         self.intake.register(self.runner)
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, queue=queue, labels=labels, changelog=changelog,
-                       bus=self.bus, agents=self.agents, host=self.host, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
+                       bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))
         self.client = CoreClient(self.registry, svc)

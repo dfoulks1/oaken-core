@@ -91,6 +91,9 @@ class PluginContext:
     # ``await ctx.submit(source, body, labels={...})`` puts an item into intake (triage, then the
     # ingestor) and returns its provisional subject id. A provider's way in. None in a bare context.
     submit: Callable[..., Awaitable[str]] | None = None
+    # This plugin's own credentials in the OS keyring: ``get``, ``set``, ``delete`` by name. Never put a
+    # secret in ``config`` (the config file refuses it). None in a bare test context.
+    secrets: Any = None
     _subscriptions: list[Callable[[], None]] = field(
         default_factory=list, repr=False, compare=False
     )
