@@ -118,7 +118,7 @@ class ApiSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     host: str = "127.0.0.1"
-    port: int = Field(default=0, ge=0, le=65535)  # 0: pick a free one and publish it
+    port: int = Field(default=62536, ge=0, le=65535)  # OAKEN on a phone keypad; 0 picks a free one and publishes it
     remote_ok: bool = False  # serve beyond loopback (MJ on the laptop): the token is then the gate
     allowed_hosts: list[str] = Field(default_factory=list)
     dev_origin: str = ""

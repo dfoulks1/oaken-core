@@ -7,7 +7,7 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
 ## Done
 - Step 0 (commit 5281a70): the clean oaken-mail kernel (cf3b187) lifted, imports renamed to
   `oaken_core`, 106 lifted tests pass on Python 3.12. `ids` uses a generic `SubjectId`.
-  Three tests wait in `tests_to_port/` (registry, gate, guard): they need a new test rig.
+  Registry, gate and guard tests are ported (`tests/test_registry.py`, `test_gate.py`, `test_guard.py`).
 - Step 1 (f913b6a): store seam, append-only change log (ordered by `seq`), two-layer labels.
 - Logging (00d89a8): stdlib `logging`, five levels, per-logger levels, no structlog.
 - Step 2: `jobs.py` (queues, claim, lease, retry, requeue, runner per queue), `queues.py`,
@@ -194,7 +194,7 @@ analyzer bases, validated, and excluded from `agent_eligible_kinds`.
 4. Skins: generic services/client, HTTP (starlette), CLI flag generation, MCP bridge.
 5. Router and backend kind, named backends, cache, `confidential` enforcement.
 6. Console: `UiSpec`, checker, default modal, baked loopback renderer, Host/Origin/CSRF guard.
-7. Conformance kit with fake products; port `tests_to_port/`.
+7. Conformance kit with fake products.
 
 ## Risks
 `oaken-core` is also the name of oaken-mail's bundle package (owner will sort the name). Intake holds

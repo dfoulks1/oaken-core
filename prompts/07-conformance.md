@@ -12,7 +12,6 @@ Build:
 4. A snapshot of the JSON Schema for every operation and contract. A change fails until updated on purpose.
 5. A property test per invariant in `PLAN.md`.
 6. The standalone test: the suite passes with no oaken plugin and no model backend.
-7. Port `tests_to_port/test_guard.py`. Empty `tests_to_port/`.
 
 Done when:
 - Both fakes run end to end with no edit to core.
