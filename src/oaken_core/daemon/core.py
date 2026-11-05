@@ -120,7 +120,7 @@ class Core:
         self.intake.register(self.runner)
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, queue=queue, labels=labels, changelog=changelog,
-                       bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
+                       bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, queues_from_config=self.queues_from_config, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))
         self.client = CoreClient(self.registry, svc)

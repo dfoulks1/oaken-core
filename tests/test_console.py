@@ -373,8 +373,35 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
         assert (await client.get("/stage/nope")).status_code == 404
         machinery = (await client.get("/pipeline")).text
         assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
-        assert 'href="/plugins/enricher/notes">Settings</a>' in stage.text and "switch-text" not in stage.text  # a Settings button, no on/off word
+        assert 'aria-label="Settings for notes"' in stage.text and 'aria-label="Reload notes"' in stage.text and "switch-text" not in stage.text  # icon buttons (gear, cycle), no on/off word
         assert all(stage.text.count(f'href="/plugins/{k}/{n}">{n}') == (1 if k == "enricher" else 0) for k, n in (("enricher", "notes"), ("store", "sqlite")))  # each plugin on one page
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+# -- adding a stage from the console -----------------------------------------------------------
+async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(tmp_path: Path, oaken_home: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    try:
+        page = (await client.get("/")).text
+        assert 'popovertarget="add-stage"' in page and 'action="/ui/queues/add"' in page  # a button, and the form it opens
+        assert 'value="triager"' in page and 'value="action"' in page
+        assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
+        assert page.index("<h2>Queues</h2>") < page.index('popovertarget="add-stage"') < page.index("<h2>Plugins</h2>")  # by the Queues table
+        assert 'popovertarget="add-stage"' not in (await client.get("/pipeline")).text  # only on General
+        form = {"csrf": token, "name": "triage", "kind": "triager", "label": "", "workers": "1"}
+        first = await client.post("/ui/queues/add", data=form)
+        assert first.status_code == 200 and "triager" in first.text and not (oaken_home / "config" / "config.toml").exists()
+        second = await client.post("/ui/queues/add", data={**form, "confirm": "1"})
+        assert second.status_code == 200 and "Added triage" in second.text and "restart" in second.text  # the rig has no daemon to reload it
+        assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["queues"]["triage"]["kind"] == "triager"
+        bad = await client.post("/ui/queues/add", data={**form, "name": "again", "confirm": "1"})  # triager is taken now
+        assert bad.status_code == 422
+        core.client.svc.queues_from_config = False  # a product that fixes its own stages
+        assert "add-stage" not in (await client.get("/")).text
     finally:
         await client.aclose()
         await core.host.stop()

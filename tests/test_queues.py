@@ -102,3 +102,66 @@ def test_a_plugin_kind_belongs_to_one_queue_so_each_plugin_has_one_stage() -> No
         q.new_queue("triage-slow", kind="triager")
     q.new_queue("enrich", kind="enricher")  # another kind is fine
     q.new_queue("plain")  # a queue with no kind is not a stage
+
+
+# -- queue_add ---------------------------------------------------------------------------------
+import tomllib  # noqa: E402
+import types  # noqa: E402
+
+from oaken_core import paths  # noqa: E402
+from oaken_core.errors import Conflict, InvalidInput  # noqa: E402
+from oaken_core.operations.caller import CallerContext  # noqa: E402
+from oaken_core.plugins.kinds import KindRegistry  # noqa: E402
+
+from .conftest import Ops  # noqa: E402
+
+
+def with_host(ops: Ops) -> None:
+    ops.svc.host = types.SimpleNamespace(kinds=KindRegistry.shipped(), check_config=lambda n, t: [], statuses=lambda: [])  # type: ignore[assignment]
+
+
+def saved() -> dict:  # type: ignore[type-arg]
+    return tomllib.loads((paths.config_dir() / "config.toml").read_text())
+
+
+async def test_queue_add_asks_first_then_writes_the_table_and_reloads(ops: Ops) -> None:
+    with_host(ops)
+    reloads: list[int] = []
+    ops.svc.reload = lambda: reloads.append(1)
+    cli = CallerContext.cli()
+    args = {"name": "triage", "kind": "triager", "label": "Triage", "workers": 2}
+    asked = await ops.client.call("queue_add", args, cli)
+    assert asked.proposal is not None and "triager" in asked.proposal.summary and not (paths.config_dir() / "config.toml").exists()
+    done = (await ops.client.call("queue_add", args, cli, confirm=True)).output
+    assert done.reloading and reloads == [1]  # type: ignore[union-attr]
+    assert saved()["queues"]["triage"] == {"kind": "triager", "label": "Triage", "workers": 2}
+
+
+async def test_queue_add_says_to_restart_when_core_was_not_started_by_the_daemon(ops: Ops) -> None:
+    with_host(ops)
+    out = (await ops.client.call("queue_add", {"name": "enrich", "kind": "enricher"}, CallerContext.cli(), confirm=True)).output
+    assert not out.reloading and "restart" in out.note  # type: ignore[union-attr]
+
+
+async def test_queue_add_refuses_what_the_file_or_the_product_would_not_take(ops: Ops) -> None:
+    with_host(ops)
+    cli = CallerContext.cli()
+    add = lambda **kw: ops.client.call("queue_add", kw, cli, confirm=True)  # noqa: E731
+    await add(name="triage", kind="triager")
+    for bad, exc in [
+        ({"name": "again", "kind": "triager"}, InvalidInput),  # a kind belongs to one queue
+        ({"name": "x", "kind": "embedder"}, InvalidInput),  # not an analyzer
+        ({"name": "x", "kind": "nope"}, InvalidInput),
+        ({"name": "Bad Name", "kind": "enricher"}, InvalidInput),
+        ({"name": "default", "kind": "enricher"}, Conflict),  # exists already
+    ]:
+        with pytest.raises(exc):
+            await add(**bad)
+    assert list(saved()["queues"]) == ["triage"]  # nothing else was written
+    ops.svc.queues_from_config = False
+    with pytest.raises(Conflict, match="own queues"):
+        await add(name="enrich", kind="enricher")
+
+
+async def test_queue_add_is_never_offered_over_mcp(ops: Ops) -> None:
+    assert "queue_add" not in {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}

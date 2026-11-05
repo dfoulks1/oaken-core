@@ -93,6 +93,7 @@ class Console:
             Route("/json/queues", self.data(self.j_queues)),
             Route("/json/config", self.data(self.j_config)),
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
+            Route("/ui/queues/add", self.post(self.add_queue), methods=["POST"]),
             Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
             Route("/ui/config-file/save", self.post(self.config_file_save), methods=["POST"]),
             Route("/ui/config-file/reload", self.post(self.config_file_reload), methods=["POST"]),
@@ -112,7 +113,15 @@ class Console:
         await self.app(scope, receive, send)
 
     # -- plumbing ------------------------------------------------------------------------------
+    def _addable(self) -> list[str]:
+        """The analyzer kinds that have no queue yet, for the Add a stage button; none when a product fixes its own."""
+        if not self.svc.queues_from_config or self.svc.host is None:
+            return []
+        served = {q.kind for q in self._stage_specs()}
+        return [k.name for k in self.svc.host.kinds if k.analyzer and k.name not in served]
+
     def render(self, template: str, http: int = 200, **ctx: Any) -> HTMLResponse:
+        ctx.setdefault("addable", self._addable())
         html = self.env.get_template(template).render(
             nav=self._nav(), app_title=identity.title, wordmark=identity.wordmark(), token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
             modes=MODES, css_version=CSS_VERSION, here=_here.get(), **ctx)
@@ -373,6 +382,15 @@ class Console:
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=p.title, back=back, result=out.model_dump(mode="json") if out else {})
+
+    async def add_queue(self, request: Request, form: dict[str, str]) -> Response:
+        """The "Add a stage" form: a queue for one analyzer kind. A change, so it shows what it will do first."""
+        payload = {"name": form.get("name", "").strip(), "kind": form.get("kind", ""), "label": form.get("label", "").strip(),
+                   "workers": int(form.get("workers") or 1)}  # fmt: skip
+        out = await self._gated("queue_add", payload, form, "/")
+        if isinstance(out, Response):
+            return out
+        return self.render("result.html", title=f"Added {out.name}", back="/", result={"note": out.note})
 
     async def set_look(self, request: Request, form: dict[str, str]) -> Response:
         """The theme menu: palette and mode, kept in ``[console]`` of ``config.toml`` (the one
