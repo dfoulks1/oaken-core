@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from datetime import timedelta
+from typing import Any
 
 import pytest
 from pydantic import BaseModel
@@ -175,3 +176,23 @@ async def test_a_deferred_job_waits_without_spending_an_attempt_and_never_fails(
         assert job.run_after - kit.clock.now() == timedelta(seconds=60)
         assert await kit.runner.drain() == 0  # not yet due
         kit.clock.advance(seconds=61)
+
+
+async def test_an_idle_runner_does_not_spin(kit: Kit) -> None:
+    """With nothing to run, a worker waits. An empty claim used to wake it at once, so each idle worker
+    hammered the database (a whole core at 130% CPU doing nothing)."""
+    import asyncio
+
+    claims = 0
+    real = kit.queue.claim
+
+    async def counting(*a: Any, **kw: Any) -> Any:
+        nonlocal claims
+        claims += 1
+        return await real(*a, **kw)
+
+    kit.queue.claim = counting  # type: ignore[method-assign]
+    kit.runner.start()
+    await asyncio.sleep(0.5)
+    await kit.runner.stop()
+    assert claims <= 3 * len(kit.queue.queues.all()), claims  # a few at start, then it waits

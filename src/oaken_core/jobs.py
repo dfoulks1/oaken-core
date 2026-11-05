@@ -292,11 +292,15 @@ class JobQueue:
         return Enqueued(job_id, created=True), _Change(job_id, kind, queue, "queued", subject)
 
     async def announce(self, *changes: _Change | None) -> None:
-        """Wake the runner and tell the event bus about each state change."""
+        """Wake the runner and tell the event bus about each state change. No change, no wake: an empty
+        claim that woke the runner would send an idle worker straight back to claim, in a busy loop."""
+        live = [c for c in changes if c is not None]
+        if not live:
+            return
         self.wake.set()
         if self.bus is None:
             return
-        for c in changes:
+        for c in live:
             if c is not None:
                 await self.bus.publish(
                     JobStateChanged(ts=self.clock.now(), job_id=c.job_id, kind=c.kind,
