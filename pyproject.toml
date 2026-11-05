@@ -28,6 +28,9 @@ oaken-core = "oaken_core.cli.commands:main"
 [project.entry-points."oaken_core.stores"]
 sqlite = "oaken_core.store:SqliteStore"
 
+[project.entry-points."oaken_core.embedders"]
+ollama = "oaken_core.ollama:OllamaEmbedder"
+
 [project.entry-points."oaken_core.triagers"]
 nearjunk = "oaken_core.router.nearjunk:NearJunk"
 

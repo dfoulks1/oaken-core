@@ -14,7 +14,7 @@ CLI builds a verb for it (``<product> <plugin> <name>``, one flag per input fiel
 host loads the plugin, and a plugin that fails to load takes its commands with it.
 """
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar
 
@@ -222,6 +222,18 @@ class BaseLLMAnalyzer(BaseAnalyzer):
             raise PluginError(f"{self.ctx.name}: no model router in this context")
         call = Call(self.ctx.name, str(self.version), content_hash, confidential, getattr(self, "needs_vec", False), text)
         return await router.ask(self._route(), call, request, output)
+
+
+class BaseEmbedder(BasePlugin):
+    """Turns text into vectors. Analyzers reach it only through the router (``embed``)."""
+
+    model_id: str = ""
+    dimensions: int = 0
+    max_input_tokens: int = 8192
+
+    @_default
+    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+        raise NotImplementedError("an embedder must implement embed()")
 
 
 class BaseTriager(BaseAnalyzer):

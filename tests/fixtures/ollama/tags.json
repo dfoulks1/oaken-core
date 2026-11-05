@@ -1,0 +1,8 @@
+{
+  "models": [
+    {"name": "nomic-embed-text:latest", "model": "nomic-embed-text:latest", "size": 274302450,
+     "details": {"family": "nomic-bert", "parameter_size": "137M", "quantization_level": "F16"}},
+    {"name": "qwen2.5:3b", "model": "qwen2.5:3b", "size": 1929912432,
+     "details": {"family": "qwen2", "parameter_size": "3.1B", "quantization_level": "Q4_K_M"}}
+  ]
+}

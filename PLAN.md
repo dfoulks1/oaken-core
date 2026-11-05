@@ -56,6 +56,12 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   once today's (UTC) spend reaches it, a model call is deferred until midnight, an escalation is skipped,
   and cache and shortcut hits stay free. Table `llm_spend`, reported by `ai_usage` as `spent_today`.
   Input budgets were already built (`input_tokens`, cut to the backend's `context_window`).
+  The Ollama embedder is lifted from oaken-mail into core (`oaken_core/ollama/`, entry point
+  `oaken_core.embedders: ollama`; PLAN had put it in the plugins repo): the client verbatim apart from
+  renames; the plugin takes its model from its own `model` setting (mail read `ai.embed_model`) and no longer
+  refuses a remote URL itself (the router's `locality` decides who may see what). `BaseEmbedder` is new.
+  `oaken_core/testing/contracts.py` starts the contract suites with the embedder's. Not lifted yet: the
+  LLM backend (`llm.py`), the live test.
   Not wired: `Intake` is not built in the daemon yet, so nothing passes it `router` or the host's
   triagers (they need a `name`). Unmeasured: the savings, until a real backend runs.
 - Step 6: the console (`oaken_core/console/`). Core's own, no plugin involved: its own listener on a
