@@ -167,6 +167,7 @@ class RouterSettings(BaseModel):
     lan_allowlist: list[str] = Field(default_factory=list)
     embedder: str = ""  # instance name; empty: the first healthy one
     vector_store: str = ""
+    cache_store: str = ""  # a cache_store plugin instance to use for answers; empty: core's own table
     shortcuts: bool = True  # near-duplicate reuse (only for analyzers that declare needs_vec)
     near_duplicate_score: float = Field(default=0.97, ge=0, le=1)
     junk_index: bool = False  # keep vector + hash of rejected items, to reject near matches later

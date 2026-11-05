@@ -27,6 +27,8 @@ from oaken_core.errors import PluginError
 from oaken_core.labels import BaseLabel
 from oaken_core.plugins.contracts import (
     PLUGIN_API_VERSION,
+    CacheEntry,
+    CacheStats,
     Health,
     Hit,
     LLMRequest,
@@ -301,6 +303,32 @@ class BaseVectorStore(BasePlugin):
     @_default
     async def stats(self, collection: str | None = None) -> VectorStats:
         raise NotImplementedError("a vector store must implement stats()")
+
+
+class BaseCache(BasePlugin):
+    """The router's answer cache, swapped for another store. Override all five members. ``key`` may return
+    any tuple of strings; ``get`` and ``put`` get that tuple back. Core's own (``AnswerCache``, a table in
+    core's database) is what runs unless ``[router] cache_store`` names a healthy instance of one of these."""
+
+    @_default
+    def key(self, analyzer: str, version: str, content_hash: str, model: str) -> tuple[str, ...]:
+        raise NotImplementedError
+
+    @_default
+    async def get(self, key: tuple[str, ...]) -> CacheEntry | None:
+        raise NotImplementedError
+
+    @_default
+    async def put(self, key: tuple[str, ...], entry: CacheEntry) -> None:
+        raise NotImplementedError
+
+    @_default
+    async def stats(self) -> CacheStats:
+        raise NotImplementedError
+
+    @_default
+    async def clear(self, analyzer: str | None = None) -> int:
+        raise NotImplementedError
 
 
 class BaseIngestor(BasePlugin):

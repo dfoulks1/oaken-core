@@ -9,6 +9,7 @@ Contracts are structural: any object with the members of its kind works.
 
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
 
@@ -364,6 +365,23 @@ class LLMResponse:
     model_id: str = ""
     thinking: str = ""
     meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CacheEntry:
+    """A validated model answer and what it cost to get, as the answer cache stores it."""
+
+    result_json: str
+    tokens_in: int
+    tokens_out: int
+
+
+@dataclass(frozen=True)
+class CacheStats:
+    entries: int
+    bytes: int = 0
+    by_analyzer: dict[str, int] = field(default_factory=dict)
+    oldest: datetime | None = None
 
 
 @dataclass(frozen=True)

@@ -37,7 +37,7 @@ async def test_vacuum_is_a_proposal_then_one_job_that_shrinks_nothing_it_should_
 async def test_the_answer_cache_is_counted_and_cleared_by_analyzer(ops: Ops) -> None:
     cache = AnswerCache(ops.kit.db, ops.kit.clock)
     for analyzer, key in (("summary", "a"), ("summary", "b"), ("triage", "c")):
-        await cache.put(analyzer, "1", key, "m", CacheEntry("{}", 1, 1))
+        await cache.put(cache.key(analyzer, "1", key, "m"), CacheEntry("{}", 1, 1))
     stats = (await ops.client.call("cache_stats", {}, CLI)).output
     assert stats.entries == 3 and stats.by_analyzer == {"summary": 2, "triage": 1}  # type: ignore[union-attr]
     asked = await ops.client.call("cache_clear", {"analyzer": "triage"}, CLI)

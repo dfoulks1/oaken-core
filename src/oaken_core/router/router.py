@@ -68,6 +68,9 @@ class Directory(Protocol):
 
     def backends(self) -> Mapping[str, Entry]: ...
     def embedder(self) -> Entry | None: ...
+    def cache(self, name: str) -> Any | None:
+        return self.host.usable("cache_store").get(name)
+
     def vectors(self) -> Any | None: ...
 
 
@@ -160,7 +163,7 @@ class HostDirectory:
 class Router:
     def __init__(self, db: Database, clock: Clock, settings: RouterSettings, directory: Directory) -> None:
         self.settings, self.directory = settings, directory
-        self.cache = AnswerCache(db, clock)
+        self.builtin_cache = AnswerCache(db, clock)
         self.ledger = Ledger(db, clock)
         self.spend = Spend(db, clock)
         self._gates: dict[str, asyncio.Semaphore] = {}
@@ -303,9 +306,19 @@ class Router:
         return replace(request, max_output_tokens=out, user=_cut(request.user, budget * 4))
 
     # -- cache and neighbours ------------------------------------------------------------------
+    @property
+    def cache(self) -> Any:
+        """The answer cache: the ``cache_store`` plugin named in ``[router] cache_store`` while it is healthy,
+        else core's own."""
+        name = self.settings.cache_store
+        lookup = getattr(self.directory, "cache", None)  # a stand-in directory (tests) may not offer one
+        plugin = lookup(name) if name and lookup else None
+        return plugin if plugin is not None else self.builtin_cache
+
     async def _lookup(self, call: Call, key: str, models: list[str], output: type[T]) -> tuple[T, CacheEntry] | None:
         for model in models:
-            entry = await self.cache.get(call.analyzer, call.version, key, model)
+            cache = self.cache
+            entry = await cache.get(cache.key(call.analyzer, call.version, key, model))
             if entry is None:
                 continue
             try:
@@ -315,7 +328,8 @@ class Router:
         return None
 
     async def _store(self, call: Call, model: str, entry: CacheEntry) -> None:
-        await self.cache.put(call.analyzer, call.version, call.content_hash, model, entry)
+        cache = self.cache
+        await cache.put(cache.key(call.analyzer, call.version, call.content_hash, model), entry)
 
     async def _neighbour(self, call: Call, models: list[str], output: type[T], vector: list[float]) -> tuple[T, CacheEntry] | None:
         """The stored answer of a near-duplicate, when one is close enough and still cached."""

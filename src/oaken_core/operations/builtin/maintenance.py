@@ -80,17 +80,17 @@ class CacheStats(BaseModel):
     oldest: datetime | None = None
 
 
+def _cache(ctx: OpContext) -> Any:
+    """The cache the router uses right now (a plugin's, or core's own)."""
+    router = ctx.svc.router
+    return router.cache if router is not None else AnswerCache(ctx.svc.db, ctx.svc.clock)
+
+
 @operation("cache_stats", "The model router's answer cache: how many answers it holds, how big, and whose.",
            permission="read", input=Empty, output=CacheStats, mcp="never", group="cache")  # fmt: skip
 async def cache_stats(ctx: OpContext, inp: Empty) -> CacheStats:
-    db = ctx.svc.db
-    total = await db.fetchone("SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(result_json)), 0) AS b, MIN(created_at) AS oldest FROM answer_cache")
-    by = await db.fetchall("SELECT analyzer, COUNT(*) AS n FROM answer_cache GROUP BY analyzer ORDER BY analyzer")
-    assert total is not None
-    from oaken_core.clock import parse_ts
-
-    return CacheStats(entries=int(total["n"]), bytes=int(total["b"]), by_analyzer={r["analyzer"]: int(r["n"]) for r in by},
-                      oldest=parse_ts(total["oldest"]) if total["oldest"] else None)  # fmt: skip
+    s = await _cache(ctx).stats()
+    return CacheStats(entries=s.entries, bytes=s.bytes, by_analyzer=dict(s.by_analyzer), oldest=s.oldest)
 
 
 class ClearCacheIn(BaseModel):
@@ -102,8 +102,8 @@ class ClearCacheOut(BaseModel):
 
 
 async def _preview_clear(ctx: OpContext, inp: ClearCacheIn) -> Preview:
-    row = await ctx.svc.db.fetchone("SELECT COUNT(*) AS n FROM answer_cache WHERE (? IS NULL OR analyzer = ?)", (inp.analyzer, inp.analyzer))
-    n = int(row["n"]) if row else 0
+    stats = await _cache(ctx).stats()
+    n = stats.by_analyzer.get(inp.analyzer, 0) if inp.analyzer else stats.entries
     return Preview(summary=f"Delete {n} cached answer(s)" + (f" of {inp.analyzer}" if inp.analyzer else ""),
                    changes=[Change(target=inp.analyzer or "all", field="answer_cache", before=n, after=0)], total_changes=n)  # fmt: skip
 
@@ -113,7 +113,7 @@ async def _preview_clear(ctx: OpContext, inp: ClearCacheIn) -> Preview:
            permission="mutate", input=ClearCacheIn, output=ClearCacheOut, mcp="never", group="cache",
            preview=_preview_clear)  # fmt: skip
 async def cache_clear(ctx: OpContext, inp: ClearCacheIn) -> ClearCacheOut:
-    return ClearCacheOut(deleted=await AnswerCache(ctx.svc.db, ctx.svc.clock).clear(inp.analyzer))
+    return ClearCacheOut(deleted=await _cache(ctx).clear(inp.analyzer))
 
 
 # -- the event history -------------------------------------------------------------------------

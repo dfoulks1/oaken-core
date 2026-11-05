@@ -25,7 +25,7 @@ from oaken_core import __version__
 from oaken_core.clock import FakeClock
 from oaken_core.logging import get_logger
 from oaken_core.plugins.base import VectorStats
-from oaken_core.plugins.contracts import Hit, LLMRequest, LLMResponse, PluginContext, VectorItem
+from oaken_core.plugins.contracts import CacheEntry, Hit, LLMRequest, LLMResponse, PluginContext, VectorItem
 from oaken_core.plugins.kinds import KindRegistry
 from oaken_core.plugins.validate import check_plugin, check_started
 from oaken_core.untrusted import UntrustedText
@@ -205,6 +205,36 @@ STORE_CHECKS = (
 )
 
 
+# -- Cache store (the router's answer cache, swapped) -------------------------------------------
+async def check_cache_valid(cache: Any) -> None:
+    _valid("cache_store", cache)
+
+
+async def check_cache_roundtrip(cache: Any) -> None:
+    key = cache.key("triage", "1", "hash", "model")
+    assert isinstance(key, tuple) and all(isinstance(p, str) for p in key), "key() must return a tuple of strings"
+    assert key == cache.key("triage", "1", "hash", "model"), "key() must be stable"
+    assert await cache.get(key) is None
+    await cache.put(key, CacheEntry('{"a":1}', 3, 4))
+    assert await cache.get(key) == CacheEntry('{"a":1}', 3, 4)
+    await cache.put(key, CacheEntry('{"a":2}', 5, 6))  # a second answer for one key replaces the first
+    assert await cache.get(key) == CacheEntry('{"a":2}', 5, 6)
+    assert await cache.get(cache.key("triage", "2", "hash", "model")) is None, "a new version is a new question"
+
+
+async def check_cache_stats_and_clear(cache: Any) -> None:
+    for analyzer, h in (("summary", "a"), ("summary", "b"), ("triage", "c")):
+        await cache.put(cache.key(analyzer, "1", h, "m"), CacheEntry("{}", 1, 1))
+    stats = await cache.stats()
+    assert stats.entries == 3 and stats.by_analyzer == {"summary": 2, "triage": 1}, stats
+    assert await cache.clear("triage") == 1
+    assert (await cache.stats()).entries == 2
+    assert await cache.clear() == 2 and (await cache.stats()).entries == 0
+
+
+CACHE_CHECKS = (check_cache_valid, check_cache_roundtrip, check_cache_stats_and_clear)
+
+
 async def _verify(
     checks: tuple[Callable[..., Awaitable[None]], ...], make: Callable[[], Any], kind: str,
     config: dict[str, Any] | None,
@@ -231,6 +261,10 @@ async def verify_llm(make: Callable[[], Any], config: dict[str, Any] | None = No
 
 async def verify_vector_store(make: Callable[[], Any], config: dict[str, Any] | None = None) -> None:
     await _verify(STORE_CHECKS, make, "vector_store", config)
+
+
+async def verify_cache(make: Callable[[], Any], config: dict[str, Any] | None = None) -> None:
+    await _verify(CACHE_CHECKS, make, "cache_store", config)
 
 
 def _abstract(name: str) -> Any:
@@ -330,3 +364,25 @@ class VectorStoreContract:
     async def test_stats(self, store: Any, store_config: Any) -> None:
         async with running(store, "vector_store", store_config):
             await check_store_stats(store)
+
+
+class CacheContract:
+    """Override ``cache`` (the plugin) and, if it needs settings, ``cache_config``."""
+
+    cache = _abstract("cache")
+
+    @pytest.fixture
+    def cache_config(self) -> dict[str, Any] | None:
+        return None
+
+    async def test_is_valid(self, cache: Any, cache_config: Any) -> None:
+        async with running(cache, "cache_store", cache_config):
+            await check_cache_valid(cache)
+
+    async def test_roundtrip(self, cache: Any, cache_config: Any) -> None:
+        async with running(cache, "cache_store", cache_config):
+            await check_cache_roundtrip(cache)
+
+    async def test_stats_and_clear(self, cache: Any, cache_config: Any) -> None:
+        async with running(cache, "cache_store", cache_config):
+            await check_cache_stats_and_clear(cache)

@@ -9,15 +9,11 @@ here a row is a running counter per (analyzer, model, backend), which is what a 
 from dataclasses import dataclass
 from datetime import timedelta
 
-from oaken_core.clock import Clock, fmt_ts
+from oaken_core.clock import Clock, fmt_ts, parse_ts
 from oaken_core.db import Database
+from oaken_core.plugins.contracts import CacheEntry, CacheStats
 
-
-@dataclass(frozen=True)
-class CacheEntry:
-    result_json: str
-    tokens_in: int
-    tokens_out: int
+__all__ = ["AnswerCache", "CacheEntry", "CacheStats", "Ledger", "LedgerRow", "Spend", "SpendRow"]
 
 
 @dataclass(frozen=True)
@@ -35,29 +31,39 @@ class LedgerRow:
 
 
 class AnswerCache:
+    """The default ``cache_store``: core's own table, which a plugin never sees. A ``cache_store`` plugin
+    replaces it with the same five members (``key``, ``get``, ``put``, ``stats``, ``clear``)."""
+
     def __init__(self, db: Database, clock: Clock) -> None:
         self.db, self.clock = db, clock
 
-    async def get(self, analyzer: str, version: str, content_hash: str, model: str) -> CacheEntry | None:
+    def key(self, analyzer: str, version: str, content_hash: str, model: str) -> tuple[str, ...]:
+        return (analyzer, version, content_hash, model)
+
+    async def get(self, key: tuple[str, ...]) -> CacheEntry | None:
         row = await self.db.fetchone(
             "SELECT result_json, tokens_in, tokens_out FROM answer_cache WHERE analyzer = ? AND"
             " version = ? AND content_hash = ? AND model = ?",
-            (analyzer, version, content_hash, model),
+            key,
         )
         return None if row is None else CacheEntry(row["result_json"], int(row["tokens_in"]), int(row["tokens_out"]))
 
-    async def put(self, analyzer: str, version: str, content_hash: str, model: str, entry: CacheEntry) -> None:
+    async def put(self, key: tuple[str, ...], entry: CacheEntry) -> None:
         await self.db.execute(
             "INSERT OR REPLACE INTO answer_cache (analyzer, version, content_hash, model, result_json,"
             " tokens_in, tokens_out, created_at) VALUES (?,?,?,?,?,?,?,?)",
-            (analyzer, version, content_hash, model, entry.result_json, entry.tokens_in,
-             entry.tokens_out, fmt_ts(self.clock.now())),
-        )  # fmt: skip
+            (*key, entry.result_json, entry.tokens_in, entry.tokens_out, fmt_ts(self.clock.now())),
+        )
+
+    async def stats(self) -> CacheStats:
+        total = await self.db.fetchone("SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(result_json)), 0) AS b, MIN(created_at) AS oldest FROM answer_cache")
+        by = await self.db.fetchall("SELECT analyzer, COUNT(*) AS n FROM answer_cache GROUP BY analyzer ORDER BY analyzer")
+        assert total is not None
+        return CacheStats(entries=int(total["n"]), bytes=int(total["b"]), by_analyzer={r["analyzer"]: int(r["n"]) for r in by},
+                          oldest=parse_ts(total["oldest"]) if total["oldest"] else None)  # fmt: skip
 
     async def clear(self, analyzer: str | None = None) -> int:
-        return await self.db.execute(
-            "DELETE FROM answer_cache WHERE (? IS NULL OR analyzer = ?)", (analyzer, analyzer)
-        )
+        return await self.db.execute("DELETE FROM answer_cache WHERE (? IS NULL OR analyzer = ?)", (analyzer, analyzer))
 
 
 class Ledger:
