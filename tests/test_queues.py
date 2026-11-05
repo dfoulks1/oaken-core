@@ -91,3 +91,14 @@ async def test_a_product_can_turn_config_queues_off(tmp_path) -> None:  # type: 
     fine = await opened(tmp_path, queues_from_config=False)  # no tables: nothing to refuse
     await fine.open()
     await fine.stop()
+
+
+def test_a_plugin_kind_belongs_to_one_queue_so_each_plugin_has_one_stage() -> None:
+    from oaken_core.queues import Queues
+
+    q = Queues()
+    q.new_queue("triage", kind="triager")
+    with pytest.raises(ConfigError, match="already serves 'triager'"):
+        q.new_queue("triage-slow", kind="triager")
+    q.new_queue("enrich", kind="enricher")  # another kind is fine
+    q.new_queue("plain")  # a queue with no kind is not a stage

@@ -42,6 +42,8 @@ class Queues:
             raise ConfigError(f"queue {name!r} already exists")
         if workers < 1:
             raise ConfigError("a queue needs at least one worker")
+        if kind and (other := next((q.name for q in self._queues.values() if q.kind == kind), None)):
+            raise ConfigError(f"queue {other!r} already serves {kind!r}: a plugin kind belongs to one queue, so each plugin has one stage")
         spec = self._queues[name] = QueueSpec(name, description, workers, kind, label)
         return spec
 

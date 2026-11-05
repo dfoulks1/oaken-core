@@ -373,6 +373,8 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
         assert (await client.get("/stage/nope")).status_code == 404
         machinery = (await client.get("/pipeline")).text
         assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
+        assert 'href="/plugins/enricher/notes">Settings</a>' in stage.text and "switch-text" not in stage.text  # a Settings button, no on/off word
+        assert all(stage.text.count(f'href="/plugins/{k}/{n}">{n}') == (1 if k == "enricher" else 0) for k, n in (("enricher", "notes"), ("store", "sqlite")))  # each plugin on one page
     finally:
         await client.aclose()
         await core.host.stop()

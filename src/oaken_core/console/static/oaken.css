@@ -387,3 +387,4 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .flow-name { font-weight: 600; }
 .flow-count { font-size: .78rem; color: var(--muted); }
 .flow-count.bad { color: var(--danger, #b3261e); }
+.table td form.inline { display: inline-flex; align-items: center; vertical-align: middle; }
