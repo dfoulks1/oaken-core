@@ -628,3 +628,34 @@ async def test_general_has_an_active_table_with_the_errors_and_an_inactive_one_t
     on = await rig.post("/ui/plugins/enricher/notes/enable", back="/")
     assert on.status_code == 303
     assert "Inactive plugins" not in (await rig.c.get("/")).text  # back up, and the inactive table is gone again
+
+
+# -- a queue's own controls --------------------------------------------------------------------
+async def test_a_stage_page_starts_and_stops_its_queue_and_edits_renames_and_deletes_it(tmp_path: Path, oaken_home: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher", "label": "Enrichment"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    post = lambda path, **kw: client.post(path, data={"csrf": token, **kw})  # noqa: E731
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text('[queues.enrich]\nkind = "enricher"\nlabel = "Enrichment"\n')  # edit works on what the file holds
+    try:
+        page = (await client.get("/stage/enrich")).text
+        assert "Stop</button>" in page and 'popovertarget="queue-settings"' in page and 'action="/ui/queues/enrich/rename"' in page
+        assert page.index("Stop</button>") < page.index('<div class="table-wrap">')  # the controls sit above the numbers
+        stop = await post("/ui/queues/enrich/pause", back="/stage/enrich")
+        assert stop.status_code == 303 and stop.headers["location"] == "/stage/enrich"
+        assert "Start</button>" in (await client.get("/stage/enrich")).text and "(stopped)" in (await client.get("/stage/enrich")).text
+        await post("/ui/queues/enrich/resume")
+        assert "Stop</button>" in (await client.get("/stage/enrich")).text
+        edit = {"label": "Enrich", "description": "adds context", "workers": "3"}
+        asked = await post("/ui/queues/enrich/edit", **edit)
+        assert asked.status_code == 200 and "workers" in asked.text and "Change queue enrich" in asked.text
+        done = await post("/ui/queues/enrich/edit", confirm="1", **edit)
+        assert done.status_code == 200 and "restart" in done.text  # the rig has no daemon to reload it
+        assert (await post("/ui/queues/enrich/explode")).status_code == 404
+        assert (await post("/ui/queues/nope/pause")).status_code == 422
+        gone = await post("/ui/queues/enrich/delete", confirm="1")
+        assert gone.status_code == 200 and "Delete: enrich" in gone.text
+    finally:
+        await client.aclose()
+        await core.host.stop()

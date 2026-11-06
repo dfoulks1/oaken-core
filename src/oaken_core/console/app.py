@@ -95,6 +95,7 @@ class Console:
             Route("/json/config", self.data(self.j_config)),
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
             Route("/ui/queues/add", self.post(self.add_queue), methods=["POST"]),
+            Route("/ui/queues/{queue}/{verb}", self.post(self.queue_verb), methods=["POST"]),
             Route("/ui/expose", self.post(self.expose), methods=["POST"]),
             Route("/ui/mcp-power", self.post(self.mcp_power), methods=["POST"]),
             Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
@@ -467,6 +468,23 @@ class Console:
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=f"Added {out.name}", back="/", result={"note": out.note})
+
+    async def queue_verb(self, request: Request, form: dict[str, str]) -> Response:
+        """A queue's own controls on its page: Start and Stop act on the click; edit, rename and delete show what they will do first."""
+        name, verb = request.path_params["queue"], request.path_params["verb"]
+        if verb not in ("pause", "resume", "edit", "rename", "delete"):
+            raise NotFound("no such action")
+        self.svc.queues.get(name)
+        if verb in ("pause", "resume"):
+            await self.client.call(f"queue_{verb}", {"queue": name}, UI, confirm=True)  # the click is the confirmation
+            return RedirectResponse(self._back(f"/stage/{name}"), 303)
+        payload = {"edit": {"queue": name, "label": form.get("label", "").strip(), "description": form.get("description", "").strip(),
+                            "workers": int(form.get("workers") or 1)},
+                   "rename": {"queue": name, "to": form.get("to", "")}, "delete": {"queue": name}}[verb]  # fmt: skip
+        out = await self._gated(f"queue_{verb}", payload, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        return self.render("result.html", title=f"{verb.capitalize()}: {out.name}", back="/" if verb != "edit" else f"/stage/{name}", result={"note": out.note})
 
     async def set_look(self, request: Request, form: dict[str, str]) -> Response:
         """The theme menu: palette and mode, kept in ``[console]`` of ``config.toml`` (the one

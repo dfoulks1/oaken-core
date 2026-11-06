@@ -1,13 +1,37 @@
-{% extends "base.html" %}{% from "_plugin_table.html" import plugin_table, flow with context %}{% block title %}{{ stage.title }}{% endblock %}
+{% extends "base.html" %}{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}{% from "_plugin_table.html" import plugin_table, flow with context %}{% block title %}{{ stage.title }}{% endblock %}
 {% block body %}
 <h1>{{ stage.title }}</h1>
 {{ flow(stages, stage.name) }}
 <p class="muted">{{ stage.description or ("Work in the " ~ stage.name ~ " queue is done by " ~ stage.kind ~ " plugins.") }} {{ stage.workers }} worker{{ "s" if stage.workers != 1 }}.</p>
 <div class="card">
-<div class="card-head"><span>Queue</span><span class="muted small">{{ stage.workers }} worker{{ "s" if stage.workers != 1 }}</span></div>
+<div class="card-head"><span>Queue{% if row.paused %} <span class="muted">(stopped)</span>{% endif %}</span><div class="row">
+<form class="inline" method="post" action="/ui/queues/{{ stage.name }}/{{ 'resume' if row.paused else 'pause' }}">{{ csrf(token) }}<input type="hidden" name="back" value="/stage/{{ stage.name }}"><button class="btn btn-sm" title="{{ 'Let it hand out jobs again' if row.paused else 'Stop handing out jobs (running ones finish)' }}">{{ m.icon("play" if row.paused else "pause") }} {{ "Start" if row.paused else "Stop" }}</button></form>
+<button type="button" class="btn btn-sm btn-icon" popovertarget="queue-settings" popovertargetaction="show" title="Queue settings" aria-label="Settings for the {{ stage.name }} queue">{{ m.icon("gear") }}</button>
+<span class="muted small">{{ stage.workers }} worker{{ "s" if stage.workers != 1 }}</span></div></div>
 <div class="table-wrap"><table class="table"><tr><th>Queued</th><th>Running</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
 <tr><td>{{ row.queued }}{% if row.paused %} <span class="muted">(paused)</span>{% endif %}</td><td>{{ row.running }}</td><td class="{{ 'bad' if row.failed }}">{{ row.failed }}</td>
 <td>{{ "%.0fs"|format(row.oldest_queued_seconds) if row.oldest_queued_seconds is not none else "" }}</td><td>{{ row.last_error or "" }}</td></tr></table></div>
+</div>
+<div class="dialog" id="queue-settings" popover role="dialog" aria-labelledby="queue-settings-t">
+  <div class="dialog-head"><h2 id="queue-settings-t">{{ stage.title }} settings</h2>
+    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="queue-settings" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+  <form method="post" action="/ui/queues/{{ stage.name }}/edit">{{ csrf(token) }}<input type="hidden" name="back" value="/stage/{{ stage.name }}">
+    <div class="dialog-body"><div class="form-grid">
+      <label for="qs-label">Title</label><input class="input" id="qs-label" name="label" maxlength="60" value="{{ stage.label }}" autocomplete="off">
+      <label for="qs-desc">Description</label><input class="input" id="qs-desc" name="description" value="{{ stage.description }}" autocomplete="off">
+      <label for="qs-workers">Workers</label><input class="input" id="qs-workers" name="workers" type="number" min="1" max="64" value="{{ stage.workers }}">
+    </div></div>
+    <div class="dialog-foot"><button class="btn btn-primary">Save</button><span class="muted">It shows what it will do before it does it.</span></div>
+  </form>
+  <form method="post" action="/ui/queues/{{ stage.name }}/rename">{{ csrf(token) }}
+    <div class="dialog-body"><div class="form-grid">
+      <label for="qs-to">Rename</label><div><input class="input mono" id="qs-to" name="to" required maxlength="41" value="{{ stage.name }}" autocomplete="off"><div class="hint">Refused while jobs are queued or running. History and subjects' queue labels follow.</div></div>
+    </div></div>
+    <div class="dialog-foot"><button class="btn">Rename</button></div>
+  </form>
+  <form method="post" action="/ui/queues/{{ stage.name }}/delete">{{ csrf(token) }}
+    <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Delete queue</button><span class="muted">Refused while jobs are queued or running.</span></div>
+  </form>
 </div>
 {{ plugin_table(plugins, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is installed.", stage.kind ~ " plugins") }}
 {% endblock %}
