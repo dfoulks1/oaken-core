@@ -45,7 +45,6 @@ items = "oaken_core.items:ItemsIngestor"
 
 [project.entry-points."oaken_core.providers"]
 socket = "oaken_core.providers.socket:SocketProvider"
-jsonl = "oaken_core.providers.jsonl:JsonlProvider"
 
 [project.entry-points."oaken_core.triagers"]
 nearjunk = "oaken_core.router.nearjunk:NearJunk"

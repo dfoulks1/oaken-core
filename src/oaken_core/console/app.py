@@ -92,8 +92,9 @@ class Console:
         routes = [
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
-            Route("/pipeline", self.page(self.labels_page)),
+            Route("/pipeline", self.page(self.providers)),
             Route("/pipeline/providers", self.page(self.providers)),
+            Route("/pipeline/labels", self.page(self.labels_page)),
             Route("/pipeline/analyzers", self.page(self.analyzers)),
             Route("/pipeline/machinery", self.page(self.pipeline)),
             Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
@@ -384,7 +385,7 @@ class Console:
         out = await self._gated(f"label_{verb}", payload, form, request.url.path)
         if isinstance(out, Response):
             return out
-        return self.render("result.html", title=f"{verb.capitalize()}: {out.key}", back="/pipeline", result={"note": out.note})
+        return self.render("result.html", title=f"{verb.capitalize()}: {out.key}", back="/pipeline/labels", result={"note": out.note})
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()

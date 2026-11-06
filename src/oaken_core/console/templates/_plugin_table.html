@@ -52,7 +52,7 @@
 {% if off %}<details class="card fold" id="fold-{{ pre }}"><summary class="card-head">Inactive plugins <span class="muted small">{{ off|length }}</span></summary>
 <div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>Loads from</th><th>Enabled</th><th class="right">Actions</th></tr></thead><tbody>
 {% for p in off %}<tr>
-<td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{% if p.plugin != p.name %} <span class="muted small">· {{ p.plugin }}</span>{% endif %}</td>
+<td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{% if p.plugin != p.name %} <span class="muted small">· {{ p.plugin }}</span>{% endif %} <span class="muted small">{{ p.kind }}</span></td>
 <td class="mono small">{{ p.loadpath or p.kind }}{% if p.loadpath %} <span class="muted">{{ p.kind }}</span>{% endif %}{% if p.detail %}<div class="health-detail small muted">{{ p.detail }}</div>{% endif %}</td>
 <td class="nowrap">{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ "/enable", back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}</td>
 <td class="right nowrap"><button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ pre }}{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button></td>
@@ -64,7 +64,7 @@
 
 {# The Pipeline page's tabs. ``current`` is ``labels``, ``analyzers`` or ``machinery``. #}
 {% macro pipeline_tabs(current) %}
-<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("providers", "/pipeline/providers", "Providers"), ("labels", "/pipeline", "Labels"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("providers", "/pipeline", "Providers"), ("labels", "/pipeline/labels", "Labels"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}

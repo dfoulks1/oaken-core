@@ -635,6 +635,7 @@ async def test_general_has_an_active_table_with_the_errors_and_an_inactive_one_t
     page = (await rig.c.get("/")).text
     inactive = page[page.index(">Inactive plugins <span"):]
     assert "notes" in inactive[: inactive.index("</table>")] and "Turn a plugin on to put it back" in inactive
+    assert 'href="/plugins/enricher/notes">notes</a> <span class="muted small">enricher</span>' in inactive  # the kind beside the name: two plugins may share one (ollama the backend, ollama the embedder)
     assert 'id="fold-off-"><summary' in page  # folded: closed until opened
     assert "notes" not in page[page.index('Active plugins <span class="muted small">'): page.index(">Inactive plugins <span")]
     on = await rig.post("/ui/plugins/enricher/notes/enable", back="/")
@@ -682,7 +683,8 @@ async def test_pipeline_labels_lists_keys_and_adds_edits_and_deletes_the_owners_
     saved = lambda: tomllib.loads((oaken_home / "config" / "config.toml").read_text()).get("labels", {})  # noqa: E731
     try:
         assert 'href="/pipeline/machinery"' in (await client.get("/pipeline")).text and 'href="/pipeline"' in (await client.get("/pipeline/machinery")).text  # the two tabs
-        page = (await client.get("/pipeline")).text  # Labels is the default tab
+        assert 'aria-current="page">Providers' in (await client.get("/pipeline")).text  # Providers is the default tab
+        page = (await client.get("/pipeline/labels")).text
         assert "confidential" in page and "core" in page and 'popovertarget="label-new"' in page
         assert 'name="subject"' not in page and "Find" not in page  # settings only: no look-up of a subject's labels
         form = {"key": "heat", "description": "How upset", "values": "calm, warm,hot"}
@@ -692,7 +694,7 @@ async def test_pipeline_labels_lists_keys_and_adds_edits_and_deletes_the_owners_
         assert done.status_code == 200 and "restart" in done.text  # the rig has no daemon to reload it
         assert saved()["heat"] == {"description": "How upset", "values": ["calm", "warm", "hot"]}
         core.client.svc.labels.maker.register_config(BaseLabel.new("heat", "How upset", ("calm", "warm", "hot")))  # what a reload does
-        page = (await client.get("/pipeline")).text
+        page = (await client.get("/pipeline/labels")).text
         assert 'action="/ui/labels/heat/edit"' in page and 'action="/ui/labels/confidential/edit"' not in page  # only the owner's own
         assert 'popovertarget="label-heat"' in page and 'id="label-heat"' in page  # the gear opens its own dialog, whatever row it is on
         edited = await post("/ui/labels/heat/edit", confirm="1", description="Temperature", values="calm, hot")
@@ -733,10 +735,10 @@ async def test_the_pipeline_has_an_analyzers_tab_with_each_kinds_stage_and_machi
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher", "label": "Enrichment"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        labels = (await client.get("/pipeline")).text
-        for href in ("/pipeline", "/pipeline/analyzers", "/pipeline/machinery"):
-            assert f'href="{href}"' in labels  # the three tabs, on each page
-        assert labels.index(">Labels<") < labels.index(">Analyzers<") < labels.index(">Machinery<")
+        labels = (await client.get("/pipeline/labels")).text
+        for href in ("/pipeline", "/pipeline/labels", "/pipeline/analyzers", "/pipeline/machinery"):
+            assert f'href="{href}"' in labels  # the four tabs, on each page
+        assert labels.index(">Providers<") < labels.index(">Labels<") < labels.index(">Analyzers<") < labels.index(">Machinery<")
         analyzers = (await client.get("/pipeline/analyzers")).text
         assert 'aria-current="page">Analyzers' in analyzers and "notes" in analyzers and 'href="/stage/enrich">Enrichment' in analyzers  # with the stage that runs the kind
         assert "sqlite" not in analyzers  # a store never reads an item's content

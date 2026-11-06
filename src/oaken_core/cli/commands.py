@@ -251,20 +251,40 @@ def _wants_help(argv: list[str]) -> bool:
 
 
 def _catalog(args: list[str]) -> int:
-    """``oaken plugins``: what ``oaken-plugins`` offers, the way ``operations`` lists operations."""
-    from oaken_core.plugins import catalog
-    from oaken_core.plugins.kinds import KindRegistry
+    """``oaken plugins``: what you can add by name, the way ``operations`` lists operations. The directories in
+    ``[extensions] dirs`` first (read from config.toml), then the ``oaken-plugins`` package: the order ``plugin add`` looks in."""
+    import tomllib
 
-    rows = [{"name": e.name, "kind": e.kind, "summary": e.summary} for e in catalog.entries(k.name for k in KindRegistry.shipped())]
+    from oaken_core.errors import OakenError
+    from oaken_core.plugins import catalog, extensions
+    from oaken_core.plugins.kinds import KindRegistry
+    from oaken_core.settings import Settings
+
+    kinds = KindRegistry.shipped()
+    by_group = {k.group: k.name for k in kinds}
+    try:
+        dirs = Settings.load().extensions.dirs
+    except OakenError as exc:  # a config that will not load is not a reason to hide the package's plugins
+        print_text(f"config.toml was not read ({exc.message}); listing oaken-plugins only", )
+        dirs = []
+    extensions.prepare(dirs)  # a directory that is a checkout of oaken-plugins makes it importable
+    rows: list[dict[str, str]] = []
+    for d in extensions.plugin_dirs(dirs):
+        try:
+            summary = tomllib.loads((d / "pyproject.toml").read_text(encoding="utf-8")).get("project", {}).get("description", "")
+        except (OSError, ValueError):
+            summary = ""
+        rows += [{"name": ep.name, "kind": by_group[ep.group], "summary": summary, "from": str(d)} for ep in extensions._declared(d) if ep.group in by_group]
+    rows += [{"name": e.name, "kind": e.kind, "summary": e.summary, "from": catalog.DIST} for e in catalog.entries(k.name for k in kinds)]
     if "--json" in args:
         print_json(rows)
     elif rows:
-        print_table(rows, ["name", "kind", "summary"], title="plugins")
+        print_table(rows, ["name", "kind", "from", "summary"], title="plugins")
         print_text(f"Add one: {identity.prog} plugin add NAME")
-    elif catalog.installed():
-        print_text(f"{catalog.DIST} is installed but has no plugins.")
+    elif catalog.installed() or dirs:
+        print_text("No plugins found in [extensions] dirs or in " + catalog.DIST + ".")
     else:
-        print_text(f"{catalog.DIST} is not installed: pip install {catalog.DIST}")
+        print_text(f"Nothing to list. Set [extensions] dirs in config.toml, or: pip install {catalog.DIST}")
     return int(ExitCode.OK)
 
 

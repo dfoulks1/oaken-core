@@ -79,3 +79,31 @@ async def test_the_not_found_message_tells_a_plugin_author_a_local_folder_is_eno
     rig.core.host.extensions_dirs = []
     with pytest.raises(Exception, match=r"\[extensions\] dirs.*never has to be on PyPI"):
         rig.core.host.plan_add("ghost")
+
+
+def test_oaken_plugins_lists_the_extensions_directories_first_then_the_package(fake: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, oaken_home: Path) -> None:
+    mine = tmp_path / "mine" / "oaken-formatter-shiny"
+    (mine / "src").mkdir(parents=True)
+    (mine / "pyproject.toml").write_text('[project]\nname = "x"\ndescription = "My shiny formatter."\n[project.entry-points."oaken_core.formatters"]\nshiny = "somewhere:Shiny"\n')
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text(f'[extensions]\ndirs = ["{tmp_path / "mine"}"]\n')
+    assert main(["plugins"]) == 0
+    out = capsys.readouterr().out
+    assert "shiny" in out and "My shiny formatter." in out and "demo" in out  # a plugin in a directory, and the package's
+    assert out.index("shiny") < out.index("demo")  # the directory first
+
+
+def test_naming_a_checkout_of_oaken_plugins_in_extensions_dirs_is_enough_to_list_and_add_from_it(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, oaken_home: Path) -> None:
+    repo = tmp_path / "checkout"
+    pkg = repo / "src" / "oaken_plugins" / "formatter_checked"
+    pkg.mkdir(parents=True)
+    (repo / "src" / "oaken_plugins" / "__init__.py").write_text("")
+    (pkg / "__init__.py").write_text('"""From a checkout."""\n')
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text(f'[extensions]\ndirs = ["{repo}"]\n')
+    for m in [m for m in sys.modules if m.startswith("oaken_plugins")]:
+        monkeypatch.delitem(sys.modules, m)
+    monkeypatch.setattr(sys, "path", list(sys.path))  # prepare() appends; leave it as it was
+    assert main(["plugins"]) == 0
+    out = capsys.readouterr().out
+    assert "checked" in out and "From a checkout." in out

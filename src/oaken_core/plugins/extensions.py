@@ -18,6 +18,7 @@ from pathlib import Path
 from oaken_core.logging import get_logger
 
 log = get_logger(__name__)
+PACKAGE = "oaken_plugins"  # the one distribution of plugins; see ``plugins.catalog``
 GROUP_PREFIX = "oaken_core."  # a plugin made for another Oaken (``oaken.providers``) is not ours to load
 
 
@@ -38,7 +39,13 @@ def plugin_dirs(roots: Sequence[str]) -> list[Path]:
 
 
 def prepare(roots: Sequence[str]) -> None:
-    """Make each plugin's package importable. Idempotent."""
+    """Make each plugin's package importable. Idempotent. A root that is itself a checkout of ``oaken-plugins`` (it holds
+    ``src/oaken_plugins``) puts that ``src`` on the path, so naming the repo in ``[extensions] dirs`` is enough."""
+    for root in roots:
+        base = Path(root).expanduser()
+        src = str(base / "src")
+        if (base / "src" / PACKAGE).is_dir() and not base.stat().st_mode & stat.S_IWOTH and src not in sys.path:
+            sys.path.append(src)
     for d in plugin_dirs(roots):
         src = str(d / "src")
         if (d / "src").is_dir() and src not in sys.path:
