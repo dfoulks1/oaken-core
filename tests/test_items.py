@@ -73,7 +73,7 @@ async def test_an_item_waits_when_no_ingestor_runs_and_flows_when_one_starts(tmp
     try:
         await c.client.call("intake_submit", {"source": "a", "body": "x"}, CLI, confirm=True)
         await c.runner.drain()
-        stats = {r.queue: r for r in await c.client.svc.queue.stats()}
+        stats = {r.queue: r for r in await c.client.svc.jobs.stats()}
         assert stats["default"].queued == 1  # deferred, not failed: nothing was lost
     finally:
         await c.host.stop()

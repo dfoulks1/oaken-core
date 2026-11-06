@@ -78,7 +78,7 @@ async def test_a_reject_never_reaches_the_ingestor(core: Core) -> None:
     await submit(core)("feed", {"text": "junk"})
     await core.runner.drain()
     assert Shelf.stored == []
-    (job,) = await core.runner.queue.query(kind=KIND)
+    (job,) = await core.runner.jobs.query(kind=KIND)
     assert job.status == "succeeded"
 
 
@@ -90,7 +90,7 @@ async def test_with_no_ingestor_an_accepted_item_waits_without_failing_and_flows
         await core.host.disable("shelf")
         await submit(core)("feed", {"text": "hello"})
         await core.runner.drain()
-        (job,) = await core.runner.queue.query(kind=KIND)
+        (job,) = await core.runner.jobs.query(kind=KIND)
         assert job.status == "queued" and job.attempts == 0 and "no ingestor" in (job.last_error or "")
         await core.host.enable("shelf")
         clock.advance(seconds=core.settings.router.wait_seconds + 1)

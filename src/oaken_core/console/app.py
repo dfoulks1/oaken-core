@@ -463,7 +463,7 @@ class Console:
         title = form.get("label", "").strip()
         payload = {"name": form.get("name", "").strip() or title, "kind": form.get("kind", ""), "label": title,
                    "workers": int(form.get("workers") or 1)}  # fmt: skip
-        out = await self._gated("queue_add", payload, form, request.url.path)
+        out = await self._gated("queue_new", payload, form, request.url.path)
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=f"Added {out.name}", back="/", result={"note": out.note})

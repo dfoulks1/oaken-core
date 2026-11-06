@@ -24,7 +24,7 @@ async def test_the_cli_sees_everything_and_a_person_over_mcp_only_what_is_on(ops
     every = {o.name for o in await ops.client.visible(CLI)}
     mcp = {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
     assert {"queue_requeue", "agent_create", "label_clear"} <= every
-    assert mcp == {"status", "queue_list", "job_list", "label_get", "plugin_list", "job_claim",
+    assert mcp == {"status", "queue_list", "queue_get", "job_list", "label_get", "plugin_list", "job_claim",
                    "job_heartbeat", "job_complete", "job_fail"}  # fmt: skip
     assert not mcp & {o.name for o in ops.registry.all() if o.mcp == "never"}
 
@@ -32,9 +32,9 @@ async def test_the_cli_sees_everything_and_a_person_over_mcp_only_what_is_on(ops
 async def test_a_mutation_is_a_proposal_until_a_person_confirms(ops: Ops) -> None:
     res = await ops.client.call("queue_pause", {"queue": "default"}, CLI)
     assert res.proposal and not res.executed and res.proposal.summary == "Pause queue default"
-    assert not (await ops.kit.queue.stats())[0].paused  # nothing happened
+    assert not (await ops.kit.jobs.stats())[0].paused  # nothing happened
     done = await ops.client.call("queue_pause", {"queue": "default"}, CLI, confirm=True)
-    assert done.executed and (await ops.kit.queue.stats())[0].paused
+    assert done.executed and (await ops.kit.jobs.stats())[0].paused
 
 
 async def test_bad_input_says_where_not_what(ops: Ops) -> None:
@@ -46,7 +46,7 @@ async def test_an_mcp_caller_can_only_confirm_with_the_token_its_own_proposal_pr
     await ops.client.exposure.set("op:queue_pause", True, actor=USER)  # the owner turns it on
     agent = await mcp_agent(ops, "queue_pause")
     first = await ops.client.call("queue_pause", {"queue": "default"}, agent, confirm=True)  # confirm is ignored
-    assert first.proposal is not None and not (await ops.kit.queue.stats())[0].paused
+    assert first.proposal is not None and not (await ops.kit.jobs.stats())[0].paused
     other = await mcp_agent(ops, "queue_pause")
     with pytest.raises(Exception, match="different call"):  # a token is bound to the caller
         await ops.client.call("queue_pause", {"queue": "default"}, other, confirmation_token=first.proposal.confirmation_token)
@@ -55,7 +55,7 @@ async def test_an_mcp_caller_can_only_confirm_with_the_token_its_own_proposal_pr
     again = (await ops.client.call("queue_pause", {"queue": "default"}, agent)).proposal
     assert again is not None
     done = await ops.client.call("queue_pause", {"queue": "default"}, agent, confirmation_token=again.confirmation_token)
-    assert done.executed and (await ops.kit.queue.stats())[0].paused
+    assert done.executed and (await ops.kit.jobs.stats())[0].paused
 
 
 async def test_off_means_the_same_words_as_never_and_never_cannot_be_turned_on(ops: Ops) -> None:
@@ -89,7 +89,7 @@ async def test_an_agent_without_a_grant_gets_the_job_protocol_and_nothing_else(o
 
 
 async def test_the_job_protocol_end_to_end_for_an_agent(ops: Ops) -> None:
-    q = ops.kit.queue
+    q = ops.kit.jobs
     q.register_result("work", Pong)
     await q.enqueue("work", Ping(n=4), subject="s1")
     agent = await mcp_agent(ops)
@@ -140,7 +140,7 @@ async def test_a_bad_label_fails_in_the_preview_before_anything_is_proposed(ops:
 
 
 async def test_requeue_previews_the_jobs_then_runs_for_a_person_and_never_for_mcp(ops: Ops) -> None:
-    q = ops.kit.queue
+    q = ops.kit.jobs
     await q.enqueue("k", Ping(), max_attempts=1)
     job = await q.claim("w", "default", ["k"])
     assert job and await q.fail(job.id, "w", "boom") == "failed"

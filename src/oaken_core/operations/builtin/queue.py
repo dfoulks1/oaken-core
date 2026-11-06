@@ -7,16 +7,18 @@ oaken-mail, these are ``read`` class and always audited). Everything else an age
 granted.
 """
 
+import os
 import re
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from oaken_core import paths
-from oaken_core.config_edit import save_table, set_table
+from oaken_core.config_edit import get_table, remove_table, save_table, set_table
 from oaken_core.errors import Conflict, ConfigError, InvalidInput, PermissionDenied, Unavailable
 from oaken_core.ids import AgentId, JobId
-from oaken_core.jobs import Job, Selector
+from oaken_core.jobs import Job, JobSpec, Selector
+from oaken_core.queues import DEFAULT
 from oaken_core.operations.builtin.settings import _check_text
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.registry import Change, Preview, operation
@@ -43,7 +45,7 @@ class QueueListOut(BaseModel):
 @operation("queue_list", "Depth, running, failed, oldest wait and last error for every queue.",
            permission="read", input=Empty, output=QueueListOut, mcp="on", group="queue")  # fmt: skip
 async def queue_list(ctx: OpContext, inp: Empty) -> QueueListOut:
-    rows = await ctx.svc.queue.stats()
+    rows = await ctx.svc.jobs.stats()
     return QueueListOut(queues=[QueueRow(**r.__dict__) for r in rows])
 
 
@@ -74,14 +76,14 @@ async def preview_resume(ctx: OpContext, inp: QueueRef) -> Preview:
            permission="mutate", input=QueueRef, output=QueueStateOut, mcp="off", group="queue",
            preview=preview_pause)  # fmt: skip
 async def queue_pause(ctx: OpContext, inp: QueueRef) -> QueueStateOut:
-    await ctx.svc.queue.pause(inp.queue)
+    await ctx.svc.queues.get(inp.queue).pause()
     return QueueStateOut(queue=inp.queue, paused=True)
 
 
 @operation("queue_resume", "Let a paused queue hand out jobs again.", permission="mutate",
            input=QueueRef, output=QueueStateOut, mcp="off", group="queue", preview=preview_resume)  # fmt: skip
 async def queue_resume(ctx: OpContext, inp: QueueRef) -> QueueStateOut:
-    await ctx.svc.queue.resume(inp.queue)
+    await ctx.svc.queues.get(inp.queue).resume()
     return QueueStateOut(queue=inp.queue, paused=False)
 
 
@@ -105,7 +107,7 @@ def _selector(inp: RequeueIn) -> Selector:
 
 
 async def preview_requeue(ctx: OpContext, inp: RequeueIn) -> Preview:
-    ready, cooled = await ctx.svc.queue.requeue_candidates(_selector(inp), to=inp.to, retriage=inp.retriage)
+    ready, cooled = await ctx.svc.jobs.requeue_candidates(_selector(inp), to=inp.to, retriage=inp.retriage)
     where = "default (retriage)" if inp.retriage else (inp.to or "their own queue")
     return Preview(
         summary=f"Requeue {len(ready)} job(s) to {where}" + (f"; {len(cooled)} skipped (cooling)" if cooled else ""),
@@ -119,7 +121,7 @@ async def preview_requeue(ctx: OpContext, inp: RequeueIn) -> Preview:
            permission="mutate", input=RequeueIn, output=RequeueOut, mcp="never", group="queue",
            preview=preview_requeue, audit="service")  # fmt: skip
 async def queue_requeue(ctx: OpContext, inp: RequeueIn) -> RequeueOut:
-    res = await ctx.svc.queue.requeue(_selector(inp), ctx.caller.actor, to=inp.to, retriage=inp.retriage)
+    res = await ctx.svc.jobs.requeue(_selector(inp), ctx.caller.actor, to=inp.to, retriage=inp.retriage)
     return RequeueOut(requeued=[str(j) for j in res.requeued], cooling=[str(j) for j in res.cooling])
 
 
@@ -157,7 +159,7 @@ class JobListOut(BaseModel):
 @operation("job_list", "The newest jobs matching the filters. Payloads are not shown.",
            permission="read", input=JobListIn, output=JobListOut, mcp="on", group="job")  # fmt: skip
 async def job_list(ctx: OpContext, inp: JobListIn) -> JobListOut:
-    jobs = await ctx.svc.queue.query(status=inp.status, kind=inp.kind, queue=inp.queue,
+    jobs = await ctx.svc.jobs.query(status=inp.status, kind=inp.kind, queue=inp.queue,
                                      subject=inp.subject, limit=inp.limit)  # fmt: skip
     return JobListOut(jobs=[_row(j) for j in jobs])
 
@@ -172,7 +174,7 @@ class JobStatusOut(BaseModel):
 
 
 async def preview_cancel(ctx: OpContext, inp: JobRef) -> Preview:
-    job = await ctx.svc.queue.get(JobId(inp.job_id))
+    job = await ctx.svc.jobs.get(JobId(inp.job_id))
     before = job.status if job else "unknown"
     return Preview(summary=f"Cancel job {inp.job_id}",
                    changes=[Change(target=inp.job_id, field="status", before=before, after="cancelled")],
@@ -183,7 +185,7 @@ async def preview_cancel(ctx: OpContext, inp: JobRef) -> Preview:
            permission="mutate", input=JobRef, output=JobStatusOut, mcp="off", group="job",
            preview=preview_cancel)  # fmt: skip
 async def job_cancel(ctx: OpContext, inp: JobRef) -> JobStatusOut:
-    return JobStatusOut(job_id=inp.job_id, status=await ctx.svc.queue.cancel(JobId(inp.job_id)))
+    return JobStatusOut(job_id=inp.job_id, status=await ctx.svc.jobs.cancel(JobId(inp.job_id)))
 
 
 # -- the job protocol: what an agent token does -------------------------------------------------
@@ -224,7 +226,7 @@ class ClaimOut(BaseModel):
 async def job_claim(ctx: OpContext, inp: ClaimIn) -> ClaimOut:
     agent = await _agent(ctx)
     kinds = [k for k in (inp.kinds or agent.kinds) if k in agent.kinds]
-    job = await ctx.svc.queue.claim(agent.worker, inp.queue, kinds, agent=agent)
+    job = await ctx.svc.jobs.claim(agent.worker, inp.queue, kinds, agent=agent)
     if job is None:
         return ClaimOut(job=None)
     import json
@@ -245,7 +247,7 @@ class HeartbeatOut(BaseModel):
            permission="read", input=JobRef, output=HeartbeatOut, mcp="on", group="job", agent_ok=True)  # fmt: skip
 async def job_heartbeat(ctx: OpContext, inp: JobRef) -> HeartbeatOut:
     agent = await _agent(ctx)
-    owner, cancel = await ctx.svc.queue.heartbeat(JobId(inp.job_id), agent.worker)
+    owner, cancel = await ctx.svc.jobs.heartbeat(JobId(inp.job_id), agent.worker)
     if not owner:
         raise Conflict("lease_lost: this agent no longer holds the job")
     return HeartbeatOut(cancel_requested=cancel)
@@ -265,7 +267,7 @@ class OkOut(BaseModel):
            audit="always")  # fmt: skip
 async def job_complete(ctx: OpContext, inp: CompleteIn) -> OkOut:
     agent = await _agent(ctx)
-    ok = await ctx.svc.queue.complete(JobId(inp.job_id), agent.worker, inp.result, produced_by=inp.produced_by)
+    ok = await ctx.svc.jobs.complete(JobId(inp.job_id), agent.worker, inp.result, produced_by=inp.produced_by)
     if not ok:
         raise Conflict("lease_lost: this agent no longer holds the job")
     return OkOut(ok=True)
@@ -281,7 +283,7 @@ class FailIn(JobRef):
            agent_ok=True, audit="always")  # fmt: skip
 async def job_fail(ctx: OpContext, inp: FailIn) -> JobStatusOut:
     agent = await _agent(ctx)
-    status = await ctx.svc.queue.fail(JobId(inp.job_id), agent.worker, inp.error, permanent=inp.permanent)
+    status = await ctx.svc.jobs.fail(JobId(inp.job_id), agent.worker, inp.error, permanent=inp.permanent)
     if status == "lost":
         raise Conflict("lease_lost: this agent no longer holds the job")
     return JobStatusOut(job_id=inp.job_id, status=status)
@@ -292,7 +294,7 @@ def queue_name(text: str) -> str:
     return re.sub(r"\s+", "_", text.strip().lower())
 
 
-class QueueAddIn(BaseModel):
+class QueueNewIn(BaseModel):
     name: str = Field(description="The queue's name. Upper case becomes lower and spaces become underscores; then only a-z, 0-9, - and _ are left.")
     kind: str = Field(description="The analyzer plugin kind this queue is the stage of (triager, enricher, action, ...).")
     label: str = Field(default="", description="Its title in the console. Empty: the name, capitalised.")
@@ -300,13 +302,13 @@ class QueueAddIn(BaseModel):
     workers: int = Field(default=1, ge=1, le=64)
 
 
-class QueueAddOut(BaseModel):
+class QueueNewOut(BaseModel):
     name: str
     reloading: bool
     note: str
 
 
-def _add_plan(ctx: OpContext, inp: QueueAddIn) -> tuple[str, dict[str, Any]]:  # (the name it will have, its table)
+def _new_plan(ctx: OpContext, inp: QueueNewIn) -> tuple[str, dict[str, Any]]:  # (the name it will have, its table)
     """The config text with the new table in it, after checking the whole file would load. Raises
     ``Conflict`` for a queue that exists or a product that fixes its own queues, ``InvalidInput`` for
     anything the file would refuse."""
@@ -329,27 +331,257 @@ def _add_plan(ctx: OpContext, inp: QueueAddIn) -> tuple[str, dict[str, Any]]:  #
     return name, table
 
 
-async def preview_queue_add(ctx: OpContext, inp: QueueAddIn) -> Preview:
-    name, _table = _add_plan(ctx, inp)
+async def preview_queue_new(ctx: OpContext, inp: QueueNewIn) -> Preview:
+    name, _table = _new_plan(ctx, inp)
     return Preview(summary=f"Add queue {name}, the stage for {inp.kind} plugins, and reload core",
                    changes=[Change(target=name, field="queue", after=inp.kind)], total_changes=1)  # fmt: skip
 
 
-@operation("queue_add", "Add a queue: the stage for one kind of analyzer plugin. Written to config.toml, then core reloads.",
-           permission="mutate", input=QueueAddIn, output=QueueAddOut, mcp="never", group="queue",
-           preview=preview_queue_add)  # fmt: skip
-async def queue_add(ctx: OpContext, inp: QueueAddIn) -> QueueAddOut:
-    name, table = _add_plan(ctx, inp)
+@operation("queue_new", "Add a queue: the stage for one kind of analyzer plugin. Written to config.toml, then core reloads.",
+           permission="mutate", input=QueueNewIn, output=QueueNewOut, mcp="never", group="queue",
+           preview=preview_queue_new)  # fmt: skip
+async def queue_new(ctx: OpContext, inp: QueueNewIn) -> QueueNewOut:
+    name, table = _new_plan(ctx, inp)
     save_table(paths.config_dir() / "config.toml", ["queues", name], table)
-    restart = QueueAddOut(name=name, reloading=False, note="saved to config.toml; restart core to start the queue's workers")
+    reloading, note = _reload(ctx, "the stage appears in the nav in a moment")
+    return QueueNewOut(name=name, reloading=reloading, note=note)
+
+
+def _reload(ctx: OpContext, after: str) -> tuple[bool, str]:
+    """Ask the daemon to rebuild core on the file just written. (reloading, what to tell the person.)"""
+    restart = (False, "saved to config.toml; restart core to start the queue's workers")
     if ctx.svc.reload is None:
         return restart
     try:
         ctx.svc.reload()
     except Unavailable:  # core was not started by the daemon: there is nothing to reload it
         return restart
-    return QueueAddOut(name=name, reloading=True, note="saved to config.toml; core is reloading, and the stage appears in the nav in a moment")
+    return True, f"saved to config.toml; core is reloading, and {after}"
 
 
-OPERATIONS = (queue_list, queue_pause, queue_resume, queue_requeue, queue_add, job_list, job_cancel,
+# -- read one, edit, remove ---------------------------------------------------------------------
+class QueueDetailOut(BaseModel):
+    queue: str
+    title: str
+    kind: str
+    description: str
+    workers: int
+    paused: bool
+    queued: int
+    running: int
+    failed: int  # failed jobs still in the table
+    oldest_queued_seconds: float | None
+    last_error: str | None
+    window_seconds: int
+    succeeded_in_window: int
+    failed_in_window: int
+    avg_turnaround_seconds: float | None
+
+
+@operation("queue_get", "One queue: its settings, depth, and what it got through in the last hour.",
+           permission="read", input=QueueRef, output=QueueDetailOut, mcp="on", group="queue")  # fmt: skip
+async def queue_get(ctx: OpContext, inp: QueueRef) -> QueueDetailOut:
+    spec = ctx.svc.queues.get(inp.queue)  # InvalidInput for a name that is not a queue
+    st = next(r for r in await ctx.svc.jobs.stats() if r.queue == spec.name)
+    m = await ctx.svc.jobs.metrics(spec.name)
+    return QueueDetailOut(
+        queue=spec.name, title=spec.title, kind=spec.kind, description=spec.description, workers=spec.workers,
+        paused=st.paused, queued=st.queued, running=st.running, failed=st.failed,
+        oldest_queued_seconds=st.oldest_queued_seconds, last_error=st.last_error,
+        window_seconds=m.window_seconds, succeeded_in_window=m.succeeded, failed_in_window=m.failed,
+        avg_turnaround_seconds=m.avg_turnaround_seconds)  # fmt: skip
+
+
+class QueueEditIn(BaseModel):
+    queue: str = Field(description="The queue's name. Its name and kind stay; remove and add to change them.")
+    label: str | None = Field(default=None, description="Its title in the console. Empty clears it.")
+    description: str | None = None
+    workers: int | None = Field(default=None, ge=1, le=64)
+
+
+class QueueChangeOut(BaseModel):
+    name: str
+    reloading: bool
+    note: str
+
+
+def _config_path() -> Any:
+    return paths.config_dir() / "config.toml"
+
+
+def _own_table(ctx: OpContext, name: str) -> tuple[str, dict[str, Any]]:
+    """The config text and the queue's table in it. ``Conflict`` for what the file does not own: the
+    default queue, a queue a product defines in code, or a product that fixes its own queues."""
+    if not ctx.svc.queues_from_config:
+        raise Conflict("this product defines its own queues, so none can be changed here")
+    if name == DEFAULT:
+        raise Conflict("the default queue is always there and cannot be changed here")
+    ctx.svc.queues.get(name)
+    path = _config_path()
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    table = get_table(text, ["queues", name])
+    if not table:
+        raise Conflict(f"queue {name!r} is not in config.toml (a product made it in code)")
+    return text, table
+
+
+def _edit_plan(ctx: OpContext, inp: QueueEditIn) -> tuple[str, dict[str, Any], dict[str, Any]]:  # (text, before, after)
+    text, before = _own_table(ctx, inp.queue)
+    after = dict(before)
+    for key in ("label", "description", "workers"):
+        value = getattr(inp, key)
+        if value is None:
+            continue
+        if value == "":
+            after.pop(key, None)
+        else:
+            after[key] = value
+    if after == before:
+        raise InvalidInput("nothing to change")
+    new = set_table(text, ["queues", inp.queue], after)
+    try:
+        _check_text(ctx, new)
+    except ConfigError as exc:
+        raise InvalidInput(exc.message.replace("config.toml: ", "")) from None
+    return new, before, after
+
+
+async def preview_queue_edit(ctx: OpContext, inp: QueueEditIn) -> Preview:
+    _text, before, after = _edit_plan(ctx, inp)
+    changes = [Change(target=inp.queue, field=k, before=before.get(k), after=after.get(k))
+               for k in sorted(before.keys() | after.keys()) if before.get(k) != after.get(k)]  # fmt: skip
+    return Preview(summary=f"Change queue {inp.queue} and reload core", changes=changes, total_changes=len(changes))
+
+
+@operation("queue_edit", "Change a queue's title, description or workers. Written to config.toml, then core reloads.",
+           permission="mutate", input=QueueEditIn, output=QueueChangeOut, mcp="never", group="queue",
+           preview=preview_queue_edit)  # fmt: skip
+async def queue_edit(ctx: OpContext, inp: QueueEditIn) -> QueueChangeOut:
+    _text, _before, after = _edit_plan(ctx, inp)
+    save_table(_config_path(), ["queues", inp.queue], after)
+    reloading, note = _reload(ctx, "the change shows in a moment")
+    return QueueChangeOut(name=inp.queue, reloading=reloading, note=note)
+
+
+async def _delete_plan(ctx: OpContext, inp: QueueRef) -> str:
+    """The config text without the queue. ``Conflict`` while it still holds jobs (queued or running):
+    they would be stranded with no workers. Finished and failed rows stay as history."""
+    text, _table = _own_table(ctx, inp.queue)
+    st = next(r for r in await ctx.svc.jobs.stats() if r.queue == inp.queue)
+    if st.queued or st.running:
+        raise Conflict(f"queue {inp.queue!r} still has {st.queued} queued and {st.running} running jobs: "
+                       "pause it and requeue them (queue_requeue --to), or let them finish")  # fmt: skip
+    new = remove_table(text, ["queues", inp.queue])
+    try:
+        _check_text(ctx, new)
+    except ConfigError as exc:
+        raise InvalidInput(exc.message.replace("config.toml: ", "")) from None
+    return new
+
+
+async def preview_queue_delete(ctx: OpContext, inp: QueueRef) -> Preview:
+    await _delete_plan(ctx, inp)
+    return Preview(summary=f"Remove queue {inp.queue} and reload core. Subjects still labelled queue={inp.queue} will not route until relabelled.",
+                   changes=[Change(target=inp.queue, field="queue", before=inp.queue)], total_changes=1)  # fmt: skip
+
+
+@operation("queue_delete", "Remove a queue from config.toml, then core reloads. Refused while it holds queued or running jobs.",
+           permission="mutate", input=QueueRef, output=QueueChangeOut, mcp="never", group="queue",
+           preview=preview_queue_delete)  # fmt: skip
+async def queue_delete(ctx: OpContext, inp: QueueRef) -> QueueChangeOut:
+    text = await _delete_plan(ctx, inp)
+    path = _config_path()
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    tmp.write_text(text, encoding="utf-8")
+    os.replace(tmp, path)
+    reloading, note = _reload(ctx, "the stage leaves the nav in a moment")
+    return QueueChangeOut(name=inp.queue, reloading=reloading, note=note)
+
+
+# -- rename, submit ------------------------------------------------------------------------------
+class QueueRenameIn(BaseModel):
+    queue: str = Field(description="The queue's current name.")
+    to: str = Field(description="Its new name. Upper case becomes lower and spaces become underscores.")
+
+
+def _rename_plan(ctx: OpContext, inp: QueueRenameIn) -> tuple[str, str, dict[str, Any]]:  # (new name, config text, table)
+    text, table = _own_table(ctx, inp.queue)
+    new = queue_name(inp.to)
+    if not re.fullmatch(r"[a-z][a-z0-9_-]{0,40}", new):
+        raise InvalidInput(f"queue name {new!r} (from {inp.to!r}) must start with a letter and use only a-z, 0-9, - and _")
+    if new == inp.queue:
+        raise InvalidInput("nothing to change")
+    if new in {q.name for q in ctx.svc.queues.all()}:
+        raise Conflict(f"queue {new!r} already exists")
+    out = set_table(remove_table(text, ["queues", inp.queue]), ["queues", new], table)
+    try:
+        _check_text(ctx, out)
+    except ConfigError as exc:
+        raise InvalidInput(exc.message.replace("config.toml: ", "")) from None
+    return new, out, table
+
+
+async def _idle(ctx: OpContext, name: str, why: str) -> None:
+    st = next(r for r in await ctx.svc.jobs.stats() if r.queue == name)
+    if st.queued or st.running:
+        raise Conflict(f"queue {name!r} still has {st.queued} queued and {st.running} running jobs: {why}")
+
+
+async def preview_queue_rename(ctx: OpContext, inp: QueueRenameIn) -> Preview:
+    new, _text, _table = _rename_plan(ctx, inp)
+    await _idle(ctx, inp.queue, "pause it and requeue them (queue_requeue --to), or let them finish")
+    return Preview(summary=f"Rename queue {inp.queue} to {new}: its history, pause state and subjects' queue labels follow, then core reloads",
+                   changes=[Change(target=inp.queue, field="name", before=inp.queue, after=new)], total_changes=1)  # fmt: skip
+
+
+@operation("queue_rename", "Rename a queue. Its finished jobs, pause state and subjects' queue labels move with it. Refused while it holds queued or running jobs.",
+           permission="mutate", input=QueueRenameIn, output=QueueChangeOut, mcp="never", group="queue",
+           preview=preview_queue_rename)  # fmt: skip
+async def queue_rename(ctx: OpContext, inp: QueueRenameIn) -> QueueChangeOut:
+    new, text, _table = _rename_plan(ctx, inp)
+    await _idle(ctx, inp.queue, "pause it and requeue them (queue_requeue --to), or let them finish")
+    path = _config_path()
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    async with ctx.svc.db.transaction() as tx:  # the file is written last, inside it: a failed write rolls the rows back
+        await tx.execute("UPDATE jobs SET queue = ? WHERE queue = ?", (new, inp.queue))
+        await tx.execute("UPDATE queue_state SET queue = ? WHERE queue = ?", (new, inp.queue))
+        await tx.execute("UPDATE labels SET value = ? WHERE key = 'queue' AND value = ?", (new, inp.queue))  # shortcut: no change-log row per subject; add one if an audit of label moves is wanted
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, path)
+    reloading, note = _reload(ctx, "the stage shows under its new name in a moment")
+    return QueueChangeOut(name=new, reloading=reloading, note=note)
+
+
+class QueueSubmitIn(BaseModel):
+    queue: str = Field(description="The queue the job goes to.")
+    kind: str = Field(min_length=1, max_length=120, description="The job kind: what a handler or an agent claims.")
+    payload: str = Field(default="{}", description="The job's payload: a JSON object, as text.")
+    subject: str | None = Field(default=None, description="The subject it is about, if any.")
+    priority: int = Field(default=50, ge=0, le=100)
+
+
+class QueueSubmitOut(BaseModel):
+    job_id: str
+    created: bool
+
+
+def _job(inp: QueueSubmitIn) -> JobSpec:
+    return JobSpec(inp.kind, inp.payload, inp.subject, inp.priority)
+
+
+async def preview_queue_submit(ctx: OpContext, inp: QueueSubmitIn) -> Preview:
+    ctx.svc.queues.get(inp.queue).check(_job(inp))
+    return Preview(summary=f"Submit a {inp.kind} job to queue {inp.queue}",
+                   changes=[Change(target=inp.queue, field="job", after=inp.kind)], total_changes=1)  # fmt: skip
+
+
+@operation("queue_submit", "Put a job in a queue. Returns its id. A kind nothing handles waits there.",
+           permission="mutate", input=QueueSubmitIn, output=QueueSubmitOut, mcp="never", group="queue",
+           preview=preview_queue_submit)  # fmt: skip
+async def queue_submit(ctx: OpContext, inp: QueueSubmitIn) -> QueueSubmitOut:
+    res = await ctx.svc.queues.get(inp.queue).submit(_job(inp), actor=ctx.caller.actor)
+    return QueueSubmitOut(job_id=str(res.job_id), created=res.created)
+
+
+OPERATIONS = (queue_list, queue_get, queue_pause, queue_resume, queue_requeue, queue_new, queue_edit, queue_rename, queue_delete, queue_submit, job_list, job_cancel,
               job_claim, job_heartbeat, job_complete, job_fail)  # fmt: skip

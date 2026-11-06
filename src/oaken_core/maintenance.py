@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from oaken_core.actors import SYSTEM, Actor
 from oaken_core.db import Database
 from oaken_core.errors import StorageError
-from oaken_core.jobs import PRIORITY_BACKFILL, Enqueued, Job, JobQueue, JobRunner
+from oaken_core.jobs import PRIORITY_BACKFILL, Enqueued, Job, Jobs, JobRunner
 
 VACUUM_KIND = "maintenance.vacuum"
 ROOM = 1.1  # free space wanted, as a multiple of the database being rewritten
@@ -55,6 +55,6 @@ def register_maintenance_jobs(runner: JobRunner, db: Database) -> None:
     runner.register(VACUUM_KIND, VacuumPayload, handle, concurrency=1, result_model=VacuumResult)
 
 
-async def enqueue_vacuum(queue: JobQueue, *, actor: Actor = SYSTEM) -> Enqueued:
+async def enqueue_vacuum(jobs: Jobs, *, actor: Actor = SYSTEM) -> Enqueued:
     """Queue a vacuum. One at a time: asking while one is queued or running returns that job."""
-    return await queue.enqueue(VACUUM_KIND, VacuumPayload(), priority=PRIORITY_BACKFILL, dedupe_key=VACUUM_KIND, actor=actor)
+    return await jobs.enqueue(VACUUM_KIND, VacuumPayload(), priority=PRIORITY_BACKFILL, dedupe_key=VACUUM_KIND, actor=actor)

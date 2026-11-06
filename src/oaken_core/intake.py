@@ -28,7 +28,7 @@ from oaken_core.changelog import ChangeLog
 from oaken_core.db import Database
 from oaken_core.errors import Unavailable
 from oaken_core.ids import SubjectId, new_subject_id
-from oaken_core.jobs import Job, JobQueue, JobRunner, PermanentJobError
+from oaken_core.jobs import Job, Jobs, JobRunner, PermanentJobError
 from oaken_core.labels import LabelError, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.queues import DEFAULT
@@ -87,7 +87,7 @@ IngestFn = Callable[[IntakeItem], Awaitable[SubjectId]]
 class Intake:
     def __init__(
         self,
-        queue: JobQueue,
+        jobs: Jobs,
         labels: LabelStore,
         db: Database,
         changelog: ChangeLog,
@@ -98,7 +98,7 @@ class Intake:
         triager_source: Callable[[], Sequence[Triager]] | None = None,
     ) -> None:
         self.router = router  # the model router, for ``Verdict.learn``
-        self.queue, self.labels, self.db, self.changelog = queue, labels, db, changelog
+        self.jobs, self.labels, self.db, self.changelog = jobs, labels, db, changelog
         self.triagers = sorted(triagers, key=lambda t: (t.rank, t.name))
         self.triager_source = triager_source  # asked on every job, so a plugin that comes or goes counts
         self.ingest = ingest
@@ -117,7 +117,7 @@ class Intake:
         for key, value in (labels or {}).items():
             await self.labels.set(subject, key, value, actor)
         payload = IntakePayload(subject_id=subject, source=source, body=body, labels=labels or {})
-        await self.queue.enqueue(KIND, payload, subject=subject, queue=DEFAULT, actor=actor)
+        await self.jobs.enqueue(KIND, payload, subject=subject, queue=DEFAULT, actor=actor)
         return subject
 
     def _order(self) -> list[Triager]:
@@ -135,7 +135,7 @@ class Intake:
                     break
         except Exception:
             if not (
-                self.queue.settings.open_gate_on_final_failure and job.attempts >= job.max_attempts
+                self.jobs.settings.open_gate_on_final_failure and job.attempts >= job.max_attempts
             ):
                 raise  # intake backs up; requeue replays it
             log.warning("triager failed on the last attempt; treating as unsure", job_id=job.id)

@@ -8,7 +8,7 @@ import pytest
 from oaken_core.changelog import ChangeLog
 from oaken_core.clock import FakeClock
 from oaken_core.db import Database
-from oaken_core.jobs import JobQueue, JobRunner
+from oaken_core.jobs import Jobs, JobRunner
 from oaken_core.labels import LabelMaker, LabelStore
 from oaken_core.queues import Queues
 from oaken_core.settings import JobsSettings
@@ -58,7 +58,7 @@ class Kit:
     maker: LabelMaker
     labels: LabelStore
     log: ChangeLog
-    queue: JobQueue
+    jobs: Jobs
     runner: JobRunner
 
 
@@ -71,8 +71,8 @@ async def kit(core_db: Database, clock: FakeClock) -> Kit:
     log = ChangeLog(clock)
     labels = LabelStore(core_db, maker, log, clock)
     settings = JobsSettings(backoff_jitter=0, backoff_base_seconds=10, lease_seconds=30)
-    queue = JobQueue(core_db, clock, queues, labels=labels, changelog=log, settings=settings)
-    return Kit(core_db, clock, queues, maker, labels, log, queue, JobRunner(queue))
+    jobs = Jobs(core_db, clock, queues, labels=labels, changelog=log, settings=settings)
+    return Kit(core_db, clock, queues, maker, labels, log, jobs, JobRunner(jobs))
 
 
 @dataclass
@@ -94,9 +94,9 @@ async def ops(kit: Kit) -> Ops:
     from oaken_core.settings import Settings, SwarmSettings
 
     swarm = SwarmSettings(enabled=True, allowed_kinds=["work"], default_max_leases=2, agent_lease_seconds=300)
-    kit.queue.swarm = swarm
+    kit.jobs.swarm = swarm
     agents = AgentRegistry(kit.db, kit.clock, swarm)
     svc = Services(db=kit.db, clock=kit.clock, settings=Settings(swarm=swarm, version="9.9.9"),
-                   queues=kit.queues, queue=kit.queue, labels=kit.labels, changelog=kit.log, agents=agents)  # fmt: skip
+                   queues=kit.queues, jobs=kit.jobs, labels=kit.labels, changelog=kit.log, agents=agents)  # fmt: skip
     registry = core_registry()
     return Ops(kit, svc, CoreClient(registry, svc), registry, agents)

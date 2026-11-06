@@ -25,12 +25,12 @@ async def test_storage_info_reports_the_database_and_the_files_beside_it(ops: Op
 async def test_vacuum_is_a_proposal_then_one_job_that_shrinks_nothing_it_should_not(ops: Ops) -> None:
     register_maintenance_jobs(ops.kit.runner, ops.kit.db)
     asked = await ops.client.call("storage_vacuum", {}, CLI)
-    assert asked.proposal is not None and not await ops.kit.queue.query(kind=VACUUM_KIND)
+    assert asked.proposal is not None and not await ops.kit.jobs.query(kind=VACUUM_KIND)
     first = (await ops.client.call("storage_vacuum", {}, CLI, confirm=True)).output
     again = (await ops.client.call("storage_vacuum", {}, CLI, confirm=True)).output
     assert first.created and not again.created and again.job_id == first.job_id  # type: ignore[union-attr]  # one at a time
     assert await ops.kit.runner.drain() == 1
-    job = (await ops.kit.queue.query(kind=VACUUM_KIND))[0]
+    job = (await ops.kit.jobs.query(kind=VACUUM_KIND))[0]
     assert job.status == "succeeded"
 
 

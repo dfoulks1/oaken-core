@@ -31,6 +31,7 @@ from oaken_core.cli.output import print_json, print_table, print_text
 from oaken_core.cli.schema_flags import add_flags, missing_required, secret_fields
 
 ClientFactory = Callable[[argparse.Namespace], ApiClient]
+ALIASES = {"queue": ["q"]}  # a group answers to its short name too
 BUILTIN = ("operations", "describe", "watch")  # verbs that are the CLI's own, not operations
 DAEMON = {  # work with no core running, so they are handled before one is asked
     "start": "Run core in the foreground.",
@@ -67,7 +68,7 @@ def build_parser(prog: str, ops: list[OpInfo]) -> argparse.ArgumentParser:
             leaf = sub.add_parser(path[0], help=op.summary, parents=[_parent()])
         else:
             if path[0] not in groups:
-                group = sub.add_parser(path[0], help=f"{path[0]} commands")
+                group = sub.add_parser(path[0], help=f"{path[0]} commands", aliases=ALIASES.get(path[0], []))
                 groups[path[0]] = group.add_subparsers(dest="action", metavar="VERB")
             leaf = groups[path[0]].add_parser(path[1], help=op.summary, parents=[_parent()])
         leaf.set_defaults(_op=op)

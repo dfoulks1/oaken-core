@@ -58,9 +58,9 @@ async def test_the_command_tree_is_the_registry_and_a_plugin_verb_appears_only_w
 async def test_a_change_is_a_proposal_until_yes_and_exit_codes_say_which(ops: Ops, capsys: pytest.CaptureFixture[str]) -> None:
     code, out, _ = await run(ops, capsys, "queue", "pause", "--queue", "default")
     assert code == 5 and "would: Pause queue default" in out and "re-run with --yes" in out
-    assert not (await ops.kit.queue.stats())[0].paused
+    assert not (await ops.kit.jobs.stats())[0].paused
     code, out, _ = await run(ops, capsys, "queue", "pause", "--queue", "default", "--yes")
-    assert code == 0 and (await ops.kit.queue.stats())[0].paused
+    assert code == 0 and (await ops.kit.jobs.stats())[0].paused
 
 
 async def test_flags_come_from_the_schema_and_json_input_fills_the_rest(ops: Ops, capsys: pytest.CaptureFixture[str]) -> None:

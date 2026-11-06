@@ -24,7 +24,7 @@ from oaken_core.daemon.units import Lifecycle, ServiceUnit, unit
 from oaken_core.errors import ConfigError, Deferred, NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus
 from oaken_core.intake import Intake, IntakeItem
-from oaken_core.jobs import JobQueue, JobRunner
+from oaken_core.jobs import Jobs, JobRunner
 from oaken_core.ids import SubjectId
 from oaken_core.labels import LabelMaker, LabelStore
 from oaken_core.logging import get_logger
@@ -105,21 +105,21 @@ class Core:
         changelog = ChangeLog(clock)
         labels = LabelStore(db, maker, changelog, clock)
         self.host.attach_labels(labels, maker)
-        queue = JobQueue(db, clock, queues, labels=labels, changelog=changelog, settings=s.jobs, swarm=s.swarm, bus=self.bus)
+        jobs = Jobs(db, clock, queues, labels=labels, changelog=changelog, settings=s.jobs, swarm=s.swarm, bus=self.bus)
         self.agents = AgentRegistry(db, clock, s.swarm, self.bus)
-        self.scheduler = Scheduler(db, queue, clock)
+        self.scheduler = Scheduler(db, jobs, clock)
         self.tracer = Tracer(paths.data_dir() / "trace.jsonl", clock, max_bytes=s.log.file_max_bytes, backups=s.log.file_backups)
         self.tracer.bus = self.bus
         self.host.tracer = self.tracer
         self.router = Router(db, clock, s.router, HostDirectory(self.host, s.router))
         self.host.router = self.router
-        self.runner = JobRunner(queue)
+        self.runner = JobRunner(jobs)
         register_maintenance_jobs(self.runner, db)
         self.eventlog = EventLog(event_log_path(s.log.events_file), max_bytes=s.log.file_max_bytes, backups=s.log.file_backups) if s.log.events_file else None
-        self.intake = Intake(queue, labels, db, changelog, triager_source=self._triagers, ingest=self._ingest, router=self.router)
+        self.intake = Intake(jobs, labels, db, changelog, triager_source=self._triagers, ingest=self._ingest, router=self.router)
         self.intake.register(self.runner)
         self.host.intake = self.intake
-        svc = Services(db=db, clock=clock, settings=s, queues=queues, queue=queue, labels=labels, changelog=changelog,
+        svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, labels=labels, changelog=changelog,
                        bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, intake=self.intake, queues_from_config=self.queues_from_config, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))

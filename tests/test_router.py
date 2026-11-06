@@ -332,7 +332,7 @@ async def test_a_reject_and_learn_embeds_the_item_and_a_nearjunk_triager_then_re
         stored.append(item)
         return SubjectId(f"real-{len(stored)}")
 
-    intake = Intake(kit.queue, kit.labels, kit.db, kit.log, triagers=[Learn(), nj], ingest=ingest, router=router)  # type: ignore[list-item]
+    intake = Intake(kit.jobs, kit.labels, kit.db, kit.log, triagers=[Learn(), nj], ingest=ingest, router=router)  # type: ignore[list-item]
     intake.register(kit.runner)
     await intake.submit("web", TEXT)
     await kit.runner.drain()

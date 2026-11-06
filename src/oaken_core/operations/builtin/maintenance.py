@@ -68,7 +68,7 @@ async def storage_vacuum(ctx: OpContext, inp: Empty) -> QueuedOut:
         check_room(ctx.svc.db)
     except StorageError as exc:
         raise Conflict(str(exc)) from None
-    queued = await enqueue_vacuum(ctx.svc.queue, actor=ctx.caller.actor)
+    queued = await enqueue_vacuum(ctx.svc.jobs, actor=ctx.caller.actor)
     return QueuedOut(job_id=queued.job_id, created=queued.created)
 
 

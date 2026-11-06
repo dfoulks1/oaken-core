@@ -4,7 +4,7 @@
 Adapted from oaken-mail ``core/jobs.py`` (cf3b187). ``account_id`` became ``subject``; jobs live in
 named queues (see ``queues.py``); the mail quota and external-agent lease code is left out.
 
-``JobQueue`` is storage: every state change is one short transaction, so a crash leaves a job
+``Jobs`` is storage: every state change is one short transaction, so a crash leaves a job
 queued, or running with a lease that expires and is reclaimed. ``JobRunner`` runs N asyncio workers
 per queue. Delivery is **at least once**: handlers must be idempotent. Times are UTC fixed-width ISO
 strings. Retry delay after the Nth failed attempt is ``min(backoff_max, backoff_base * 2**(N-1))``,
@@ -174,7 +174,7 @@ class RequeueResult:
 
 
 @dataclass(frozen=True)
-class QueueStats:
+class Stats:
     queue: str
     paused: bool
     queued: int
@@ -184,10 +184,28 @@ class QueueStats:
     last_error: str | None
 
 
+@dataclass(frozen=True)
+class JobSpec:
+    """A job not yet in a queue: what ``Jobs.submit`` takes."""
+
+    kind: str
+    payload: str = "{}"  # a JSON object, as text
+    subject: str | None = None
+    priority: int = PRIORITY_INGEST
+
+
+@dataclass(frozen=True)
+class Metrics:
+    window_seconds: int
+    succeeded: int  # finished in the window
+    failed: int  # gave up in the window
+    avg_turnaround_seconds: float | None  # enqueue to done, for the ones that finished
+
+
 REQUEUEABLE = ("queued", "failed", "cancelled")
 
 
-class JobQueue:
+class Jobs:
     def __init__(
         self,
         db: Database,
@@ -204,6 +222,7 @@ class JobQueue:
         self.db = db
         self.clock = clock
         self.queues = queues
+        queues.bind(self)
         self.labels = labels
         self.changelog = changelog or ChangeLog(clock)
         self.settings = settings or JobsSettings()
@@ -224,7 +243,7 @@ class JobQueue:
     async def enqueue(
         self,
         kind: str,
-        payload: BaseModel,
+        payload: BaseModel | str,
         *,
         subject: str | None = None,
         queue: str | None = None,
@@ -636,7 +655,7 @@ class JobQueue:
         if self.bus is not None:
             await self.bus.publish(QueueStateChanged(ts=self.clock.now(), queue=queue, paused=paused))
 
-    async def stats(self) -> list[QueueStats]:
+    async def stats(self) -> list[Stats]:
         """Depth, running, failed, oldest wait and last error for every queue. A growing intake
         with an old oldest-wait is the sign a triager is broken."""
         now = self.clock.now()
@@ -662,7 +681,7 @@ class JobQueue:
                 "SELECT paused FROM queue_state WHERE queue = ?", (spec.name,)
             )
             out.append(
-                QueueStats(
+                Stats(
                     queue=spec.name,
                     paused=bool(paused and paused["paused"]),
                     queued=counts.get("queued", 0),
@@ -677,6 +696,24 @@ class JobQueue:
                 )
             )
         return out
+
+    async def metrics(self, queue: str, window_seconds: int = 3600) -> Metrics:
+        """What a queue got through lately: jobs that finished or failed in the window, and how long
+        the finished ones took from enqueue to done (the table keeps no start time)."""
+        since = fmt_ts(self.clock.now() - timedelta(seconds=window_seconds))
+        rows = await self.db.fetchall(
+            "SELECT status, COUNT(*) AS n, AVG((julianday(updated_at) - julianday(created_at)) * 86400.0) AS secs"
+            " FROM jobs WHERE queue = ? AND status IN ('succeeded', 'failed') AND updated_at >= ? GROUP BY status",
+            (queue, since),
+        )
+        by = {r["status"]: r for r in rows}
+        done = by.get("succeeded")
+        return Metrics(
+            window_seconds=window_seconds,
+            succeeded=done["n"] if done else 0,
+            failed=by["failed"]["n"] if "failed" in by else 0,
+            avg_turnaround_seconds=done["secs"] if done else None,
+        )
 
     # -- requeue ----------------------------------------------------------------------------
     async def requeue_candidates(
@@ -783,15 +820,15 @@ class _Running:
 
 
 class JobRunner:
-    """Runs jobs from a ``JobQueue`` with each queue's configured number of workers."""
+    """Runs jobs from a ``Jobs`` with each queue's configured number of workers."""
 
     def __init__(
         self,
-        queue: JobQueue,
+        jobs: Jobs,
         *,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
     ) -> None:
-        self.queue = queue
+        self.jobs = jobs
         self._sleep = sleep  # used by the lease heartbeat; replaceable in tests
         self._registry: dict[str, _Registration] = {}
         self._running: dict[JobId, _Running] = {}
@@ -819,11 +856,11 @@ class JobRunner:
             raise ValueError(f"a handler for {kind!r} is already registered")
         self._registry[kind] = _Registration(model, handler, concurrency, timeout, scrub_payload)
         if result_model is not None:
-            self.queue.register_result(kind, result_model)
+            self.jobs.register_result(kind, result_model)
 
     def _limits(self) -> dict[str, int]:
         limits = {k: r.concurrency for k, r in self._registry.items() if r.concurrency}
-        return {**limits, **self.queue.settings.kind_limits}
+        return {**limits, **self.jobs.settings.kind_limits}
 
     # -- lifecycle --------------------------------------------------------------------------
     def start(self) -> None:
@@ -831,7 +868,7 @@ class JobRunner:
         if self._tasks:
             raise RuntimeError("runner already started")
         self._stopping = False
-        for spec in self.queue.queues.all():
+        for spec in self.jobs.queues.all():
             for i in range(spec.workers):
                 name = f"{self._id}-{spec.name}-{i}"
                 self._tasks.append(asyncio.create_task(self._worker(name, spec.name, False)))
@@ -840,7 +877,7 @@ class JobRunner:
         """Stop claiming. In-flight jobs get ``grace`` seconds; any still running are cancelled and
         their leases released, so another run picks them up unharmed."""
         self._stopping = True
-        self.queue.wake.set()
+        self.jobs.wake.set()
         tasks, self._tasks = self._tasks, []
         if not tasks:
             return
@@ -855,7 +892,7 @@ class JobRunner:
         before = self.processed
         workers = [
             asyncio.create_task(self._worker(f"{self._id}-d-{spec.name}-{i}", spec.name, True))
-            for spec in self.queue.queues.all()
+            for spec in self.jobs.queues.all()
             for i in range(spec.workers)
         ]
         await asyncio.gather(*workers)
@@ -863,7 +900,7 @@ class JobRunner:
 
     async def cancel(self, job_id: JobId) -> str:
         """Cancel a job; if it is running here, interrupt its handler immediately."""
-        status = await self.queue.cancel(job_id)
+        status = await self.jobs.cancel(job_id)
         entry = self._running.get(job_id)
         if entry and not entry.task.done():
             entry.user_cancelled = True
@@ -873,8 +910,8 @@ class JobRunner:
     # -- workers ----------------------------------------------------------------------------
     async def _worker(self, name: str, queue: str, idle_exit: bool) -> None:
         while not self._stopping:
-            self.queue.wake.clear()
-            job = await self.queue.claim(name, queue, list(self._registry), self._limits())
+            self.jobs.wake.clear()
+            job = await self.jobs.claim(name, queue, list(self._registry), self._limits())
             if job is None:
                 if idle_exit:
                     return
@@ -882,19 +919,19 @@ class JobRunner:
                 continue
             await self._execute(job, name)
             self.processed += 1
-            self.queue.wake.set()  # a finished job may free a concurrency slot
+            self.jobs.wake.set()  # a finished job may free a concurrency slot
 
     async def _idle_wait(self) -> None:
-        cap = min(self.queue.settings.lease_seconds / 2, 30.0)
-        due = await self.queue.next_due()
+        cap = min(self.jobs.settings.lease_seconds / 2, 30.0)
+        due = await self.jobs.next_due()
         timeout = cap
         if due is not None:
-            timeout = min(cap, max((due - self.queue.clock.now()).total_seconds(), 0.25))
+            timeout = min(cap, max((due - self.jobs.clock.now()).total_seconds(), 0.25))
         with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(self.queue.wake.wait(), timeout)
+            await asyncio.wait_for(self.jobs.wake.wait(), timeout)
 
     async def _execute(self, job: Job, worker: str) -> None:
-        q = self.queue
+        q = self.jobs
         reg = self._registry[job.kind]
         try:
             payload = reg.model.model_validate_json(job.payload_json)
@@ -935,10 +972,10 @@ class JobRunner:
             self._running.pop(job.id, None)
 
     async def _heartbeat(self, job: Job, worker: str, entry: _Running) -> None:
-        interval = self.queue.settings.lease_seconds / 3
+        interval = self.jobs.settings.lease_seconds / 3
         while True:
             await self._sleep(interval)
-            owner, cancel = await self.queue.heartbeat(job.id, worker)
+            owner, cancel = await self.jobs.heartbeat(job.id, worker)
             if not owner:
                 log.warning("lease lost", job_id=job.id, kind=job.kind)
                 return

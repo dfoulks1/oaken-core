@@ -28,7 +28,7 @@ class StatusOut(BaseModel):
 async def status(ctx: OpContext, inp: Empty) -> StatusOut:
     host = ctx.svc.host
     statuses = host.statuses() if host else []
-    stats = await ctx.svc.queue.stats()
+    stats = await ctx.svc.jobs.stats()
     return StatusOut(version=ctx.svc.version, queues=[QueueRow(**s.__dict__) for s in stats],
                      plugins_total=len(statuses), plugins_healthy=sum(1 for s in statuses if s.healthy))  # fmt: skip
 

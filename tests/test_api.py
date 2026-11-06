@@ -59,9 +59,9 @@ async def test_calling_an_operation_proposes_then_runs_and_errors_have_codes(web
     _, c = web
     r = (await c.post("/v1/operations/queue_pause", json={"input": {"queue": "default"}})).json()
     assert r["status"] == "confirmation_required" and r["proposal"]["summary"] == "Pause queue default"
-    assert not (await ops.kit.queue.stats())[0].paused
+    assert not (await ops.kit.jobs.stats())[0].paused
     done = (await c.post("/v1/operations/queue_pause", json={"input": {"queue": "default"}, "confirm": True})).json()
-    assert done["status"] == "ok" and (await ops.kit.queue.stats())[0].paused
+    assert done["status"] == "ok" and (await ops.kit.jobs.stats())[0].paused
     missing = await c.post("/v1/operations/no_such_op", json={})
     assert missing.status_code == 404 and missing.json()["code"] == "not_found"
     bad = await c.post("/v1/operations/queue_pause", json={"input": {}})
@@ -78,7 +78,7 @@ async def test_the_openapi_document_lists_the_operations(web: tuple[Api, httpx2.
 
 async def test_an_agent_token_opens_the_job_routes_and_nothing_else(web: tuple[Api, httpx2.AsyncClient], ops: Ops) -> None:
     _, c = web
-    q = ops.kit.queue
+    q = ops.kit.jobs
     q.register_result("work", Pong)
     await q.enqueue("work", Ping(n=1), subject="s1")
     agent, token = await ops.agents.create("librarian", ["work"])
@@ -166,7 +166,7 @@ async def test_the_agent_door_lists_the_job_tools_plus_only_what_was_granted(mcp
 
 async def test_an_agent_works_a_job_over_mcp_and_the_payload_arrives_fenced_as_data(mcp_web: tuple[httpx2.AsyncClient, McpServer], ops: Ops) -> None:
     c, _ = mcp_web
-    q = ops.kit.queue
+    q = ops.kit.jobs
     q.register_result("work", Pong)
     await q.enqueue("work", Ping(n=7), subject="s1")
     _, token = await ops.agents.create("claude", ["work"])
@@ -188,4 +188,4 @@ async def test_over_mcp_an_ungranted_or_never_tool_is_the_same_error_and_a_grant
     text, err = await tool_text(c, "/mcp/agent", can, "queue_pause", {"queue": "default"})
     body = json.loads(text)
     assert not err and body["status"] == "confirmation_required" and body["proposal"]["confirmation_token"]
-    assert not (await ops.kit.queue.stats())[0].paused  # the first call changed nothing
+    assert not (await ops.kit.jobs.stats())[0].paused  # the first call changed nothing

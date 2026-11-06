@@ -20,7 +20,7 @@ from oaken_core.clock import Clock, fmt_ts, parse_ts
 from oaken_core.cron import parse_cron
 from oaken_core.db import Database
 from oaken_core.errors import ConfigError
-from oaken_core.jobs import PRIORITY_INGEST, JobQueue
+from oaken_core.jobs import PRIORITY_INGEST, Jobs
 from oaken_core.queues import DEFAULT
 
 MAX_SLEEP_SECONDS = 30.0
@@ -36,9 +36,9 @@ def _next_run(spec_kind: str, spec: str, after: datetime, anchor: datetime) -> d
 
 
 class Scheduler:
-    def __init__(self, db: Database, queue: JobQueue, clock: Clock) -> None:
+    def __init__(self, db: Database, jobs: Jobs, clock: Clock) -> None:
         self.db = db
-        self.queue = queue
+        self.jobs = jobs
         self.clock = clock
         self._stop = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
@@ -118,7 +118,7 @@ class Scheduler:
             )
             for r in due:
                 slot = r["next_run"]
-                _, change = await self.queue.enqueue_in(
+                _, change = await self.jobs.enqueue_in(
                     tx,
                     r["kind"],
                     r["payload_json"],
@@ -133,7 +133,7 @@ class Scheduler:
                     "UPDATE schedules SET next_run = ?, updated_at = ? WHERE name = ?",
                     (fmt_ts(nxt), fmt_ts(now), r["name"]),
                 )
-        await self.queue.announce(*changes)
+        await self.jobs.announce(*changes)
         return len(due)
 
     # -- running in the background ----------------------------------------------------------

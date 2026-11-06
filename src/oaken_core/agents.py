@@ -5,7 +5,7 @@ An agent is a row in ``raw.db`` with its own token, the job kinds it may lease, 
 queues it may lease from, and two quotas. Only the SHA-256 of the token is stored, and the token is
 shown once, at creation. Tokens are 256 random bits, so a plain hash is enough (there is nothing
 to brute-force). The queue enforces scope and quotas inside the claim transaction
-(``JobQueue.claim(agent=...)``), so a revoked or over-quota agent can never slip a job through.
+(``Jobs.claim(agent=...)``), so a revoked or over-quota agent can never slip a job through.
 """
 
 import hashlib

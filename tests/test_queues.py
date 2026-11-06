@@ -104,11 +104,12 @@ def test_a_plugin_kind_belongs_to_one_queue_so_each_plugin_has_one_stage() -> No
     q.new_queue("plain")  # a queue with no kind is not a stage
 
 
-# -- queue_add ---------------------------------------------------------------------------------
+# -- queue_new ---------------------------------------------------------------------------------
 import tomllib  # noqa: E402
 import types  # noqa: E402
 
 from oaken_core import paths  # noqa: E402
+from oaken_core.clock import fmt_ts  # noqa: E402
 from oaken_core.errors import Conflict, InvalidInput  # noqa: E402
 from oaken_core.operations.caller import CallerContext  # noqa: E402
 from oaken_core.plugins.kinds import KindRegistry  # noqa: E402
@@ -124,29 +125,29 @@ def saved() -> dict:  # type: ignore[type-arg]
     return tomllib.loads((paths.config_dir() / "config.toml").read_text())
 
 
-async def test_queue_add_asks_first_then_writes_the_table_and_reloads(ops: Ops) -> None:
+async def test_queue_new_asks_first_then_writes_the_table_and_reloads(ops: Ops) -> None:
     with_host(ops)
     reloads: list[int] = []
     ops.svc.reload = lambda: reloads.append(1)
     cli = CallerContext.cli()
     args = {"name": "triage", "kind": "triager", "label": "Triage", "workers": 2}
-    asked = await ops.client.call("queue_add", args, cli)
+    asked = await ops.client.call("queue_new", args, cli)
     assert asked.proposal is not None and "triager" in asked.proposal.summary and not (paths.config_dir() / "config.toml").exists()
-    done = (await ops.client.call("queue_add", args, cli, confirm=True)).output
+    done = (await ops.client.call("queue_new", args, cli, confirm=True)).output
     assert done.reloading and reloads == [1]  # type: ignore[union-attr]
     assert saved()["queues"]["triage"] == {"kind": "triager", "label": "Triage", "workers": 2}
 
 
-async def test_queue_add_says_to_restart_when_core_was_not_started_by_the_daemon(ops: Ops) -> None:
+async def test_queue_new_says_to_restart_when_core_was_not_started_by_the_daemon(ops: Ops) -> None:
     with_host(ops)
-    out = (await ops.client.call("queue_add", {"name": "enrich", "kind": "enricher"}, CallerContext.cli(), confirm=True)).output
+    out = (await ops.client.call("queue_new", {"name": "enrich", "kind": "enricher"}, CallerContext.cli(), confirm=True)).output
     assert not out.reloading and "restart" in out.note  # type: ignore[union-attr]
 
 
-async def test_queue_add_refuses_what_the_file_or_the_product_would_not_take(ops: Ops) -> None:
+async def test_queue_new_refuses_what_the_file_or_the_product_would_not_take(ops: Ops) -> None:
     with_host(ops)
     cli = CallerContext.cli()
-    add = lambda **kw: ops.client.call("queue_add", kw, cli, confirm=True)  # noqa: E731
+    add = lambda **kw: ops.client.call("queue_new", kw, cli, confirm=True)  # noqa: E731
     await add(name="triage", kind="triager")
     for bad, exc in [
         ({"name": "again", "kind": "triager"}, InvalidInput),  # a kind belongs to one queue
@@ -164,14 +165,123 @@ async def test_queue_add_refuses_what_the_file_or_the_product_would_not_take(ops
         await add(name="enrich", kind="enricher")
 
 
-async def test_queue_add_is_never_offered_over_mcp(ops: Ops) -> None:
-    assert "queue_add" not in {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
+async def test_queue_new_is_never_offered_over_mcp(ops: Ops) -> None:
+    assert "queue_new" not in {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
 
 
-async def test_queue_add_turns_what_was_typed_into_a_name_and_keeps_it_as_the_title(ops: Ops) -> None:
+async def test_queue_new_turns_what_was_typed_into_a_name_and_keeps_it_as_the_title(ops: Ops) -> None:
     with_host(ops)
-    out = (await ops.client.call("queue_add", {"name": "  My Slow  Stage ", "kind": "enricher"}, CallerContext.cli(), confirm=True)).output
+    out = (await ops.client.call("queue_new", {"name": "  My Slow  Stage ", "kind": "enricher"}, CallerContext.cli(), confirm=True)).output
     assert out.name == "my_slow_stage"  # type: ignore[union-attr]  # lower case, a run of spaces as one underscore
     assert saved()["queues"]["my_slow_stage"] == {"kind": "enricher", "label": "My Slow  Stage", "workers": 1}
-    asked = await ops.client.call("queue_add", {"name": "Second One", "kind": "action"}, CallerContext.cli())
+    asked = await ops.client.call("queue_new", {"name": "Second One", "kind": "action"}, CallerContext.cli())
     assert asked.proposal is not None and "second_one" in asked.proposal.summary  # the confirm step shows the name it will have
+
+
+# -- queue_get, queue_edit, queue_delete ---------------------------------------------------------
+async def _added(ops: Ops, **kw: object) -> CallerContext:
+    with_host(ops)
+    cli = CallerContext.cli()
+    await ops.client.call("queue_new", {"name": "triage", "kind": "triager", **kw}, cli, confirm=True)
+    ops.svc.queues.new_queue("triage", kind="triager", label=str(kw.get("label", "")), workers=int(kw.get("workers", 1)))  # type: ignore[call-overload]  # what a reload would do
+    return cli
+
+
+async def test_queue_edit_asks_first_then_changes_only_what_was_given_and_reloads(ops: Ops) -> None:
+    cli = await _added(ops, label="Triage", workers=2)
+    reloads: list[int] = []
+    ops.svc.reload = lambda: reloads.append(1)
+    args = {"queue": "triage", "workers": 4, "description": "CRM triage"}
+    asked = await ops.client.call("queue_edit", args, cli)
+    assert asked.proposal is not None and saved()["queues"]["triage"]["workers"] == 2
+    done = (await ops.client.call("queue_edit", args, cli, confirm=True)).output
+    assert done.reloading and reloads == [1]  # type: ignore[union-attr]
+    assert saved()["queues"]["triage"] == {"kind": "triager", "label": "Triage", "description": "CRM triage", "workers": 4}
+    await ops.client.call("queue_edit", {"queue": "triage", "label": ""}, cli, confirm=True)  # empty clears
+    assert "label" not in saved()["queues"]["triage"]
+
+
+async def test_queue_edit_and_remove_refuse_what_they_do_not_own(ops: Ops) -> None:
+    cli = await _added(ops)
+    for op, args, exc in [
+        ("queue_edit", {"queue": "default", "workers": 3}, Conflict),
+        ("queue_edit", {"queue": "nope", "workers": 3}, InvalidInput),
+        ("queue_edit", {"queue": "triage"}, InvalidInput),  # nothing to change
+        ("queue_edit", {"queue": "triage", "workers": 999}, InvalidInput),
+        ("queue_delete", {"queue": "default"}, Conflict),
+        ("queue_delete", {"queue": "nope"}, InvalidInput),
+    ]:
+        with pytest.raises(exc):
+            await ops.client.call(op, args, cli, confirm=True)
+    ops.svc.queues.new_queue("coded", kind="action")  # made in code, not in the file
+    with pytest.raises(Conflict, match="in code"):
+        await ops.client.call("queue_delete", {"queue": "coded"}, cli, confirm=True)
+
+
+async def test_queue_delete_drops_the_table_but_not_while_jobs_wait(ops: Ops) -> None:
+    cli = await _added(ops)
+    await ops.svc.jobs.enqueue("t.work", "{}", queue="triage")
+    with pytest.raises(Conflict, match="1 queued"):
+        await ops.client.call("queue_delete", {"queue": "triage"}, cli, confirm=True)
+    assert "triage" in saved()["queues"]
+    await ops.svc.jobs.pause("triage")
+    await ops.client.call("queue_requeue", {"queue": "triage", "to": "default"}, cli, confirm=True)
+    await ops.client.call("queue_delete", {"queue": "triage"}, cli, confirm=True)
+    assert "triage" not in saved().get("queues", {})
+
+
+async def test_queue_get_reports_settings_depth_and_recent_throughput(ops: Ops) -> None:
+    cli = await _added(ops, label="Triage", workers=2)
+    await ops.svc.jobs.enqueue("t.work", "{}", queue="triage")
+    out = (await ops.client.call("queue_get", {"queue": "triage"}, cli)).output
+    assert (out.title, out.kind, out.workers, out.queued, out.succeeded_in_window) == ("Triage", "triager", 2, 1, 0)  # type: ignore[union-attr]
+    assert out.avg_turnaround_seconds is None  # type: ignore[union-attr]
+    with pytest.raises(InvalidInput):
+        await ops.client.call("queue_get", {"queue": "nope"}, cli)
+
+
+async def test_queue_edit_and_remove_are_never_offered_over_mcp(ops: Ops) -> None:
+    names = {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
+    assert not {"queue_edit", "queue_delete"} & names
+
+
+async def test_queue_get_counts_what_finished_in_the_window_and_how_long_it_took(ops: Ops) -> None:
+    cli = await _added(ops)
+    q = ops.svc.jobs
+    await q.enqueue("t.work", "{}", queue="triage")
+    ops.kit.clock.advance(seconds=30)
+    await q.db.execute("UPDATE jobs SET status = 'succeeded', updated_at = ?", (fmt_ts(ops.kit.clock.now()),))
+    out = (await ops.client.call("queue_get", {"queue": "triage"}, cli)).output
+    assert (out.succeeded_in_window, out.failed_in_window, out.queued) == (1, 0, 0)  # type: ignore[union-attr]
+    assert out.avg_turnaround_seconds == pytest.approx(30, abs=1)  # type: ignore[union-attr]
+
+
+async def test_queue_submit_takes_a_json_blob_and_returns_the_job_id(ops: Ops) -> None:
+    cli = await _added(ops)
+    args = {"queue": "triage", "kind": "crm.score", "payload": '{"id": 7}'}
+    asked = await ops.client.call("queue_submit", args, cli)
+    assert asked.proposal is not None and (await ops.svc.queues.get("triage").stats()).queued == 0
+    out = (await ops.client.call("queue_submit", args, cli, confirm=True)).output
+    job = await ops.svc.jobs.get(out.job_id)  # type: ignore[union-attr, arg-type]
+    assert job is not None and (job.queue, job.kind, job.payload_json) == ("triage", "crm.score", '{"id": 7}')
+    for bad in ({**args, "payload": "[1]"}, {**args, "payload": "nope"}, {**args, "queue": "nope"}):
+        with pytest.raises(InvalidInput):
+            await ops.client.call("queue_submit", bad, cli, confirm=True)
+
+
+async def test_queue_rename_moves_the_file_history_and_labels_and_waits_for_idle(ops: Ops) -> None:
+    cli = await _added(ops, label="Triage")
+    await ops.svc.jobs.enqueue("t.work", "{}", queue="triage")
+    with pytest.raises(Conflict, match="1 queued"):
+        await ops.client.call("queue_rename", {"queue": "triage", "to": "Sorting Hat"}, cli, confirm=True)
+    await ops.kit.db.execute("UPDATE jobs SET status = 'succeeded'")
+    await ops.kit.db.execute("INSERT INTO labels (subject_id, key, layer, value, actor_kind, at) VALUES ('s1', 'queue', 'machine', 'triage', 'system', 'x')")
+    for bad, exc in [({"queue": "triage", "to": "default"}, Conflict), ({"queue": "triage", "to": "9x"}, InvalidInput),
+                     ({"queue": "default", "to": "x"}, Conflict)]:
+        with pytest.raises(exc):
+            await ops.client.call("queue_rename", bad, cli, confirm=True)
+    out = (await ops.client.call("queue_rename", {"queue": "triage", "to": "Sorting Hat"}, cli, confirm=True)).output
+    assert out.name == "sorting_hat"  # type: ignore[union-attr]
+    assert list(saved()["queues"]) == ["sorting_hat"] and saved()["queues"]["sorting_hat"]["kind"] == "triager"
+    assert (await ops.kit.db.fetchone("SELECT queue FROM jobs"))["queue"] == "sorting_hat"
+    assert (await ops.kit.db.fetchone("SELECT value FROM labels"))["value"] == "sorting_hat"

@@ -25,7 +25,7 @@ UI = CallerContext.ui()
 
 
 async def paused(ops: Ops) -> bool:
-    return (await ops.kit.queue.stats())[0].paused
+    return (await ops.kit.jobs.stats())[0].paused
 
 
 async def agent_with_pause(ops: Ops) -> CallerContext:

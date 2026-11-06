@@ -44,7 +44,7 @@ def make(kit: Kit, triagers: list, stored: list | None = None, ingest: bool = Tr
         stored.append(item)
         return SubjectId(f"real-{len(stored)}")
 
-    intake = Intake(kit.queue, kit.labels, kit.db, kit.log, triagers=triagers,
+    intake = Intake(kit.jobs, kit.labels, kit.db, kit.log, triagers=triagers,
                     ingest=do_ingest if ingest else None)  # fmt: skip
     intake.register(kit.runner)
     return intake
@@ -57,7 +57,7 @@ async def test_a_reject_stores_nothing_and_logs_one_content_free_row(kit: Kit) -
     await kit.runner.drain()
     assert stored == []
     assert await kit.labels.all(prov) == {}  # the provisional labels are gone too
-    (job,) = await kit.queue.query(kind=KIND)
+    (job,) = await kit.jobs.query(kind=KIND)
     assert job.status == "succeeded" and job.payload_json == "{}" and SECRET not in (job.result_json or "")
     rows = [r for r in await kit.log.rows(kit.db, prov) if r.op == "reject"]
     assert len(rows) == 1
@@ -75,10 +75,10 @@ async def test_an_accept_ingests_and_the_labels_follow_the_item(kit: Kit) -> Non
     assert [i.body for i in stored] == [{"text": SECRET}]
     assert await kit.labels.all(prov) == {}
     assert await kit.labels.all("real-1") == {"queue": "enrichers", "priority": "high", "confidential": "true"}
-    nxt = await kit.queue.enqueue("later", Ping(), subject="real-1")
-    assert (await kit.queue.get(nxt.job_id)).queue == "enrichers"  # type: ignore[union-attr]
+    nxt = await kit.jobs.enqueue("later", Ping(), subject="real-1")
+    assert (await kit.jobs.get(nxt.job_id)).queue == "enrichers"  # type: ignore[union-attr]
     assert any(r.op == "ingest" for r in await kit.log.rows(kit.db, "real-1"))
-    (job,) = await kit.queue.query(kind=KIND)
+    (job,) = await kit.jobs.query(kind=KIND)
     assert job.payload_json == "{}"  # the data lives in the store now
 
 
@@ -114,10 +114,10 @@ async def test_a_broken_triager_backs_up_intake_and_loses_nothing(kit: Kit) -> N
     for _ in range(4):
         await kit.runner.drain()
         kit.clock.advance(seconds=1000)
-    (job,) = await kit.queue.query(kind=KIND)
+    (job,) = await kit.jobs.query(kind=KIND)
     assert job.status == "failed" and SECRET in job.payload_json  # payload kept, never purged
     assert stored == []
-    (default,) = await kit.queue.stats()
+    (default,) = await kit.jobs.stats()
     assert default.failed == 1 and "model is down" in (default.last_error or "")
 
 
@@ -130,14 +130,14 @@ async def test_requeue_replays_failed_intake_once_the_triager_is_fixed(kit: Kit)
         await kit.runner.drain()
         kit.clock.advance(seconds=1000)
     intake.triagers[:] = [Rules(Verdict("accept"))]  # the fix
-    res = await kit.queue.requeue(Selector(status="failed", kind=KIND), USER, retriage=True)
+    res = await kit.jobs.requeue(Selector(status="failed", kind=KIND), USER, retriage=True)
     assert len(res.requeued) == 1
     await kit.runner.drain()
     assert len(stored) == 1
 
 
 async def test_open_gate_treats_the_last_failure_as_unsure(kit: Kit) -> None:
-    kit.queue.settings = JobsSettings(backoff_jitter=0, backoff_base_seconds=1, open_gate_on_final_failure=True)
+    kit.jobs.settings = JobsSettings(backoff_jitter=0, backoff_base_seconds=1, open_gate_on_final_failure=True)
     stored: list = []  # type: ignore[type-arg]
     intake = make(kit, [Broken(None)], stored)
     await intake.submit("web", "x")
@@ -151,7 +151,7 @@ async def test_a_triager_naming_a_missing_queue_fails_for_good(kit: Kit) -> None
     intake = make(kit, [Rules(Verdict("accept", "", {"queue": "nope"}))])
     await intake.submit("web", "x")
     await kit.runner.drain()
-    (job,) = await kit.queue.query(kind=KIND)
+    (job,) = await kit.jobs.query(kind=KIND)
     assert job.status == "failed" and job.attempts == 1 and "no queue named" in (job.last_error or "")
 
 
@@ -159,5 +159,5 @@ async def test_with_no_ingest_hook_the_item_waits(kit: Kit) -> None:
     intake = make(kit, [Rules(Verdict("accept"))], ingest=False)
     await intake.submit("web", {"text": SECRET})
     await kit.runner.drain()
-    (job,) = await kit.queue.query(kind=KIND)
+    (job,) = await kit.jobs.query(kind=KIND)
     assert job.status == "queued" and SECRET in job.payload_json

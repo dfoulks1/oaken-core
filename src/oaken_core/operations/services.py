@@ -16,7 +16,7 @@ from oaken_core.clock import Clock
 from oaken_core.db import Database
 from oaken_core.errors import Unavailable
 from oaken_core.events import EventBus
-from oaken_core.jobs import JobQueue
+from oaken_core.jobs import Jobs
 from oaken_core.labels import LabelStore
 from oaken_core.plugins.host import PluginHost
 from oaken_core.queues import Queues
@@ -39,7 +39,7 @@ class Services:
     clock: Clock
     settings: Settings
     queues: Queues
-    queue: JobQueue
+    jobs: Jobs
     labels: LabelStore
     changelog: ChangeLog
     bus: EventBus | None = None

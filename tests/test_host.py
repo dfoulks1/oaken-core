@@ -346,7 +346,7 @@ async def test_job_handlers_and_scheduled_tasks_are_registered_from_plugins(tmp_
     await host.start()
     try:
         assert register_plugin_jobs(host, kit.runner) == ["plugin.worker.ping"]
-        sched = Scheduler(kit.db, kit.queue, clock)
+        sched = Scheduler(kit.db, kit.jobs, clock)
         assert await seed_plugin_schedules(host, sched) == ["plugin.worker.tick"]
         assert await seed_plugin_schedules(host, sched) == []  # only if absent: the owner's edits stand
         assert await sched.next_run("plugin.worker.tick") is not None and timedelta(seconds=60)
