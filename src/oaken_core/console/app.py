@@ -81,7 +81,8 @@ class Console:
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
             Route("/pipeline", self.page(self.labels_page)),
-            Route("/pipeline/plugins", self.page(self.pipeline)),
+            Route("/pipeline/analyzers", self.page(self.analyzers)),
+            Route("/pipeline/machinery", self.page(self.pipeline)),
             Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
             Route("/ui/labels/{key}/{verb}", self.post(self.label_verb), methods=["POST"]),
             Route("/capabilities", self.page(self.capabilities)),
@@ -308,22 +309,32 @@ class Console:
         return " ".join(words) + ("" if words[-1].endswith("s") else "s")
 
     async def pipeline(self, request: Request) -> Response:
-        """The machinery: a collapsible section for each kind of plugin that is not a stage's (stores, providers, models,
-        embedders...) with something in the pipeline, then one table of every disabled one, whatever its kind. A stage's own
-        plugins are on its page."""
-        stage_kinds = {q.kind for q in self._stage_specs()}
+        """Pipeline > Machinery: the plugins that do not read an item's content (stores, models, embedders...): a collapsible
+        section for each kind with something live, then one folded table of every disabled one."""
+        return await self._plugin_tab("machinery", analyzers=False)
+
+    async def analyzers(self, request: Request) -> Response:
+        """Pipeline > Analyzers: the plugins that read the pipeline's content (triagers, enrichers, actions...), by kind, each
+        with the stage that runs it."""
+        return await self._plugin_tab("analyzers", analyzers=True)
+
+    async def _plugin_tab(self, tab: str, *, analyzers: bool) -> Response:
+        stage_of = {q.kind: q for q in self._stage_specs()}
         stages, _ = await self._flow()
         every = self._host().statuses()
         sections, empty, plugins = [], [], []
-        for k in (k.name for k in self._host().kinds if k.name not in stage_kinds):
-            found = [p for p in every if p.kind == k]
+        for spec in self._host().kinds:
+            if spec.analyzer != analyzers:
+                continue
+            found = [p for p in every if p.kind == spec.name]
             plugins += found
             live = [p for p in found if p.enabled]
+            q = stage_of.get(spec.name)
             if live:
-                sections.append((k, self._kind_label(k), live))
+                sections.append((spec.name, self._kind_label(spec.name), live, (f"/stage/{q.name}", q.title) if q else None))
             elif not found:
-                empty.append(self._kind_label(k))
-        return self.render("pipeline.html", stages=stages, sections=sections, empty=empty, inactive=[p for p in plugins if not p.enabled],
+                empty.append(self._kind_label(spec.name))
+        return self.render("pipeline.html", tab=tab, stages=stages, sections=sections, empty=empty, inactive=[p for p in plugins if not p.enabled],
                            modals=await self._modals(plugins))
 
     async def labels_page(self, request: Request) -> Response:

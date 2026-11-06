@@ -1,8 +1,8 @@
-{% extends "base.html" %}{% from "_plugin_table.html" import flow with context %}{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}{% block title %}Labels{% endblock %}
+{% extends "base.html" %}{% from "_plugin_table.html" import flow, pipeline_tabs with context %}{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}{% block title %}Labels{% endblock %}
 {% block body %}
 <h1>Pipeline</h1>
 {{ flow(stages) }}
-<nav class="nav" aria-label="Pipeline"><a href="/pipeline" aria-current="page">Labels</a><a href="/pipeline/plugins">Plugins</a></nav>
+{{ pipeline_tabs("labels") }}
 <p class="muted">A label is a key and a value on a subject. Reserved keys are core's and plugins define their own; the keys you add here are yours to change.</p>
 <div class="card"><div class="card-head"><span>Label keys</span><button type="button" class="btn btn-primary btn-sm" popovertarget="label-new" popovertargetaction="show" title="Add a label key">{{ m.icon("plus") }} Add label</button></div>
 <div class="table-wrap"><table class="table"><tr><th>Key</th><th>For</th><th>Allowed values</th><th>Defined by</th><th></th></tr>

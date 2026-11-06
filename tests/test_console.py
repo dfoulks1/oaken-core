@@ -378,7 +378,7 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
         assert "notes" in stage.text and "flow-strip" in stage.text and "Intake" in stage.text
         assert (await client.get("/stage/default")).status_code == 404  # intake is not a stage page
         assert (await client.get("/stage/nope")).status_code == 404
-        machinery = (await client.get("/pipeline/plugins")).text
+        machinery = (await client.get("/pipeline/machinery")).text
         assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
         assert 'aria-label="Settings for notes"' in stage.text and 'aria-label="Reload notes"' in stage.text  # icon buttons (gear, cycle)
         row = stage.text[stage.text.index('href="/plugins/enricher/notes">notes'):]
@@ -400,7 +400,7 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
         assert 'value="triager"' in page and 'value="action"' in page
         assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
         assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index("<span>Active plugins</span>")  # by the Queues table
-        assert 'popovertarget="add-stage"' not in (await client.get("/pipeline/plugins")).text  # only on General
+        assert 'popovertarget="add-stage"' not in (await client.get("/pipeline/machinery")).text  # only on General
         form = {"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"}  # a title only: the name comes from it
         first = await client.post("/ui/queues/add", data=form)
         assert first.status_code == 200 and "my_triage" in first.text and not (oaken_home / "config" / "config.toml").exists()  # the confirm step shows the name
@@ -466,7 +466,7 @@ async def test_the_gear_opens_that_plugins_settings_in_a_dialog_and_a_save_comes
         dialog = page[page.index('id="set-1"'):]
         assert 'action="/ui/plugins/enricher/notes/settings"' in dialog and 'name="f_greeting"' in dialog
         assert 'id="m1-f_greeting"' in dialog and 'name="back" value="/stage/enrich"' in dialog  # unique ids; returns here
-        pipe = (await client.get("/pipeline/plugins")).text
+        pipe = (await client.get("/pipeline/machinery")).text
         ids = [i for i in __import__("re").findall(r'id="(m[a-z0-9_-]*-f_[a-z_]+)"', pipe)]
         assert len(ids) == len(set(ids))  # several dialogs on one page never share an id
         saved = await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "/stage/enrich", "f_greeting": "yo", "f_limit": "5"})
@@ -493,7 +493,7 @@ async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        for path in ("/", "/pipeline", "/pipeline/plugins", "/stage/enrich", "/plugins", "/capabilities", "/config", "/plugins/enricher/notes"):
+        for path in ("/", "/pipeline", "/pipeline/machinery", "/stage/enrich", "/plugins", "/capabilities", "/config", "/plugins/enricher/notes"):
             html = (await client.get(path)).text
             tokens = re.findall(r'name="csrf" value="([^"]*)"', html)
             assert tokens and set(tokens) == {core.console.token}, (path, set(tokens))
@@ -549,7 +549,7 @@ async def test_the_pipeline_is_a_collapsible_section_per_kind_that_has_plugins_a
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        page = (await client.get("/pipeline/plugins")).text
+        page = (await client.get("/pipeline/machinery")).text
         heads = re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)
         assert "Stores" in heads and "Enrichers" not in heads  # a kind with plugins; a stage has its own page
         assert "LLM backends" not in heads and "Nothing installed for:" in page and "LLM backends" in page  # empties: one quiet line
@@ -592,7 +592,7 @@ async def test_a_setting_with_choices_is_a_dropdown_and_one_that_cannot_be_fille
                            [EP("picky", Picky), EP("mute", Mute)])  # fmt: skip
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        page = (await client.get("/pipeline/plugins?tab=enricher")).text
+        page = (await client.get("/pipeline/analyzers?tab=enricher")).text
         picky = page[page.index('action="/ui/plugins/enricher/picky/settings"'):]
         picky = picky[: picky.index("</form>")]
         assert '<select class="select"' in picky and 'name="f_model"' in picky
@@ -671,7 +671,7 @@ async def test_pipeline_labels_lists_keys_and_adds_edits_and_deletes_the_owners_
     post = lambda path, **kw: client.post(path, data={"csrf": token, **kw})  # noqa: E731
     saved = lambda: tomllib.loads((oaken_home / "config" / "config.toml").read_text()).get("labels", {})  # noqa: E731
     try:
-        assert 'href="/pipeline/plugins"' in (await client.get("/pipeline")).text and 'href="/pipeline"' in (await client.get("/pipeline/plugins")).text  # the two tabs
+        assert 'href="/pipeline/machinery"' in (await client.get("/pipeline")).text and 'href="/pipeline"' in (await client.get("/pipeline/machinery")).text  # the two tabs
         page = (await client.get("/pipeline")).text  # Labels is the default tab
         assert "confidential" in page and "core" in page and 'popovertarget="label-new"' in page
         assert 'name="subject"' not in page and "Find" not in page  # settings only: no look-up of a subject's labels
@@ -703,13 +703,36 @@ async def test_the_plugins_tab_lumps_every_disabled_plugin_at_the_bottom_with_wh
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
         await core.client.call("plugin_disable", {"name": "sqlite"}, CallerContext.cli(), confirm=True)
-        page = (await client.get("/pipeline/plugins")).text
+        page = (await client.get("/pipeline/machinery")).text
         head = page.index(">Inactive plugins <span")
         assert "Stores" not in re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)  # a kind with nothing live has no section
         table = page[head:]
         assert "sqlite" in table[: table.index("</table>")] and "Loads from" in table  # one table, with a loadpath column
         assert re.search(r'class="mono small">[\w.]+:\w+', table)  # the entry point's module:attr
         assert page.count(">Inactive plugins <span") == 1
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+# -- Pipeline > Analyzers and Machinery --------------------------------------------------------
+async def test_the_pipeline_has_an_analyzers_tab_with_each_kinds_stage_and_machinery_has_the_rest(tmp_path: Path, oaken_home: Path) -> None:
+    import re
+
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher", "label": "Enrichment"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        labels = (await client.get("/pipeline")).text
+        for href in ("/pipeline", "/pipeline/analyzers", "/pipeline/machinery"):
+            assert f'href="{href}"' in labels  # the three tabs, on each page
+        assert labels.index(">Labels<") < labels.index(">Analyzers<") < labels.index(">Machinery<")
+        analyzers = (await client.get("/pipeline/analyzers")).text
+        assert 'aria-current="page">Analyzers' in analyzers and "notes" in analyzers and 'href="/stage/enrich">Enrichment' in analyzers  # with the stage that runs the kind
+        assert "sqlite" not in analyzers  # a store never reads an item's content
+        machinery = (await client.get("/pipeline/machinery")).text
+        assert 'aria-current="page">Machinery' in machinery and "sqlite" in machinery and "notes" not in machinery
+        heads = re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', machinery)
+        assert "Stores" in heads and "Enrichers" not in heads
     finally:
         await client.aclose()
         await core.host.stop()
