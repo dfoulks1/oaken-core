@@ -46,7 +46,8 @@ def _check_vector(vector: Sequence[float]) -> None:
 
 
 class SqliteVecStore(BaseVectorStore):
-    """``path`` defaults to ``vectors.db`` in the data folder (or the instance's ``path`` setting)."""
+    """The default vector store: embeddings kept in a local SQLite file (the sqlite-vec extension), searched by distance. ``path`` defaults to
+    ``vectors.db`` in the data folder (or the instance's ``path`` setting)."""
 
     version: ClassVar[str] = "1"
     config_model = SqliteVecConfig

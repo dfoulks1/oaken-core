@@ -1,0 +1,16 @@
+{% extends "base.html" %}{% block title %}Docs{% endblock %}
+{% block body %}
+<h1>Docs <a class="btn btn-secondary btn-sm log-btn" href="/docs/all" title="Every page of this document on one page">All on one page</a></h1>
+<p class="muted">{{ total }} plugin{{ "s" if total != 1 }} in this stack.</p>
+<h2>Stages</h2>
+<div class="card"><div class="table-wrap"><table class="table"><thead><tr><th>Stage</th><th>What it does</th><th>Plugins</th></tr></thead><tbody>
+{% for s in flow %}<tr><td class="mono nowrap">{% if not s.hidden %}<a href="/stage/{{ s.name }}">{{ s.stage }}</a>{% else %}{{ s.name }}{% endif %}</td><td>{{ s.description }}</td>
+<td>{% for p in s.plugins %}<a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{{ ", " if not loop.last }}{% else %}<span class="muted">{{ "none running" if s.kind else "" }}</span>{% endfor %}</td></tr>{% endfor %}</tbody></table></div></div>
+<h2>Labels</h2>
+<div class="card"><div class="table-wrap"><table class="table"><thead><tr><th>Label</th><th>What it says</th><th>Values</th><th>Defined by</th></tr></thead><tbody>
+{% for k in labels %}<tr><td class="mono">{{ k.key }}</td><td>{{ k.description }}</td><td class="mono small">{{ k["values"]|join(", ") if k["values"] else "any text" }}</td><td class="muted">{{ k.source }}</td></tr>{% endfor %}</tbody></table></div></div>
+{% for kind, plugins in kinds %}<h2>{{ kind }}</h2>
+<div class="card"><div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>What it is</th><th></th></tr></thead><tbody>
+{% for p in plugins %}<tr><td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a></td><td>{{ p.summary or "No description." }}</td>
+<td>{% if p.template %}<span class="badge">template</span>{% elif not p.enabled %}<span class="badge badge-warn">off</span>{% endif %}{% if p.warning %} <span class="badge badge-danger">{{ p.warning }}</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div></div>{% endfor %}
+{% endblock %}

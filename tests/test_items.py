@@ -101,3 +101,48 @@ async def test_a_products_ingestor_replaces_the_built_in_one_without_any_setting
 async def test_intake_submit_is_off_over_mcp_until_the_owner_turns_it_on(core: Core) -> None:
     mcp = {o.name for o in await core.client.visible(CallerContext.mcp("me"))}
     assert "intake_submit" not in mcp
+
+
+async def test_item_show_reads_an_item_back_through_its_ingestor_with_its_labels_and_history(tmp_path: Path) -> None:
+    from oaken_core.errors import NotFound, Unavailable
+    from oaken_core.formatters.structured import JsonFormatter
+
+    core = await make(tmp_path, {"oaken_core.formatters": [EP("json", JsonFormatter)]})
+    call = core.client.call
+    try:
+        await call("intake_submit", {"source": "notes", "body": '{"title": "Hi", "tags": ["a"]}', "format": "json"}, CLI, confirm=True)
+        await core.runner.drain()
+        (item,) = (await call("items.list", {}, CLI)).output.items  # type: ignore[union-attr]
+        shown = (await call("item_show", {"id": item.subject_id}, CLI)).output
+        assert shown.parts == {"title": "Hi", "tags": ["a"]} and shown.ingestor == "ItemsIngestor"  # type: ignore[union-attr]  # its parts, from the ingestor that stored it
+        assert shown.labels["format"] == "ok"  # type: ignore[union-attr]
+        assert any(h.op == "ingest" and h.key == "intake" for h in shown.history)  # type: ignore[union-attr]  # and what happened to it
+        one = (await call("item_show", {"id": item.subject_id, "part": "title"}, CLI)).output
+        assert one.parts == {"title": "Hi"}  # type: ignore[union-attr]
+        with pytest.raises(NotFound, match="no part 'nope'"):
+            await call("item_show", {"id": item.subject_id, "part": "nope"}, CLI)
+        got = lambda name: call("item_get", {"id": item.subject_id, "name": name}, CLI)  # noqa: E731
+        assert (await got("title")).output.value == "Hi" and (await got("title")).output.text == "Hi"  # type: ignore[union-attr]  # a part, as the value, printed raw
+        assert (await got("tags.0")).output.value == "a" and (await got("labels.format")).output.value == "ok"  # type: ignore[union-attr]  # a path into a part; a label
+        assert (await got("tags")).output.text == '[\n  "a"\n]'  # type: ignore[union-attr]  # anything that is not text, as JSON
+        with pytest.raises(NotFound, match="has no 'nope'"):
+            await got("tags.nope")
+        with pytest.raises(NotFound, match="no item"):
+            await call("item_show", {"id": "ghost"}, CLI)
+    finally:
+        await core.host.stop()
+
+
+async def test_item_show_says_so_when_the_active_ingestor_cannot_read_items_back(tmp_path: Path) -> None:
+    from oaken_core.errors import Unavailable
+
+    class Mute(BaseIngestor):
+        async def ingest(self, item: IntakeItem) -> SubjectId:
+            return SubjectId("x")
+
+    core = await make(tmp_path, {"oaken_core.ingestors": [EP("mute", Mute)]})  # replaces items, which is only a fallback
+    try:
+        with pytest.raises(Unavailable, match="cannot read items back"):
+            await core.client.call("item_show", {"id": "x"}, CLI)
+    finally:
+        await core.host.stop()

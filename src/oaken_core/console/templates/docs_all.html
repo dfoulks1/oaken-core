@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% from "_docs.html" import plugin_doc %}{% block title %}Docs{% endblock %}
+{% block body %}
+<h1>This stack, in full</h1>
+<p class="muted small"><a href="/docs">Docs</a> · {{ plugins|selectattr("more")|list|length }} of {{ plugins|length }} plugins have more to say than their one line on the index.</p>
+{% for p in plugins if p.more %}{{ plugin_doc(p, True) }}{% endfor %}
+{% endblock %}

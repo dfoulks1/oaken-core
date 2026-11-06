@@ -884,7 +884,9 @@ async def test_only_a_template_gets_the_plus_and_its_instances_must_set_what_mak
         (watcher,) = [p for p in core.host.statuses() if p.name == "watcher"]
         assert watcher.template and not watcher.started and "add an instance" in watcher.detail and "topic" in watcher.detail  # not a failure
         assert 'popovertarget="new-instance"' not in (await client.get("/plugins/enricher/watcher")).text  # the plugin's own page is its global settings: no +
-        assert 'popovertarget="new-instance"' not in (await client.get("/")).text  # nor is General
+        general = (await client.get("/")).text
+        assert 'popovertarget="new-instance"' not in general  # nor is General
+        assert '<span class="badge">template</span>' in general and "health-detail small bad\">add an instance" not in general and "health-detail small muted\">add an instance" not in general  # a template row says "template" and nothing more in its health cell
         stage = (await client.get("/stage/enrich")).text
         assert 'popovertarget="new-instance"' in stage  # the + is on a stage's page...
         assert 'action="/ui/plugins/enricher/watcher/instance"' in stage and 'action="/ui/plugins/enricher/notes/instance"' not in stage  # ...for a template only

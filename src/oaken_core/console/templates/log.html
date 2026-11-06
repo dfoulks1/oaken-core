@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% from "_plugin_table.html" import flow with context %}{% block title %}Log{% endblock %}
 {% block body %}
 <h1>Log <span class="muted">{{ title }}</span></h1>
-{% if log.path %}<div class="card"><div class="card-body"><div class="muted small">Log file</div><div class="mono" style="font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere">{{ log.path }}</div></div></div>
+{% if log.path %}<div class="card"><div class="card-body"><div class="muted small">Log file</div><div class="mono file-path">{{ log.path }}</div></div></div>
 {% elif log.kept_in == "table" %}<p class="muted">Kept in core's database (the <code>log_lines</code> table). Set <code>[log] file</code> to keep it in a file instead.</p>
 {% elif log.kept_in == "file" %}<p class="muted">The log file is set but nothing has been written to it yet.</p>{% endif %}
 <p class="row"><a class="btn btn-secondary btn-sm" href="{{ back }}">Back</a>

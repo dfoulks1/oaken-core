@@ -34,6 +34,7 @@ class Queue:
     kind: str = ""  # the one analyzer plugin kind this queue is the stage of ("" for ``default``)
     label: str = ""  # its title in the console
     hidden: bool = False  # a stage core runs for you: not listed, not edited
+    serves: str = ""  # a hidden stage: the plugin kind that does its work (store: the ingestor), so the docs can say who does it
     disabled: tuple[str, ...] = ()  # plugins switched off in this stage only (still on in another)
 
     _jobs: "Jobs | None" = field(default=None, compare=False, repr=False)  # set by ``Queues.bind``
@@ -80,8 +81,8 @@ class Queues:
         self._jobs: "Jobs | None" = None
         self._queues: dict[str, Queue] = {
             DEFAULT: Queue(DEFAULT, "Where an item enters: formatters split it into parts, then it moves on to triage", default_workers, kind="formatter", label="Intake"),
-            STORE: Queue(STORE, "Items labelled store wait here to be stored", 1, hidden=True),
-            EMBED: Queue(EMBED, "Items labelled embed wait here for their vector", 1, hidden=True),
+            STORE: Queue(STORE, "Items labelled store wait here to be stored", 1, hidden=True, serves="ingestor"),
+            EMBED: Queue(EMBED, "Items labelled embed wait here for their vector", 1, hidden=True, serves="embedder"),
         }
 
     def new_queue(self, name: str, description: str = "", workers: int = 1, *, kind: str = "", label: str = "", disabled: tuple[str, ...] = ()) -> Queue:

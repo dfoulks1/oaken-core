@@ -38,6 +38,7 @@ from oaken_core import identity, paths
 from oaken_core.api.errors import status_for
 from oaken_core.config_edit import get_table, refuse_secrets, save_table, set_table
 from oaken_core.console import forms
+from oaken_core.console.docs_text import docs_html
 from oaken_core.console.forms import Field
 from oaken_core.console.guard import ConsoleGuard, PortRef
 from oaken_core.errors import ConfigError, InvalidInput, NotFound, OakenError, PermissionDenied
@@ -61,7 +62,7 @@ CSS_VERSION = hashlib.sha256((HERE / "static" / "oaken.css").read_bytes()).hexdi
 # The Capabilities page's core tables: three, so a new command group does not mean a new table. A group named nowhere here
 # (a product's own) lands in "Other". Plugins keep a table per kind.
 CAPABILITY_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Control", ("queue", "job", "label", "intake")),
+    ("Control", ("queue", "job", "label", "intake", "item")),
     ("Machinery", ("general", "plugin", "config", "settings", "core", "storage", "cache", "ai", "log", "events")),  # "general": status
     ("Keys and doors", ("agent", "secret", "exposure", "mcp")),
 )
@@ -89,6 +90,7 @@ class Console:
             loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True, undefined=jinja2.StrictUndefined
         )
         self.env.globals["display"] = forms.display  # macros do not see the page's context
+        self.env.filters["docs"] = docs_html  # a plugin's own text as paragraphs and code, escaped
         self.config_path = paths.config_dir() / "config.toml"
         routes = [
             Route("/", self.page(self.overview)),
@@ -103,6 +105,8 @@ class Console:
             Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
             Route("/ui/labels/{key}/{verb}", self.post(self.label_verb), methods=["POST"]),
             Route("/capabilities", self.page(self.capabilities)),
+            Route("/docs", self.page(self.docs_index)),
+            Route("/docs/all", self.page(self.docs_all)),
             Route("/stage/{queue}", self.page(self.stage)),
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
             Route("/plugins/{kind}/{name}/pages/{page}", self.page(self.plugin_page)),
@@ -248,7 +252,7 @@ class Console:
     def _nav(self) -> list[tuple[str, str]]:
         """General, the machinery, then a link per stage in the order they were made, then Config and Capabilities."""
         stages = [(f"/stage/{q.name}", q.title) for q in self._stage_specs()]
-        return [("/", "General"), ("/pipeline", "Pipeline"), *stages, ("/config", "Config"), ("/capabilities", "Capabilities")]
+        return [("/", "General"), ("/pipeline", "Pipeline"), *stages, ("/config", "Config"), ("/capabilities", "Capabilities"), ("/docs", "Docs")]
 
     async def _flow(self) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
         """Intake, then each stage, with what waits in it; and the queue rows by name."""
@@ -303,12 +307,33 @@ class Console:
         out = await self._op("log_tail", {**self._log_scope(request), "limit": 2000})
         return JSONResponse(out, headers={"Content-Disposition": 'attachment; filename="oaken-log.json"'})
 
+    async def docs_index(self, request: Request) -> Response:
+        """Docs: the documentation of *this* stack, built from the plugins that are in it. How an item moves through the stages,
+        then each plugin, by kind, with a page of its own."""
+        found = (await self._op("plugin_describe", {}))["plugins"]
+        by_stage = []
+        order = [q for q in self.svc.queues.all() if not q.hidden] + [q for q in self.svc.queues.all() if q.hidden]  # the way an item moves: Intake, your stages, then store and embed
+        for q in order:  # every stage, hidden ones too: core's own description of each
+            kind = q.kind or q.serves
+            first = next((x.name for x in self.svc.queues.all() if x.kind == q.kind), None) if q.kind else None
+            here = [p for p in found if kind and p["kind"] == kind and p["enabled"] and p["name"] not in q.disabled
+                    and (not q.kind or (self._host().tables.table(p["kind"], p["name"]).get("stage") or first) == q.name)]
+            by_stage.append({"stage": q.title, "name": q.name, "kind": kind, "hidden": q.hidden, "description": q.description, "plugins": here})
+        labels = (await self._op("label_keys"))["keys"]
+        kinds: dict[str, list[dict[str, Any]]] = {}
+        for p in found:
+            kinds.setdefault(p["kind"], []).append(p)
+        return self.render("docs.html", flow=by_stage, labels=labels, kinds=sorted(kinds.items()), total=len(found))
+
+    async def docs_all(self, request: Request) -> Response:
+        """The whole document on one page, to read through, print or save."""
+        found = (await self._op("plugin_describe", {}))["plugins"]
+        return self.render("docs_all.html", plugins=sorted(found, key=lambda p: (p["kind"], p["name"])))
+
     async def _plugin_docs(self, kind: str, name: str) -> dict[str, Any]:
         """The plugin's own account of itself, and the commands it offers (from the registry, with their summaries)."""
-        docs = self._host().describe(kind, name)
-        rows = (await self._op("exposure_list"))["operations"]
-        docs["commands"] = [{"name": r["name"], "summary": r["summary"], "permission": r["permission"]} for r in rows if r["plugin"] == self._status(kind, name).plugin or r["plugin"] == name]
-        return docs
+        found = (await self._op("plugin_describe", {"name": name, "kind": kind}))["plugins"]
+        return next((p for p in found if p["name"] == name), {"more": False, "doc": "", "setup_help": "", "config_example": "", "contextual": [], "commands": []})
 
     def _bases(self, kind: str, only: str = "") -> list[dict[str, Any]]:
         """The plugins of ``kind`` a new instance can be made of, each with the contextual settings it must be given (required)."""
@@ -441,7 +466,8 @@ class Console:
                 sections.append((spec.name, self._kind_label(spec.name), live, (f"/stage/{q.name}", q.title) if q else None))
             elif not found:
                 empty.append(self._kind_label(spec.name))
-        return self.render("pipeline.html", tab=tab, stages=stages, sections=sections, empty=empty, inactive=[p for p in plugins if not p.enabled],
+        bases = self._bases("provider") if tab == "providers" else []  # a provider that is a template (an account, a mailbox) is made into instances here: providers have no stage
+        return self.render("pipeline.html", tab=tab, bases=bases, stages=stages, sections=sections, empty=empty, inactive=[p for p in plugins if not p.enabled],
                            modals=await self._modals(plugins))
 
     async def labels_page(self, request: Request) -> Response:

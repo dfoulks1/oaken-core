@@ -951,7 +951,7 @@ class PluginHost:
             return "", ""
         offered = [e for e in catalog.entries(k.name for k in self.kinds) if e.kind in {kind for _, kind in need}]
         how = (f"Add one: oaken plugin add {offered[0].name} --kind {offered[0].kind} (in oaken-plugins: {', '.join(sorted({e.name for e in offered}))})." if offered
-               else f"pip install {catalog.DIST} has some." if not catalog.installed() else "")
+               else f"Install oaken-plugins (pip install {catalog.DIST}) to find some." if not catalog.installed() else "")
         return f"needs {' and '.join(label for label, _ in need)}", how
 
     def _is_template(self, rec: _Record) -> bool:
@@ -966,8 +966,11 @@ class PluginHost:
         doc = ""
         if cls is not None:  # the plugin's own docstring (not one inherited from a base class), else its module's
             doc = inspect.cleandoc(cls.__dict__.get("__doc__") or "") or inspect.getdoc(inspect.getmodule(cls)) or ""
+        from oaken_core.plugins.base import BaseTemplatePlugin
+
+        template = str(inst.template_help) if isinstance(inst, BaseTemplatePlugin) else ""  # core's own account of what a template is, for the person running it
         return {"doc": doc, "setup_help": getattr(inst, "setup_help", ""), "config_example": getattr(inst, "config_example", ""),
-                "contextual": self.contextual(kind, name)}
+                "contextual": self.contextual(kind, name), "template_note": template}
 
     def contextual(self, kind: str, name: str) -> tuple[str, ...]:
         """The settings an instance of this plugin must set (empty for most plugins)."""

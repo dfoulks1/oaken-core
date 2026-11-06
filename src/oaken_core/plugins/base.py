@@ -61,7 +61,7 @@ def _default(fn: F) -> F:
 
 # The calls a plugin author implements and core makes: what is asked of it, and what it answers. Every one a
 # plugin class defines is traced by ``BasePlugin`` with no code in the plugin (see ``_traced``).
-TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest", "split")
+TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest", "read", "split")
 _TRACE_KIND = {"generate": "llm.call"}  # the kind the trace file already knows a model call by
 
 
@@ -293,6 +293,11 @@ class BaseTemplatePlugin(BasePlugin):
 
     # The settings an instance must set; they are required where an instance is made.
     contextual: ClassVar[tuple[str, ...]] = ()
+    # What the console says about a template, to the person who runs it (the class docstring above is for its author).
+    template_help: ClassVar[str] = (
+        "This is a template: it does not run as itself. Each instance you make from it (the + on a stage's page) is given what makes it "
+        "what it is, starts from this template's settings, and may override any of them. Switched off, it makes no new instances."
+    )
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
@@ -465,6 +470,13 @@ class BaseIngestor(BasePlugin):
     @_default
     async def ingest(self, item: Any) -> Any:
         raise NotImplementedError("an ingestor must implement ingest()")
+
+    @_default
+    async def read(self, subject_id: str, part: str | None = None) -> dict[str, Any]:
+        """The stored item as ``{part name: content}`` (JSON data), or just ``{part: content}`` when ``part`` is given. This is how
+        an item's context is fetched back (``oaken item show``) and how an analyzer asks for the part it reads. An ingestor that
+        cannot say leaves this alone. Raise ``NotFound`` for a subject or a part it does not have."""
+        raise NotImplementedError("this ingestor cannot read items back")
 
 
 class BaseFormatter(BasePlugin):

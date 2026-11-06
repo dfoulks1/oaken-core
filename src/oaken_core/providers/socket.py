@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""``oaken-provider-socket``: send things to the socket and they are submitted.
+"""``socket``: the machine's door. Send things to the socket and they are submitted to Intake.
 
 It listens on a Unix socket (mode 0600, the default way) or on a TCP port of 127.0.0.1, never on another
 address. Whatever arrives becomes an item in intake. Two framings:

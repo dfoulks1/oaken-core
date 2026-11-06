@@ -412,3 +412,8 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
    every other button is an accent outline on a faint accent tint (a row's button), except a Secondary button, which is white with a faint outline. Only the close X of a dialog is bare (btn-ghost). */
 .btn:not(.btn-primary):not(.btn-bare):not(.btn-danger):not(.btn-secondary) { color: var(--brand); border-color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
 .btn:not(.btn-primary):not(.btn-bare):not(.btn-danger):not(.btn-secondary):hover { background: color-mix(in srgb, var(--brand) 16%, var(--surface)); border-color: var(--brand); }
+
+/* Text a plugin wrote about itself keeps its own line breaks; a log file's path is the first thing on the Log page. (No inline styles: the CSP forbids them.) */
+.doc-text p { margin: 0 0 .8rem; max-width: 62rem; }
+.doc-text pre { margin: 0 0 .8rem; }
+.file-path { font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }

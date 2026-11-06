@@ -149,7 +149,10 @@ def render(args: argparse.Namespace, result: CallResult) -> int:
 
 
 def _human(output: Any) -> None:
-    """A list of records becomes a table; anything else is JSON."""
+    """A ``text`` field is printed as it is (documentation); a list of records becomes a table; anything else is JSON."""
+    if isinstance(output, dict) and isinstance(output.get("text"), str):
+        print_text(output["text"])
+        return
     if isinstance(output, dict) and len(output) == 1:
         (only,) = output.values()
         if isinstance(only, list) and only and all(isinstance(r, dict) for r in only):

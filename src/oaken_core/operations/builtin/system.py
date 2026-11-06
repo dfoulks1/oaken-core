@@ -87,6 +87,109 @@ async def plugin_list(ctx: OpContext, inp: Empty) -> PluginListOut:
     return PluginListOut(plugins=[PluginRow(**{k: getattr(s, k) for k in PluginRow.model_fields}) for s in host.statuses()])
 
 
+class SettingDoc(BaseModel):
+    name: str
+    type: str
+    required: bool
+    default: Any = None
+    description: str = ""
+
+
+class CommandDoc(BaseModel):
+    name: str
+    summary: str
+    permission: str
+
+
+class PluginDocs(BaseModel):
+    kind: str
+    name: str
+    plugin: str
+    version: str
+    summary: str  # the first line of its docstring
+    more: bool  # it says more than that one line: more of a docstring, setup help, an example, settings, commands or contextual settings
+    doc: str
+    setup_help: str
+    config_example: str
+    contextual: list[str]  # what an instance must be given (a template)
+    template_note: str  # core's own account of what a template is, for a plugin that is one
+    settings: list[SettingDoc]
+    commands: list[CommandDoc]
+    template: bool
+    enabled: bool
+    started: bool
+    healthy: bool
+    warning: str  # what it needs that is not running
+    hint: str
+
+
+class PluginDescribeIn(BaseModel):
+    name: str | None = Field(default=None, json_schema_extra={"positional": True},
+                             description="A plugin or an instance name. Empty: an overview of every plugin in this stack.")  # fmt: skip
+    kind: str | None = Field(default=None, description="Only the plugin of this kind, when a name is shared (ollama is a backend and an embedder).")
+
+
+class PluginDescribeOut(BaseModel):
+    text: str  # the same, as plain text for a person
+    plugins: list[PluginDocs]
+
+
+def _type_of(prop: dict[str, Any]) -> str:
+    if "type" in prop:
+        return str(prop["type"])
+    return " or ".join(sorted({str(p.get("type", "?")) for p in prop.get("anyOf", [])})) or "any"
+
+
+def _docs(ctx: OpContext, host: Any, s: Any) -> PluginDocs:
+    d = host.describe(s.kind, s.name)
+    schema = host.config_schema(s.kind, s.name) or {}
+    need_ = set(schema.get("required", []))
+    settings = [SettingDoc(name=n, type=_type_of(p), required=n in need_ or n in d["contextual"], default=p.get("default"), description=str(p.get("description", "")))
+                for n, p in (schema.get("properties") or {}).items()]  # fmt: skip
+    commands = [CommandDoc(name=o.name, summary=o.summary, permission=o.permission) for o in sorted(ctx.registry.all(), key=lambda o: o.name) if o.plugin in (s.name, s.plugin)]
+    rest = "\n".join(d["doc"].strip().splitlines()[1:]).strip()
+    more = bool(rest or d["setup_help"] or d["config_example"] or settings or commands or d["contextual"])
+    return PluginDocs(kind=s.kind, name=s.name, plugin=s.plugin, version=s.version, summary=(d["doc"].strip().splitlines() or [""])[0].replace("``", ""), more=more, doc=d["doc"].replace("``", "`"),
+                      setup_help=d["setup_help"], config_example=d["config_example"], contextual=list(d["contextual"]), template_note=d["template_note"], settings=settings, commands=commands,
+                      template=s.template, enabled=s.enabled, started=s.started, healthy=s.healthy, warning=s.warning, hint=s.hint)  # fmt: skip
+
+
+def _render(plugins: list[PluginDocs], overview: bool) -> str:
+    if overview:
+        rows = [f"{p.kind:<13}{p.name:<16}{p.summary or '(no description)'}" + (f"  [{p.warning}]" if p.warning else "") for p in plugins]
+        return "\n".join([f"{len(plugins)} plugins in this stack. `plugin describe NAME` for one's documentation.", "", *rows])
+    out: list[str] = []
+    for p in plugins:
+        state = "a template" if p.template else "running" if p.healthy else "enabled" if p.enabled else "off"
+        out += [f"{p.name} ({p.kind}) v{p.version}  [{state}]", ""]
+        if p.doc:
+            out += [p.doc.strip(), ""]
+        if p.contextual:
+            out += [f"An instance of it must be given: {', '.join(p.contextual)}.", *([p.template_note, ""] if p.template_note else [""])]
+        if p.setup_help:
+            out += ["Setup", f"  {p.setup_help}", ""]
+        if p.settings:
+            out += ["Settings", *[f"  {s.name}  {s.type}{'  (required)' if s.required else ''}{f'  default {s.default!r}' if s.default not in (None, '') else ''}  {s.description}".rstrip() for s in p.settings], ""]
+        if p.commands:
+            out += ["Commands", *[f"  {c.name}  {c.summary}" for c in p.commands], ""]
+        if p.config_example:
+            out += ["Example config.toml", *[f"  {line}" for line in p.config_example.splitlines()], ""]
+        if p.warning:
+            out += [f"Needs: {p.warning}. {p.hint}".rstrip(), ""]
+    return "\n".join(out).rstrip() + "\n"
+
+
+@operation("plugin_describe", "A plugin's own documentation (what it is, how to set it up, its settings and commands), from the plugin itself, for the plugins in this stack.",
+           permission="read", input=PluginDescribeIn, output=PluginDescribeOut, mcp="on", group="plugin")  # fmt: skip
+async def plugin_describe(ctx: OpContext, inp: PluginDescribeIn) -> PluginDescribeOut:
+    host = need(ctx.svc.host, "the plugin host")
+    found = [s for s in host.statuses() if (inp.name is None or inp.name in (s.name, s.plugin)) and (inp.kind is None or s.kind == inp.kind)]
+    if inp.name is not None and not found:
+        raise NotFound(f"no plugin named {inp.name!r} in this stack: `plugin list` shows what is installed, `plugins` what could be added")
+    plugins = [_docs(ctx, host, s) for s in found]
+    return PluginDescribeOut(text=_render(plugins, overview=inp.name is None), plugins=plugins)
+
+
 class PluginRef(BaseModel):
     name: str = Field(description="A plugin or an instance name.")
 
@@ -345,5 +448,5 @@ async def mcp_power(ctx: OpContext, inp: McpPowerIn) -> McpPowerOut:
     return McpPowerOut(enabled=inp.enabled, note="the MCP door is " + ("on" if inp.enabled else "off"))
 
 
-OPERATIONS = (status, log_list, plugin_list, plugin_enable, plugin_disable, plugin_reload,
+OPERATIONS = (status, log_list, plugin_list, plugin_describe, plugin_enable, plugin_disable, plugin_reload,
               exposure_list, exposure_set, mcp_power, ai_usage, plugin_add, plugin_test, core_reload)  # fmt: skip

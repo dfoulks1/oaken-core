@@ -14,7 +14,7 @@ from typing import Any, ClassVar
 from pydantic import BaseModel, Field
 
 from oaken_core.clock import fmt_ts
-from oaken_core.errors import PluginError
+from oaken_core.errors import NotFound, PluginError
 from oaken_core.ids import SubjectId, new_subject_id
 from oaken_core.plugins.base import BaseIngestor, command
 from oaken_core.plugins.contracts import PluginContext, PluginOpContext
@@ -55,6 +55,18 @@ class ItemsIngestor(BaseIngestor):
              json.dumps({n: p.content for n, p in item.parts.items()}, default=str), fmt_ts(self.ctx.clock.now())),
         )
         return subject
+
+    async def read(self, subject_id: str, part: str | None = None) -> dict[str, Any]:
+        row = await self.ctx.db.fetchone("SELECT body_json, parts_json FROM items_rows WHERE subject_id = ?", (subject_id,))  # type: ignore[union-attr]
+        if row is None:
+            raise NotFound(f"no item {subject_id!r} in the items ingestor")
+        parts: dict[str, Any] = json.loads(row["parts_json"])
+        parts = parts or {"body": json.loads(row["body_json"])}  # stored before there were parts: the body is the one part
+        if part is not None:
+            if part not in parts:
+                raise NotFound(f"item {subject_id!r} has no part {part!r} (it has: {', '.join(parts)})")
+            return {part: parts[part]}
+        return parts
 
     @command("list", "The newest items this ingestor stored.", input=ListIn, output=ListOut)
     async def list(self, ctx: PluginOpContext, inp: ListIn) -> ListOut:

@@ -3,10 +3,10 @@
 <h1>{{ status.name }} <span class="muted">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span> {{ log_button("plugin=" ~ status.kind ~ "/" ~ status.name) }}</h1>
 <p class="{{ 'ok' if status.healthy else 'muted' if status.template else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
 {% if status.warning %}<p><span class="badge badge-danger">{{ status.warning }}</span> <span class="muted">{{ status.hint }}</span></p>{% endif %}
-{% if docs.doc or docs.setup_help or docs.config_example or docs.contextual or docs.commands %}<details class="card fold" id="fold-docs" open><summary class="card-head">About this plugin</summary>
-<div class="card-body">{% if docs.doc %}<p style="white-space: pre-line">{{ docs.doc }}</p>{% endif %}
-{% if docs.contextual %}<p>This is a template. Its settings here are the defaults every instance starts from; an instance sets <b>{{ docs.contextual|join(", ") }}</b> and may override the rest. Make instances with the <b>+</b> on a stage's page.</p>{% endif %}
-{% if docs.setup_help %}<p>{{ docs.setup_help }}</p>{% endif %}
+{% if docs.more %}<details class="card fold" id="fold-docs" open><summary class="card-head">About this plugin</summary>
+<div class="card-body">{% if docs.doc %}<div class="doc-text">{{ docs.doc|docs }}</div>{% endif %}
+{% if docs.contextual %}<p>An instance of it must be given <b>{{ docs.contextual|join(", ") }}</b>.</p>{% if docs.template_note %}<div class="doc-text">{{ docs.template_note|docs }}</div>{% endif %}{% endif %}
+{% if docs.setup_help %}<div class="doc-text">{{ docs.setup_help|docs }}</div>{% endif %}
 {% if docs.config_example %}<pre class="mono">{{ docs.config_example }}</pre>{% endif %}
 {% if docs.commands %}<table class="table"><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody>{% for c in docs.commands %}<tr><td class="mono nowrap">{{ c.name }}</td><td class="muted">{{ c.summary }}</td></tr>{% endfor %}</tbody></table>{% endif %}</div></details>{% endif %}
 <div class="card">

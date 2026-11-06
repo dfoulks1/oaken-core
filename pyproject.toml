@@ -43,6 +43,7 @@ socket = "oaken_core.providers.socket:SocketProvider"
 nearjunk = "oaken_core.router.nearjunk:NearJunk"
 dedupe = "oaken_core.triage.dedupe:DedupeTriager"
 rules = "oaken_core.triage.rules:RulesTriager"
+llm = "oaken_core.triage.llm:LlmTriager"
 
 [project.entry-points."oaken_core.formatters"]
 json = "oaken_core.formatters.structured:JsonFormatter"
