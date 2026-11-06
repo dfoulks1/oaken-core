@@ -160,3 +160,11 @@ def test_a_key_that_names_a_secret_is_refused(key: str) -> None:
 )  # fmt: skip
 def test_a_key_that_only_counts_or_points_at_one_is_not_a_secret(key: str) -> None:
     refuse_secrets({key: 1})  # no error: these are ordinary settings
+
+
+def test_an_mcp_table_with_anything_but_allowed_is_an_error_not_ignored() -> None:
+    from oaken_core.settings import Settings
+
+    with pytest.raises(ConfigError, match=r"\[mcp\] has only"):
+        Settings.from_text("[mcp]\nenabled = true\n")
+    assert Settings.from_text("[mcp.allowed]\njob_list = true\n").operations.mcp_allowed == {"job_list": True}

@@ -158,7 +158,7 @@ async def test_every_queue_is_drained(kit: Kit) -> None:
 async def test_stats_show_depth_age_and_the_last_error(kit: Kit) -> None:
     await kit.jobs.enqueue("k", Ping())
     kit.clock.advance(seconds=120)
-    (default,) = await kit.jobs.stats()
+    default = (await kit.jobs.stats())[0]
     assert (default.queued, default.failed) == (1, 0)
     assert default.oldest_queued_seconds == 120 and default.last_error is None
 

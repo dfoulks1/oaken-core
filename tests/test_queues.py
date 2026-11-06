@@ -8,7 +8,7 @@ from oaken_core.queues import DEFAULT, Queues
 
 def test_default_exists_and_a_new_queue_is_added() -> None:
     q = Queues()
-    assert [s.name for s in q.all()] == [DEFAULT]
+    assert [s.name for s in q.all()] == [DEFAULT, "store", "embed"]  # store is a hidden stage core ships
     spec = q.new_queue("enrichers", "derive things", workers=4)
     assert q.get("enrichers") == spec and spec.workers == 4
 
@@ -64,7 +64,7 @@ async def test_queues_from_config_come_in_file_order_each_with_its_kind(tmp_path
     core = await opened(tmp_path, settings=STAGES)
     await core.open()
     try:
-        specs = core.client.svc.queues.all()
+        specs = [q for q in core.client.svc.queues.all() if not q.hidden]
         assert [q.name for q in specs] == ["default", "triage", "enrich"]
         assert [(q.kind, q.workers, q.title) for q in specs[1:]] == [("triager", 2, "Triage"), ("enricher", 1, "Enrichment")]
     finally:
@@ -93,15 +93,14 @@ async def test_a_product_can_turn_config_queues_off(tmp_path) -> None:  # type: 
     await fine.stop()
 
 
-def test_a_plugin_kind_belongs_to_one_queue_so_each_plugin_has_one_stage() -> None:
+def test_a_kind_can_have_several_stages_and_a_plugin_can_be_off_in_one() -> None:
     from oaken_core.queues import Queues
 
     q = Queues()
     q.new_queue("triage", kind="triager")
-    with pytest.raises(ConfigError, match="already serves 'triager'"):
-        q.new_queue("triage-slow", kind="triager")
-    q.new_queue("enrich", kind="enricher")  # another kind is fine
-    q.new_queue("plain")  # a queue with no kind is not a stage
+    slow = q.new_queue("triage-slow", kind="triager", disabled=("rules",))
+    assert [x.name for x in q.all() if x.kind == "triager"] == ["triage", "triage-slow"]
+    assert slow.disabled == ("rules",) and q.get("triage").disabled == ()
 
 
 # -- queue_new ---------------------------------------------------------------------------------
@@ -150,7 +149,6 @@ async def test_queue_new_refuses_what_the_file_or_the_product_would_not_take(ops
     add = lambda **kw: ops.client.call("queue_new", kw, cli, confirm=True)  # noqa: E731
     await add(name="triage", kind="triager")
     for bad, exc in [
-        ({"name": "again", "kind": "triager"}, InvalidInput),  # a kind belongs to one queue
         ({"name": "x", "kind": "embedder"}, InvalidInput),  # not an analyzer
         ({"name": "x", "kind": "nope"}, InvalidInput),
         ({"name": "a/b", "kind": "enricher"}, InvalidInput),  # a character a name cannot have

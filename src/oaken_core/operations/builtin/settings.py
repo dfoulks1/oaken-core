@@ -151,13 +151,9 @@ def _check_text(ctx: OpContext, text: str) -> None:
     except ConfigError as exc:
         raise ConfigError(exc.message) from None
     host = ctx.svc.host
-    served: dict[str, str] = {}
     for name, q in settings.queues.items():
         if host is not None:
             check_queue_kind(host.kinds, name, q.kind)
-        if q.kind in served:
-            raise ConfigError(f"[queues.{served[q.kind]}] already serves {q.kind!r}: a plugin kind belongs to one queue")
-        served[q.kind] = name
     core_keys = LabelMaker.core()
     for key, lt in settings.labels.items():
         try:

@@ -34,9 +34,11 @@ ClientFactory = Callable[[argparse.Namespace], ApiClient]
 ALIASES = {"queue": ["q"]}  # a group answers to its short name too
 BUILTIN = ("operations", "describe", "watch")  # verbs that are the CLI's own, not operations
 DAEMON = {  # work with no core running, so they are handled before one is asked
-    "start": "Run core in the foreground.",
+    "start": "Start core in the background (--fg to stay attached).",
+    "restart": "Stop core, then start it again (--fg to stay attached).",
     "stop": "Stop the running core.",
     "reload": "Tell the running core to re-read its settings.",
+    "plugins": "List the plugins in oaken-plugins you can add (oaken plugin add NAME).",
 }
 
 
@@ -248,9 +250,29 @@ def _wants_help(argv: list[str]) -> bool:
     return not argv or "-h" in argv or "--help" in argv
 
 
+def _catalog(args: list[str]) -> int:
+    """``oaken plugins``: what ``oaken-plugins`` offers, the way ``operations`` lists operations."""
+    from oaken_core.plugins import catalog
+    from oaken_core.plugins.kinds import KindRegistry
+
+    rows = [{"name": e.name, "kind": e.kind, "summary": e.summary} for e in catalog.entries(k.name for k in KindRegistry.shipped())]
+    if "--json" in args:
+        print_json(rows)
+    elif rows:
+        print_table(rows, ["name", "kind", "summary"], title="plugins")
+        print_text(f"Add one: {identity.prog} plugin add NAME")
+    elif catalog.installed():
+        print_text(f"{catalog.DIST} is installed but has no plugins.")
+    else:
+        print_text(f"{catalog.DIST} is not installed: pip install {catalog.DIST}")
+    return int(ExitCode.OK)
+
+
 def main(argv: list[str] | None = None, *, prog: str | None = None, client_factory: ClientFactory | None = None, make: Any = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
-    if args and args[0] in ("start", "stop", "reload"):  # these run with no core to ask
+    if args and args[0] == "plugins":  # a catalog on disk: no core to ask
+        return _catalog(args[1:])
+    if args and args[0] in ("start", "stop", "restart", "reload"):  # these run with no core to ask
         from oaken_core.daemon.lifecycle import cli
 
         return cli(args, make) if make is not None else cli(args)

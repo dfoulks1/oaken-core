@@ -96,8 +96,10 @@ async def test_unknown_key_and_bad_value_raise(labels: LabelStore) -> None:
 def test_a_plugin_cannot_define_a_reserved_key(maker: LabelMaker) -> None:
     with pytest.raises(LabelError, match="reserved"):
         maker.register(BaseLabel.new("queue"))
-    with pytest.raises(LabelError, match="only core"):
-        maker.register(ReservedLabel.new("mine"))
+    maker.register(ReservedLabel.new("mine"))  # a plugin (or the owner) may reserve its own key
+    assert maker.source("mine") == "plugin"
+    with pytest.raises(LabelError, match="cannot be defined again"):
+        maker.register(BaseLabel.new("mine", "other"))
 
 
 def test_redefining_a_key_differently_raises_but_a_reload_is_fine(maker: LabelMaker) -> None:
@@ -192,3 +194,14 @@ async def test_a_key_core_or_a_plugin_defines_is_not_the_owners_to_change(ops: O
     assert not (paths.config_dir() / "config.toml").exists()  # nothing was written
     names = {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
     assert not {"label_new", "label_edit", "label_delete"} & names  # never over MCP
+
+
+async def test_a_label_with_writers_is_refused_to_anyone_else_and_a_sweep_leaves_it_alone(labels: LabelStore) -> None:
+    labels.maker.register(BaseLabel.new("send", "Mail this", writers=("user", "system:mailrules")))
+    me, rules, stray = Actor("user", "drew"), Actor("system", "mailrules"), Actor("agent", "llm")
+    assert await labels.set("s1", "send", "yes", me) and await labels.set("s1", "send", "no", rules)
+    with pytest.raises(LabelError, match="only user, system:mailrules"):
+        await labels.set("s1", "send", "yes", stray)
+    await labels.clear_machine("s1", Actor("system", "other"))  # a retriage sweep
+    assert await labels.get("s1", "send") == "yes"  # the human's value; and the machine's was left too
+    assert (await labels.layers("s1", "send")) == {"human": "yes", "machine": "no"}

@@ -33,9 +33,11 @@
 {# Each plugin's settings dialog, ids ``set-<pre><n>``. #}
 {% macro plugin_dialogs(plugins, back, pre) %}
 {% for p in plugins %}{% set mc = modals.get(p.kind ~ "/" ~ p.name) %}
-<div class="dialog" id="set-{{ pre }}{{ loop.index }}" popover role="dialog" aria-labelledby="set-{{ pre }}{{ loop.index }}-t">
+{% set pinned = test and test.key == p.kind ~ "/" ~ p.name %}
+<div class="dialog{{ ' pinned' if pinned }}" id="set-{{ pre }}{{ loop.index }}" popover role="dialog" aria-labelledby="set-{{ pre }}{{ loop.index }}-t">
   <div class="dialog-head"><h2 id="set-{{ pre }}{{ loop.index }}-t">{{ p.name }} <span class="muted small">{{ p.kind }}</span></h2>
-    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="set-{{ pre }}{{ loop.index }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+    {% if pinned %}<a class="btn btn-ghost btn-sm btn-icon" href="{{ back }}" aria-label="Close" title="Close">{{ m.icon("x") }}</a>
+    {% else %}<button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="set-{{ pre }}{{ loop.index }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button>{% endif %}</div>
   <div class="dialog-body"><p class="{{ 'ok' if p.healthy else 'bad' if p.enabled else 'muted' }}">{{ "Healthy." if p.healthy else (p.detail or "Off.") }} <a href="/plugins/{{ p.kind }}/{{ p.name }}">Its page</a> <span class="muted">has its actions.</span></p></div>
   {% if mc and (mc.sections or mc.llm) %}{{ settings_form(p, mc, back, "m" ~ pre ~ loop.index ~ "-", "set-" ~ pre ~ loop.index) }}
   {% else %}<div class="dialog-body"><p class="muted">This plugin declares no settings.</p></div>{% endif %}
@@ -62,14 +64,14 @@
 
 {# The Pipeline page's tabs. ``current`` is ``labels``, ``analyzers`` or ``machinery``. #}
 {% macro pipeline_tabs(current) %}
-<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("labels", "/pipeline", "Labels"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("providers", "/pipeline/providers", "Providers"), ("labels", "/pipeline", "Labels"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}
 {% macro flow(stages, current="") %}
 <ol class="flow-strip" aria-label="Pipeline">
 {% for s in stages %}<li><a href="{{ s.href }}"{% if s.name == current %} aria-current="page"{% endif %}><span class="flow-name">{{ s.title }}</span>
-<span class="flow-count {{ 'bad' if s.failed }}">{{ s.queued }} waiting{% if s.failed %} · {{ s.failed }} failed{% endif %}{% if s.paused %} · paused{% endif %}</span></a></li>{% endfor %}
+<span class="flow-count {{ 'bad' if s.failed }}">{{ s.queued }} waiting · {{ s.done }} done (1h){% if s.failed %} · {{ s.failed }} failed{% endif %}{% if s.paused %} · paused{% endif %}</span></a></li>{% endfor %}
 </ol>
 {% endmacro %}
 

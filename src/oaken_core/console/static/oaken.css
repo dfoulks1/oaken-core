@@ -350,6 +350,8 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .theme-opt[aria-current="true"] { font-weight: 700; }
 .sw { display: inline-block; width: 1.05rem; height: 1.05rem; flex: none; border-radius: 50%; background: linear-gradient(135deg, var(--accent) 50%, var(--bg) 50%); border: 1px solid var(--border-strong); }
 .dialog[popover] { width: min(54rem, calc(100vw - 2rem)); max-height: min(92vh, 60rem); padding: 0; overflow-y: auto; overflow-x: hidden; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: 0 28px 70px -22px rgb(0 0 0 / .55); }
+/* A dialog the server draws already open (a Test result comes back to it): shown without script, dimmed like a backdrop. */
+.dialog.pinned[popover] { display: block; box-shadow: 0 0 0 100vmax rgb(20 18 12 / .5), 0 28px 70px -22px rgb(0 0 0 / .55); }
 .dialog::backdrop { background: rgb(20 18 12 / .5); backdrop-filter: blur(2px); }
 .dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .9rem 1.2rem; border-bottom: 1px solid var(--border); }
 .dialog-head h2 { margin: 0; font-size: 1.05rem; }

@@ -13,6 +13,8 @@ pipeline), the position-box ordering (``plugins.ui.reposition``) and the Origin 
 """
 
 import dataclasses
+import re
+import time
 import hashlib
 import hmac
 import os
@@ -53,8 +55,17 @@ HERE = Path(__file__).resolve().parent
 UI = CallerContext.ui()
 PALETTES = ("auto", "oak", "maple", "birch", "acorn", "moss", "stone", "sky", "stream", "contrast")
 MODES = ("auto", "light", "dark")
+SCREEN_ROWS = 24  # table rows (headers too) that fit a screen; past this, a page's folds start collapsed
 CSS_VERSION = hashlib.sha256((HERE / "static" / "oaken.css").read_bytes()).hexdigest()[:10]
+# The Capabilities page's core tables: three, so a new command group does not mean a new table. A group named nowhere here
+# (a product's own) lands in "Other". Plugins keep a table per kind.
+CAPABILITY_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Control", ("queue", "job", "label", "intake")),
+    ("Machinery", ("general", "plugin", "config", "settings", "core", "storage", "cache", "ai", "log", "events")),  # "general": status
+    ("Keys and doors", ("agent", "secret", "exposure", "mcp")),
+)
 _here: ContextVar[str] = ContextVar("console_here", default="/")  # the page being drawn, for nav and "back"
+_test: ContextVar[str] = ContextVar("console_test", default="")  # ``?test=`` on the page: which Test result to show in its dialog
 
 
 Handler = Callable[[Request], Awaitable[Response]]
@@ -70,6 +81,7 @@ class Console:
     def __init__(self, client: CoreClient, svc: Services) -> None:
         self.client, self.svc = client, svc
         self.token = _PROCESS_TOKEN
+        self._tests: dict[str, dict[str, Any]] = {}  # recent Test results by token, for the page they return to
         self.look = {"palette": svc.settings.console.palette, "mode": svc.settings.console.mode}
         self.port = PortRef()
         self.env = jinja2.Environment(
@@ -81,6 +93,7 @@ class Console:
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
             Route("/pipeline", self.page(self.labels_page)),
+            Route("/pipeline/providers", self.page(self.providers)),
             Route("/pipeline/analyzers", self.page(self.analyzers)),
             Route("/pipeline/machinery", self.page(self.pipeline)),
             Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
@@ -99,6 +112,7 @@ class Console:
             Route("/ui/look", self.post(self.set_look), methods=["POST"]),
             Route("/ui/queues/add", self.post(self.add_queue), methods=["POST"]),
             Route("/ui/queues/{queue}/{verb}", self.post(self.queue_verb), methods=["POST"]),
+            Route("/ui/jobs/{job}/requeue", self.post(self.job_requeue), methods=["POST"]),
             Route("/ui/expose", self.post(self.expose), methods=["POST"]),
             Route("/ui/mcp-power", self.post(self.mcp_power), methods=["POST"]),
             Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
@@ -121,17 +135,19 @@ class Console:
 
     # -- plumbing ------------------------------------------------------------------------------
     def _addable(self) -> list[str]:
-        """The analyzer kinds that have no queue yet, for the Add a stage button; none when a product fixes its own."""
+        """The analyzer kinds, for the Add a stage button (a kind may have several stages); none when a product fixes its own."""
         if not self.svc.queues_from_config or self.svc.host is None:
             return []
-        served = {q.kind for q in self._stage_specs()}
-        return [k.name for k in self.svc.host.kinds if k.analyzer and k.name not in served]
+        return [k.name for k in self.svc.host.kinds if k.analyzer]
 
     def render(self, template: str, http: int = 200, **ctx: Any) -> HTMLResponse:
         ctx.setdefault("addable", self._addable())
+        ctx.setdefault("test", self._tests.get(_test.get()))
         html = self.env.get_template(template).render(
             nav=self._nav(), app_title=identity.title, wordmark=identity.wordmark(), token=self.token, csrf=self.token, version=self.svc.version, look=self.look, palettes=PALETTES,
             modes=MODES, css_version=CSS_VERSION, here=_here.get(), **ctx)
+        if html.count("<tr") > SCREEN_ROWS:  # longer than a screen: every fold starts shut, so the page opens as a list of titles
+            html = re.sub(r'(<details class="card fold"[^>]*?) open>', r"\1>", html)
         return HTMLResponse(html, status_code=http)
 
     def fail(self, exc: BaseException) -> Response:
@@ -143,6 +159,7 @@ class Console:
     def page(self, fn: Handler) -> Handler:
         async def wrapped(request: Request) -> Response:
             _here.set(request.url.path)
+            _test.set(request.query_params.get("test", ""))
             try:
                 return await fn(request)
             except Exception as exc:  # noqa: BLE001 - every error becomes a page, never a crash
@@ -232,10 +249,11 @@ class Console:
         rows = {r["queue"]: r for r in (await self._op("queue_list"))["queues"]}
         out = []
         for q in self.svc.queues.all():
-            if q.kind or q.name == DEFAULT:
+            if q.kind:
                 r = rows.get(q.name, {})
-                out.append({"name": q.name, "title": "Intake" if q.name == DEFAULT else q.title,
-                            "href": "/" if q.name == DEFAULT else f"/stage/{q.name}", "queued": r.get("queued", 0),
+                done = (await q.metrics(3600)).succeeded  # what finished in the last hour: a quick job leaves nothing waiting
+                out.append({"name": q.name, "done": done, "title": q.title,
+                            "href": f"/stage/{q.name}", "queued": r.get("queued", 0),
                             "failed": r.get("failed", 0), "paused": r.get("paused", False)})
         return out, rows
 
@@ -275,21 +293,25 @@ class Console:
         if spec is None:
             raise NotFound(f"no stage named {name!r}")
         stages, rows = await self._flow()
-        return self.render("stage.html", stage=spec, stages=stages, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
+        jobs = (await self._op("job_list", {"queue": name, "limit": 50}))["jobs"]
+        failed = (await self._op("job_list", {"queue": name, "status": "failed", "limit": 50}))["jobs"]
+        return self.render("stage.html", stage=spec, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
                            plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
         """Every operation (the registry the CLI lists), by the part that offers it, with its MCP switch."""
         rows = (await self._op("exposure_list"))["operations"]
         kind_of = {s.name: s.kind for s in self._host().statuses()}
+        by_group = {g: title for title, members in CAPABILITY_CATEGORIES for g in members}
         core: dict[str, list[dict[str, Any]]] = {}
         plugin: dict[str, list[dict[str, Any]]] = {}
         for r in rows:
             if r["plugin"]:
                 plugin.setdefault(kind_of.get(r["plugin"], "plugin"), []).append(r)
             else:
-                core.setdefault(r["group"] or "general", []).append(r)
-        groups = [(f"Core: {g}", core[g]) for g in sorted(core)] + [(f"{k} plugins", plugin[k]) for k in sorted(plugin)]
+                core.setdefault(by_group.get(r["group"] or "general", "Other"), []).append(r)
+        order = [t for t, _ in CAPABILITY_CATEGORIES] + ["Other"]
+        groups = [(f"Core: {t}", sorted(core[t], key=lambda o: o["name"])) for t in order if t in core] + [(f"{k} plugins", plugin[k]) for k in sorted(plugin)]
         return self.render("capabilities.html", groups=groups, power=self.svc.settings.api.mcp_enabled)
 
     async def expose(self, request: Request, form: dict[str, str]) -> Response:
@@ -311,20 +333,24 @@ class Console:
     async def pipeline(self, request: Request) -> Response:
         """Pipeline > Machinery: the plugins that do not read an item's content (stores, models, embedders...): a collapsible
         section for each kind with something live, then one folded table of every disabled one."""
-        return await self._plugin_tab("machinery", analyzers=False)
+        return await self._plugin_tab("machinery", analyzers=False, skip=("provider",))
+
+    async def providers(self, request: Request) -> Response:
+        """Pipeline > Providers: the plugins that feed Intake (a mailbox, a socket, a file of JSON lines)."""
+        return await self._plugin_tab("providers", analyzers=False, only=("provider",))
 
     async def analyzers(self, request: Request) -> Response:
         """Pipeline > Analyzers: the plugins that read the pipeline's content (triagers, enrichers, actions...), by kind, each
         with the stage that runs it."""
         return await self._plugin_tab("analyzers", analyzers=True)
 
-    async def _plugin_tab(self, tab: str, *, analyzers: bool) -> Response:
+    async def _plugin_tab(self, tab: str, *, analyzers: bool, only: tuple[str, ...] = (), skip: tuple[str, ...] = ()) -> Response:
         stage_of = {q.kind: q for q in self._stage_specs()}
         stages, _ = await self._flow()
         every = self._host().statuses()
         sections, empty, plugins = [], [], []
         for spec in self._host().kinds:
-            if spec.analyzer != analyzers:
+            if spec.analyzer != analyzers or (only and spec.name not in only) or spec.name in skip:
                 continue
             found = [p for p in every if p.kind == spec.name]
             plugins += found
@@ -350,8 +376,10 @@ class Console:
         if verb not in ("new", "edit", "delete"):
             raise NotFound("no such action")
         values = [v.strip() for v in form.get("values", "").replace("\n", ",").split(",") if v.strip()]
-        payload = {"new": {"key": key, "description": form.get("description", ""), "values": values},
-                   "edit": {"key": key, "description": form.get("description", ""), "values": values},
+        reserved = form.get("reserved") == "on"
+        writers = [w.strip() for w in form.get("writers", "").replace("\n", ",").split(",") if w.strip()]
+        payload = {"new": {"key": key, "description": form.get("description", ""), "values": values, "reserved": reserved, "writers": writers},
+                   "edit": {"key": key, "description": form.get("description", ""), "values": values, "reserved": reserved, "writers": writers},
                    "delete": {"key": key}}[verb]  # fmt: skip
         out = await self._gated(f"label_{verb}", payload, form, request.url.path)
         if isinstance(out, Response):
@@ -367,6 +395,27 @@ class Console:
         plugins = self._host().statuses()
         return self.render("plugins.html", plugins=plugins, modals=await self._modals(plugins))
 
+    async def _plugin_stats(self, kind: str, name: str) -> dict[str, Any]:
+        """Numbers for a plugin's page: its calls since this core started, a triager's verdicts (from the change log) and a
+        model analyzer's usage and savings (from the router's ledger). Counts only, never text."""
+        from oaken_core.plugins import stats as counters
+
+        s = counters.get(kind, name)
+        calls = {"calls": s.calls, "errors": s.errors, "avg_ms": round(s.avg_ms), "last_ago": None if s.last_at is None else max(0, int(time.time() - s.last_at))}
+        verdicts: list[dict[str, Any]] = []
+        if kind == "triager":
+            rows = await self.svc.db.fetchall(
+                "SELECT COALESCE(json_extract(new_value, '$.verdict'), op) AS verdict, COUNT(*) AS n, MAX(ts) AS last FROM change_log"
+                " WHERE key = 'intake' AND actor_kind = 'system' AND actor = ? GROUP BY verdict ORDER BY n DESC", (name,))
+            verdicts = [{"verdict": r["verdict"], "n": r["n"], "last": r["last"]} for r in rows]
+        usage: list[Any] = []
+        spent = 0
+        if self.svc.router is not None:
+            usage = [dataclasses.asdict(r) for r in await self.svc.router.usage(name)]
+            spent = sum(r.tokens for r in await self.svc.router.spent_today(name))
+        saved = sum(u["tokens_saved"] for u in usage)
+        return {"calls": calls, "verdicts": verdicts, "usage": usage, "spent_today": spent, "saved": saved}
+
     async def plugin(self, request: Request) -> Response:
         kind, name = request.path_params["kind"], request.path_params["name"]
         modal = await self._choices(kind, name, self._modal(kind, name))
@@ -374,7 +423,7 @@ class Console:
         return self.render("plugin.html", status=self._status(kind, name), values=values, display=forms.display,
                            llm=self._host().llm_defaults(kind, name), own=self._host().tables.table(kind, name),
                            pages=modal["spec"].pages if modal["spec"] else (), buttons=modal["spec"].buttons if modal["spec"] else (),
-                           **modal)  # fmt: skip
+                           stats=await self._plugin_stats(kind, name), **modal)  # fmt: skip
 
     async def queues(self, request: Request) -> Response:
         return self.render("queues.html", **await self._op("queue_list"))
@@ -509,6 +558,11 @@ class Console:
             return out
         return self.render("result.html", title=f"Added {out.name}", back="/", result={"note": out.note})
 
+    async def job_requeue(self, request: Request, form: dict[str, str]) -> Response:
+        """A failed job's Requeue button: the click is the confirmation (it runs again in its own queue)."""
+        await self.client.call("queue_requeue", {"job_id": request.path_params["job"]}, UI, confirm=True)
+        return RedirectResponse(self._back("/"), 303)
+
     async def queue_verb(self, request: Request, form: dict[str, str]) -> Response:
         """A queue's own controls on its page: Start and Stop act on the click; edit, rename and delete show what they will do first."""
         name, verb = request.path_params["queue"], request.path_params["verb"]
@@ -568,7 +622,13 @@ class Console:
         table = self._host_part(kind, name, form) | forms.parse(modal["fields"], form)
         out = await self._op("plugin_test", {"kind": kind, "name": name, "config": table})
         result = {"works": out["ok"], "detail": out["detail"] or ("started and reported healthy" if out["ok"] else "")}
-        return self.render("result.html", title=f"Test {name}", back=self._back(f"/plugins/{kind}/{name}"), result=result)
+        own = {k: form[k] for k in ("prompt", "guard") if form.get("unlock") and k in form}
+        token = secrets.token_urlsafe(8)
+        self._tests[token] = {"key": f"{kind}/{name}", "result": result, "values": forms.parse(modal["fields"], form), "own": own}
+        while len(self._tests) > 16:  # a result is only for the page it comes back to
+            del self._tests[next(iter(self._tests))]
+        back = self._back(f"/plugins/{kind}/{name}")
+        return RedirectResponse(f"{back}{'&' if '?' in back else '?'}test={token}", 303)  # the dialog reopens with the result and what was typed
 
     async def save_settings(self, request: Request, form: dict[str, str]) -> Response:
         """Write the plugin's table to ``config.toml`` and restart that plugin on it. Checked

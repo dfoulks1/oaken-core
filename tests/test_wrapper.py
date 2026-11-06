@@ -86,7 +86,7 @@ async def test_a_products_plugins_load_through_entry_points_from_an_installed_pa
     try:
         crm = next(s for s in core.host.statuses() if (s.kind, s.name) == ("triager", "crm"))
         assert crm.started and crm.healthy, crm
-        assert [q.name for q in core.client.svc.queues.all()] == ["default", "triage"]
+        assert [q.name for q in core.client.svc.queues.all() if not q.hidden] == ["default", "triage"]
     finally:
         await core.host.stop()
         await core.stop()

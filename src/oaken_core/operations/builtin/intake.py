@@ -13,6 +13,7 @@ class IntakeSubmitIn(BaseModel):
     source: str = Field(min_length=1, max_length=120, description="Where it came from, for the record: a name, never a secret.")
     body: str = Field(min_length=1, description="The item: text. Triagers read it; the ingestor stores it.")
     labels: dict[str, str] = Field(default_factory=dict, description="Labels set before triage, for example confidential=true.")
+    format: str | None = Field(default=None, description="What the body is (json, ini, ...): a formatter of that name splits it into parts before triage.")
 
 
 class IntakeSubmitOut(BaseModel):
@@ -29,8 +30,8 @@ async def _preview(ctx: OpContext, inp: IntakeSubmitIn) -> Preview:
            permission="mutate", input=IntakeSubmitIn, output=IntakeSubmitOut, mcp="off", group="intake",
            preview=_preview)  # fmt: skip
 async def intake_submit(ctx: OpContext, inp: IntakeSubmitIn) -> IntakeSubmitOut:
-    subject = await need(ctx.svc.intake, "intake").submit(inp.source, inp.body, labels=inp.labels, actor=ctx.caller.actor)
-    return IntakeSubmitOut(subject_id=str(subject), note="queued for triage in the default queue")
+    subject = await need(ctx.svc.intake, "intake").submit(inp.source, inp.body, labels=inp.labels, format=inp.format, actor=ctx.caller.actor)
+    return IntakeSubmitOut(subject_id=str(subject), note="queued in Intake (default): it is split into parts, then triaged")
 
 
 OPERATIONS = (intake_submit,)

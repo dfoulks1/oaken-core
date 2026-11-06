@@ -56,7 +56,7 @@ async def test_a_person_submits_an_item_and_it_is_triaged_stored_and_listed(core
     assert asked.proposal is not None and "notes" in asked.proposal.summary and await core.runner.drain() == 0  # nothing yet
     out = (await call("intake_submit", args, CLI, confirm=True)).output
     assert out.subject_id  # type: ignore[union-attr]
-    assert await core.runner.drain() == 1  # triage, then the ingestor stores it
+    assert await core.runner.drain() == 3  # format, triage, then the ingestor stores it
     listed = (await call("items.list", {}, CLI)).output
     assert listed.total == 1 and listed.items[0].source == "notes" and "buy milk" in listed.items[0].preview  # type: ignore[union-attr]
     assert listed.items[0].subject_id != out.subject_id  # type: ignore[union-attr]  # the real id, not the provisional one
@@ -74,7 +74,7 @@ async def test_an_item_waits_when_no_ingestor_runs_and_flows_when_one_starts(tmp
         await c.client.call("intake_submit", {"source": "a", "body": "x"}, CLI, confirm=True)
         await c.runner.drain()
         stats = {r.queue: r for r in await c.client.svc.jobs.stats()}
-        assert stats["default"].queued == 1  # deferred, not failed: nothing was lost
+        assert stats["store"].queued == 1  # deferred, not failed: nothing was lost
     finally:
         await c.host.stop()
 

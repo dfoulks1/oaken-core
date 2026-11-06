@@ -2,6 +2,17 @@
 {% block body %}
 <h1>{{ status.name }} <span class="muted">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span></h1>
 <p class="{{ 'ok' if status.healthy else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
+<div class="card">
+<div class="card-head"><span>Stats</span><span class="muted small">calls count from when this core started; the rest is kept</span></div>
+<div class="table-wrap"><table class="table"><tr><th>Calls</th><th>Errors</th><th>Average</th><th>Last call</th></tr>
+<tr><td>{{ stats.calls.calls }}</td><td class="{{ 'bad' if stats.calls.errors }}">{{ stats.calls.errors }}</td><td>{{ stats.calls.avg_ms }} ms</td><td>{{ (stats.calls.last_ago ~ "s ago") if stats.calls.last_ago is not none else "not since start" }}</td></tr></table></div>
+{% if stats.verdicts %}<div class="table-wrap"><table class="table"><tr><th>Verdict</th><th>Items</th><th>Last</th></tr>
+{% for v in stats.verdicts %}<tr><td>{{ v.verdict }}</td><td>{{ v.n }}</td><td class="muted">{{ v.last }}</td></tr>{% endfor %}</table></div>
+<div class="card-foot muted">Verdicts this triager gave that decided an item. A pass (no opinion) is not recorded.</div>{% endif %}
+{% if stats.usage %}<div class="table-wrap"><table class="table"><tr><th>Model</th><th>Backend</th><th>Calls</th><th>Tokens in</th><th>Tokens out</th><th>Cache hits</th><th>Shortcut hits</th><th>Escalations</th><th>Tokens saved</th></tr>
+{% for u in stats.usage %}<tr><td class="mono">{{ u.model }}</td><td>{{ u.backend }}</td><td>{{ u.calls }}</td><td>{{ u.tokens_in }}</td><td>{{ u.tokens_out }}</td><td>{{ u.cache_hits }}</td><td>{{ u.shortcut_hits }}</td><td>{{ u.escalations }}</td><td class="ok">{{ u.tokens_saved }}</td></tr>{% endfor %}</table></div>
+<div class="card-foot muted">The router answered {{ stats.usage|sum(attribute="cache_hits") + stats.usage|sum(attribute="shortcut_hits") }} call(s) without a model, saving about <b>{{ stats.saved }}</b> tokens. Spent today: {{ stats.spent_today }}.</div>{% endif %}
+</div>
 {% if sections or llm %}
 <div class="card">{{ settings_form(status, {"sections": sections, "values": values, "llm": llm, "own": own}, "/plugins/" ~ status.kind ~ "/" ~ status.name) }}</div>
 {% else %}

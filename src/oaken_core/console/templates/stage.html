@@ -8,8 +8,8 @@
 <form class="inline" method="post" action="/ui/queues/{{ stage.name }}/{{ 'resume' if row.paused else 'pause' }}">{{ csrf(token) }}<input type="hidden" name="back" value="/stage/{{ stage.name }}"><button class="btn btn-sm" title="{{ 'Let it hand out jobs again' if row.paused else 'Stop handing out jobs (running ones finish)' }}">{{ m.icon("play" if row.paused else "pause") }} {{ "Start" if row.paused else "Stop" }}</button></form>
 <button type="button" class="btn btn-sm btn-icon" popovertarget="queue-settings" popovertargetaction="show" title="Queue settings" aria-label="Settings for the {{ stage.name }} queue">{{ m.icon("gear") }}</button>
 <span class="muted small">{{ stage.workers }} worker{{ "s" if stage.workers != 1 }}</span></div></div>
-<div class="table-wrap"><table class="table"><tr><th>Queued</th><th>Running</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
-<tr><td>{{ row.queued }}{% if row.paused %} <span class="muted">(paused)</span>{% endif %}</td><td>{{ row.running }}</td><td class="{{ 'bad' if row.failed }}">{{ row.failed }}</td>
+<div class="table-wrap"><table class="table"><tr><th>Queued</th><th>Running</th><th>Done (1h)</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
+<tr><td>{{ row.queued }}{% if row.paused %} <span class="muted">(paused)</span>{% endif %}</td><td>{{ row.running }}</td><td>{{ (stages|selectattr("name", "equalto", stage.name)|first).done }}</td><td class="{{ 'bad' if row.failed }}">{{ row.failed }}</td>
 <td>{{ "%.0fs"|format(row.oldest_queued_seconds) if row.oldest_queued_seconds is not none else "" }}</td><td>{{ row.last_error or "" }}</td></tr></table></div>
 </div>
 <div class="dialog" id="queue-settings" popover role="dialog" aria-labelledby="queue-settings-t">
@@ -23,7 +23,7 @@
     </div></div>
     <div class="dialog-foot"><button class="btn btn-primary">Save</button><span class="muted">It shows what it will do before it does it.</span></div>
   </form>
-  <form method="post" action="/ui/queues/{{ stage.name }}/rename">{{ csrf(token) }}
+  {% if stage.name != "default" %}<form method="post" action="/ui/queues/{{ stage.name }}/rename">{{ csrf(token) }}
     <div class="dialog-body"><div class="form-grid">
       <label for="qs-to">Rename</label><div><input class="input mono" id="qs-to" name="to" required maxlength="41" value="{{ stage.name }}" autocomplete="off"><div class="hint">Refused while jobs are queued or running. History and subjects' queue labels follow.</div></div>
     </div></div>
@@ -31,8 +31,21 @@
   </form>
   <form method="post" action="/ui/queues/{{ stage.name }}/delete">{{ csrf(token) }}
     <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Delete queue</button><span class="muted">Refused while jobs are queued or running.</span></div>
-  </form>
+  </form>{% endif %}
 </div>
 {{ plugin_table(plugins, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is active.", stage.kind ~ " plugins") }}
 {{ inactive_table(plugins, "/stage/" ~ stage.name) }}
+<details class="card fold" id="fold-failed">
+<summary class="card-head">Failed jobs <span class="muted small{{ ' bad' if failed }}">{{ failed|length }}</span></summary>
+<div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Subject</th><th>Tries</th><th>Why it failed</th><th></th></tr>
+{% for j in failed %}<tr><td class="mono">{{ j.kind }}</td><td class="mono">{{ j.subject or "" }}</td><td>{{ j.attempts }}/{{ j.max_attempts }}</td><td class="bad">{{ j.last_error or "no reason recorded" }}</td>
+<td><form class="inline" method="post" action="/ui/jobs/{{ j.id }}/requeue">{{ csrf(token) }}<input type="hidden" name="back" value="/stage/{{ stage.name }}"><button class="btn btn-sm" title="Run it again in this queue">{{ m.icon("play") }} Requeue</button></form></td></tr>
+{% else %}<tr><td colspan="5" class="muted">Nothing has failed.</td></tr>{% endfor %}</table></div>
+</details>
+<details class="card fold" id="fold-jobs">
+<summary class="card-head">Jobs <span class="muted small">newest {{ jobs|length }}</span></summary>
+<div class="table-wrap"><table class="table"><tr><th>Status</th><th>Kind</th><th>Subject</th><th>Tries</th><th>Created</th></tr>
+{% for j in jobs %}<tr><td>{{ j.status }}</td><td class="mono">{{ j.kind }}</td><td class="mono">{{ j.subject or "" }}</td><td>{{ j.attempts }}/{{ j.max_attempts }}</td><td>{{ j.created_at }}</td></tr>
+{% else %}<tr><td colspan="5" class="muted">Nothing here.</td></tr>{% endfor %}</table></div>
+</details>
 {% endblock %}

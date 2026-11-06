@@ -35,7 +35,7 @@ from oaken_core.errors import NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import LabelError, LabelMaker, LabelStore
 from oaken_core.logging import get_logger
-from oaken_core.plugins import extensions
+from oaken_core.plugins import catalog, extensions
 from oaken_core.plugins.contracts import (
     Health,
     PluginContext,
@@ -260,8 +260,18 @@ class PluginHost:
                 if spec.group == ep.group and kind in (None, spec.name):
                     eps[(spec.name, ep.name)] = ep
         if not eps:
+            names = [k.name for k in self.kinds]
+            hit = [e for e in catalog.entries(names) if target in (e.name, f"{e.kind}_{e.name}") and kind in (None, e.kind)]
+            if len(hit) > 1:
+                raise PluginError(f"{target!r} is {len(hit)} plugins in {catalog.DIST} ({', '.join(e.kind for e in hit)}): add one with --kind")
+            if hit:  # in oaken-plugins: imported only now, and added as a class path
+                try:
+                    return self._plan_class(catalog.class_path(hit[0]), hit[0].kind, name or hit[0].name, config)
+                except ValueError as exc:
+                    raise PluginError(str(exc)) from None
             where = ", ".join(self.extensions_dirs) or "none set"
-            raise PluginError(f"no plugin named {target!r}: it is not installed and not a directory in [extensions] dirs ({where})")
+            raise PluginError(f"no plugin named {target!r}: it is not installed, not a directory in [extensions] dirs ({where}), and not {catalog.hint(names)}."
+                              + ("" if self.extensions_dirs else ' Writing your own? Put its folder in a directory and set [extensions] dirs = ["~/path"]: it never has to be on PyPI.'))
         if len(eps) > 1:
             raise PluginError(f"{target!r} offers {len(eps)} plugins ({', '.join(f'{k}/{n}' for k, n in sorted(eps))}): add one by its name, with --kind if the name is shared")
         (k, ename), _ep = next(iter(eps.items()))
@@ -493,10 +503,10 @@ class PluginHost:
         return {} if tracer is None else {"trace": tracer.emit, "tracing": lambda: tracer.enabled}
 
     def _submitter(self, rec: _Record) -> Any:
-        async def submit(source: str, body: Any, *, labels: dict[str, str] | None = None) -> str:
+        async def submit(source: str, body: Any, *, labels: dict[str, str] | None = None, key: str | None = None, format: str | None = None) -> str:
             if self.intake is None:
                 raise Unavailable("intake is not running")
-            return str(await self.intake.submit(source, body, labels=labels, actor=Actor("system", rec.name)))
+            return str(await self.intake.submit(source, body, labels=labels, key=key, format=format, actor=Actor("system", rec.name)))
 
         return submit
 

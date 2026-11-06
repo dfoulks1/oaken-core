@@ -770,7 +770,7 @@ class Jobs:
         changes: list[_Change] = []
         async with self.db.transaction() as tx:
             for job in ready:
-                dest = DEFAULT if retriage else (to or job.queue)
+                dest = next((q.name for q in self.queues.all() if q.kind == "triager"), DEFAULT) if retriage else (to or job.queue)
                 n = await tx.execute(
                     "UPDATE jobs SET status = 'queued', queue = ?, attempts = 0, run_after = ?,"
                     " last_error = NULL, locked_by = NULL, locked_until = NULL,"
@@ -890,13 +890,16 @@ class JobRunner:
         """Run every job runnable *now* in every queue (and any it enqueues), then return how many
         ran. Jobs scheduled for later (retry backoff) are left: advance the clock and drain again."""
         before = self.processed
-        workers = [
-            asyncio.create_task(self._worker(f"{self._id}-d-{spec.name}-{i}", spec.name, True))
-            for spec in self.jobs.queues.all()
-            for i in range(spec.workers)
-        ]
-        await asyncio.gather(*workers)
-        return self.processed - before
+        while True:  # a job may enqueue into a queue whose workers already went idle: pass again
+            ran = self.processed
+            workers = [
+                asyncio.create_task(self._worker(f"{self._id}-d-{spec.name}-{i}", spec.name, True))
+                for spec in self.jobs.queues.all()
+                for i in range(spec.workers)
+            ]
+            await asyncio.gather(*workers)
+            if self.processed == ran:
+                return self.processed - before
 
     async def cancel(self, job_id: JobId) -> str:
         """Cancel a job; if it is running here, interrupt its handler immediately."""

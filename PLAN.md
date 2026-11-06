@@ -83,6 +83,7 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   (kind from the class's `kind`, or `--kind`; persisted as `class = "mod:Class"`, which the host loads at start).
   It writes `[plugins.<kind>.<name>]` first, starts the plugin now when it is loaded, and reloads core when it
   has to find it. Not built: installing a plugin's own dependencies, `extension_list`, `git pull`.
+- Built-in intake (2026-11-06): core ships what makes intake work with nothing else installed, as ordinary plugins (switch off, replace, configure): triagers `dedupe` (rank 1; drops a repeat by the provider's `key`, a configured body field, or a body hash; keys only, table `dedupe_seen`) and `rules` (rank 5; the owner's ordered rules), providers `socket` (the machine's door) and `jsonl` (by hand: pipe a file in), ingestor `items`. `BaseProvider.submit(..., key=)` carries the source's own id to `IntakeItem.key`. Code in `oaken_core/triage/`, `oaken_core/providers/`.
 - Step 6: the console (`oaken_core/console/`). Core's own, no plugin involved: its own listener on a
   hard-coded 127.0.0.1 (`[console] port` only; `extra="forbid"` refuses a host), its own unit in the
   daemon, started before the host so a failing plugin cannot take it down. Guard: Host (name and
@@ -122,10 +123,19 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
 - **Queues:** one `default`; more by `oaken_core.new_queue(name, description, ...)`. Jobs do not
   pick a queue. A triager writes the reserved label `queue`; core routes by it. Scheduled and
   maintenance jobs name their queue directly.
-- **Intake** is the only queue triagers run in. Triage runs BEFORE ingestion, so rejects are never
-  stored. A failing triager lets intake back up (no fallback queue). Making the last failed attempt
-  open the gate, as oaken-mail does, is a config choice; the default is to back up. Core never
-  auto-purges intake. A reject keeps a content-free log row only (config may change it).
+- **The intake chain** (2026-11-06) is a row of stages, each a queue, routed by the `queue` label (a stage's name is its
+  `[queues.<name>]` key): **Intake** (`default`, titled Intake: formatters split the raw item into named parts and label
+  `format` = ok / none / unmatched / failed) -> one or more **triager stages** (a triager runs in the stage its `stage`
+  setting names, else the first; several stages may share a kind; `[queues.<name>] disabled` switches a plugin off in one
+  stage) -> hidden **`store`** -> hidden **`embed`**. Triage runs BEFORE ingestion, so what is stored is up to the labels:
+  `store` (true/false, else `[jobs] store_by_default`; a reject is stored only with `store=true`) and `embed` (else
+  `[jobs] embed_by_default`, off). Intake labels an item `triage=pending`; the stage that decides clears it. A failing
+  triager lets its stage back up (no fallback queue). `[jobs] unmatched_format` / `failed_format` (pass | fail) say whether an
+  unformatted item goes on whole or stays in Intake's failed jobs to requeue. A reject keeps a content-free log row only.
+  Providers (`socket`: the machine's door, `jsonl`: by hand) only provide; Intake formats and verifies. A reserved label can be
+  made by a plugin or the owner and may carry `writers` (who may set it). Plugins: `oaken plugin add NAME` looks in the
+  environment and `[extensions] dirs`, then in `oaken_plugins` (`oaken plugins` lists it); `json` ships in core.
+  Not built: strict/permissive `mode` on every stage; parts as child subjects with `reads` / `ctx.content`; a batch importer.
 - **`queue.requeue`** (job or selector, `--to <queue>`, `--retriage`): `mcp="never"` by default,
   a config setting may lift it. Built on oaken-mail's `retry_job`.
 - **Storage** is local and provided by a `BaseStore` plugin. A store hands core a `Database`

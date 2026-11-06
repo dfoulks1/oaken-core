@@ -3,11 +3,11 @@
 <h1>Pipeline</h1>
 {{ flow(stages) }}
 {{ pipeline_tabs("labels") }}
-<p class="muted">A label is a key and a value on a subject. Reserved keys are core's and plugins define their own; the keys you add here are yours to change.</p>
+<p class="muted">A label is a key and a value on a subject. Core's keys are fixed and plugins define their own; the keys you add here are yours to change, and you may reserve them.</p>
 <div class="card"><div class="card-head"><span>Label keys</span><button type="button" class="btn btn-primary btn-sm" popovertarget="label-new" popovertargetaction="show" title="Add a label key">{{ m.icon("plus") }} Add label</button></div>
 <div class="table-wrap"><table class="table"><tr><th>Key</th><th>For</th><th>Allowed values</th><th>Defined by</th><th></th></tr>
 {% for k in keys %}<tr><td class="mono">{{ k.key }}</td><td>{{ k.description }}</td><td>{{ k["values"]|join(", ") if k["values"] else "any text" }}</td><td class="muted">{{ k.source }}</td>
-<td class="right nowrap">{% if k.source == "config" %}<button type="button" class="btn btn-sm btn-icon" popovertarget="label-{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ k.key }}">{{ m.icon("gear") }}</button>{% endif %}</td></tr>{% endfor %}</table></div></div>
+<td class="right nowrap">{% if k.source == "config" %}<button type="button" class="btn btn-sm btn-icon" popovertarget="label-{{ k.key }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ k.key }}">{{ m.icon("gear") }}</button>{% endif %}</td></tr>{% endfor %}</table></div></div>
 <div class="dialog" id="label-new" popover role="dialog" aria-labelledby="label-new-t">
   <div class="dialog-head"><h2 id="label-new-t">Add a label key</h2>
     <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="label-new" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
@@ -16,17 +16,21 @@
       <label for="ln-key">Key</label><div><input class="input mono" id="ln-key" name="key" required maxlength="64" placeholder="heat" autocomplete="off"><div class="hint">Lower case, starting with a letter: a-z, 0-9, _ and . only.</div></div>
       <label for="ln-desc">For</label><input class="input" id="ln-desc" name="description" placeholder="what it says about a subject" autocomplete="off">
       <label for="ln-values">Allowed values</label><div><input class="input" id="ln-values" name="values" placeholder="calm, warm, hot" autocomplete="off"><div class="hint">Separate with commas. Empty: any text.</div></div>
+      <label for="ln-res">Reserved</label><div><input id="ln-res" name="reserved" type="checkbox"><div class="hint">Lock the key: plugins may write it but not define it again.</div></div>
+      <label for="ln-writers">Who may write it</label><div><input class="input" id="ln-writers" name="writers" placeholder="user, system:mailrules" autocomplete="off"><div class="hint">An actor kind (user, agent, system) or one actor, separated by commas. Empty: anyone. Others are refused.</div></div>
     </div></div>
     <div class="dialog-foot"><button class="btn btn-primary">Add label</button><span class="muted">It shows what it will do before it does it.</span></div>
   </form>
 </div>
-{% for k in keys if k.source == "config" %}<div class="dialog" id="label-{{ loop.index }}" popover role="dialog" aria-labelledby="label-{{ loop.index }}-t">
-  <div class="dialog-head"><h2 id="label-{{ loop.index }}-t" class="mono">{{ k.key }}</h2>
-    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="label-{{ loop.index }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+{% for k in keys if k.source == "config" %}<div class="dialog" id="label-{{ k.key }}" popover role="dialog" aria-labelledby="label-{{ k.key }}-t">
+  <div class="dialog-head"><h2 id="label-{{ k.key }}-t" class="mono">{{ k.key }}</h2>
+    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="label-{{ k.key }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
   <form method="post" action="/ui/labels/{{ k.key }}/edit">{{ csrf(token) }}
     <div class="dialog-body"><div class="form-grid">
-      <label for="le-desc-{{ loop.index }}">For</label><input class="input" id="le-desc-{{ loop.index }}" name="description" value="{{ k.description }}" autocomplete="off">
-      <label for="le-values-{{ loop.index }}">Allowed values</label><div><input class="input" id="le-values-{{ loop.index }}" name="values" value="{{ k["values"]|join(", ") }}" autocomplete="off"><div class="hint">Separate with commas. Empty: any text. Values already set are not rechecked.</div></div>
+      <label for="le-desc-{{ k.key }}">For</label><input class="input" id="le-desc-{{ k.key }}" name="description" value="{{ k.description }}" autocomplete="off">
+      <label for="le-values-{{ k.key }}">Allowed values</label><div><input class="input" id="le-values-{{ k.key }}" name="values" value="{{ k["values"]|join(", ") }}" autocomplete="off"><div class="hint">Separate with commas. Empty: any text. Values already set are not rechecked.</div></div>
+      <label for="le-res-{{ k.key }}">Reserved</label><div><input id="le-res-{{ k.key }}" name="reserved" type="checkbox"{{ " checked" if k.reserved }}><div class="hint">Lock the key: plugins may write it but not define it again.</div></div>
+      <label for="le-writers-{{ k.key }}">Who may write it</label><div><input class="input" id="le-writers-{{ k.key }}" name="writers" value="{{ k.writers|join(", ") }}" autocomplete="off"><div class="hint">An actor kind (user, agent, system) or one actor, separated by commas. Empty: anyone.</div></div>
     </div></div>
     <div class="dialog-foot"><button class="btn btn-primary">Save</button><span class="muted">It shows what it will do first.</span></div>
   </form>

@@ -113,7 +113,8 @@ class LabelKey(BaseModel):
     key: str
     description: str
     values: list[str]  # empty: any text
-    reserved: bool  # core's own
+    reserved: bool  # locked: may be written, not defined again
+    writers: list[str]  # who may write it; empty: anyone
     source: Literal["core", "config", "plugin"]  # who defined it; only "config" can be changed here
 
 
@@ -124,7 +125,7 @@ class LabelKeysOut(BaseModel):
 @operation("label_keys", "Every label key: what it is for, the values it allows, and whether core reserves it.",
            permission="read", input=Empty, output=LabelKeysOut, mcp="on", group="label")  # fmt: skip
 async def label_keys(ctx: OpContext, inp: Empty) -> LabelKeysOut:
-    return LabelKeysOut(keys=[LabelKey(key=b.key, description=b.description, values=list(b.values), reserved=b.reserved, source=ctx.svc.labels.maker.source(b.key))
+    return LabelKeysOut(keys=[LabelKey(key=b.key, description=b.description, values=list(b.values), reserved=b.reserved, writers=list(b.writers), source=ctx.svc.labels.maker.source(b.key))
                               for b in ctx.svc.labels.maker.keys()])  # fmt: skip
 
 
@@ -159,12 +160,16 @@ class LabelNewIn(BaseModel):
     key: str = Field(description="Lower case, starting with a letter: a-z, 0-9, _ and . only.")
     description: str = ""
     values: list[str] = Field(default_factory=list, description="The values it allows. Empty: any text.")
+    reserved: bool = Field(default=False, description="Lock it: plugins may write the key but not define it again.")
+    writers: list[str] = Field(default_factory=list, description="Who may set it: an actor kind (user, agent, system) or one actor (system:mailrules). Empty: anyone.")
 
 
 class LabelEditIn(BaseModel):
     key: str = Field(description="The key. It stays; delete and add to change it.")
     description: str | None = None
     values: list[str] | None = Field(default=None, description="Replaces the allowed values. Empty: any text. Values already set are not rechecked.")
+    reserved: bool | None = Field(default=None, description="Lock or unlock the key.")
+    writers: list[str] | None = Field(default=None, description="Replaces who may set it. Empty: anyone.")
 
 
 class LabelKeyRef(BaseModel):
@@ -203,6 +208,10 @@ def _table(inp: LabelNewIn | LabelEditIn, base: dict[str, Any] | None = None) ->
         t["description"] = inp.description.strip()
     if inp.values is not None:
         t["values"] = [v.strip() for v in inp.values if v.strip()]
+    if inp.reserved is not None:
+        t["reserved"] = inp.reserved
+    if inp.writers is not None:
+        t["writers"] = [w.strip() for w in inp.writers if w.strip()]
     return {k: v for k, v in t.items() if v}  # an empty description or list is the default: leave it out
 
 

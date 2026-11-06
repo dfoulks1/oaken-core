@@ -26,8 +26,9 @@ from dataclasses import dataclass, field
 from pydantic import BaseModel, ValidationError
 
 from oaken_core.db import Database
-from oaken_core.errors import PluginError
+from oaken_core.errors import Deferred, PluginError
 from oaken_core.labels import BaseLabel
+from oaken_core.plugins import stats
 from oaken_core.trace import brief, trace_context
 from oaken_core.plugins.contracts import (
     PLUGIN_API_VERSION,
@@ -60,7 +61,7 @@ def _default(fn: F) -> F:
 
 # The calls a plugin author implements and core makes: what is asked of it, and what it answers. Every one a
 # plugin class defines is traced by ``BasePlugin`` with no code in the plugin (see ``_traced``).
-TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest")
+TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest", "split")
 _TRACE_KIND = {"generate": "llm.call"}  # the kind the trace file already knows a model call by
 
 
@@ -92,8 +93,24 @@ def _traced(method: str, fn: Callable[..., Any]) -> Callable[..., Any]:
             ctx.trace(kind, **asked, result=_shape(method, result), ms=round((time.monotonic() - started) * 1000))
             return result
 
-    wrapper._oaken_traced = True  # type: ignore[attr-defined]
-    return wrapper
+    @functools.wraps(fn)
+    async def counted(self: Any, *args: Any, **kwargs: Any) -> Any:
+        ctx = getattr(self, "ctx", None)
+        if ctx is None:
+            return await wrapper(self, *args, **kwargs)
+        started, failed = time.monotonic(), False
+        try:
+            return await wrapper(self, *args, **kwargs)
+        except Deferred:  # waiting for a backend is not a failure
+            raise
+        except Exception:
+            failed = True
+            raise
+        finally:
+            stats.record(ctx.kind, ctx.name, (time.monotonic() - started) * 1000, failed)
+
+    counted._oaken_traced = True  # type: ignore[attr-defined]
+    return counted
 
 
 def is_implemented(obj: object, method: str) -> bool:
@@ -242,14 +259,19 @@ class BaseProvider(BasePlugin):
 
     kind: ClassVar[str] = "provider"
 
-    async def submit(self, body: Any, *, source: str | None = None, labels: dict[str, str] | None = None) -> str:
+    async def submit(
+        self, body: Any, *, source: str | None = None, labels: dict[str, str] | None = None, key: str | None = None,
+        format: str | None = None,
+    ) -> str:
         """Put one item into intake (triage, then the ingestor). Returns its provisional subject id. ``source`` is
-        what the record calls where it came from (default: this plugin's name). Raises ``PluginError`` in a bare
-        context with no intake."""
+        what the record calls where it came from (default: this plugin's name). ``key`` is your own id for the
+        item (a message id, a URL): a dedupe triager drops a second item with the same key, so a poller can
+        safely offer what it already sent. ``format`` (``json``, ``ini``, a format a formatter plugin declares) says what the
+        body is, so a formatter splits it into parts before triage; none keeps it one ``body`` part. Raises ``PluginError`` in a bare context with no intake."""
         submit = self.ctx.submit
         if submit is None:
             raise PluginError(f"{self.ctx.name}: no intake in this context")
-        return await submit(source or self.ctx.name, body, labels=labels or {})
+        return await submit(source or self.ctx.name, body, labels=labels or {}, key=key, format=format)
 
 
 class BaseStore(BasePlugin):
@@ -425,6 +447,19 @@ class BaseIngestor(BasePlugin):
     @_default
     async def ingest(self, item: Any) -> Any:
         raise NotImplementedError("an ingestor must implement ingest()")
+
+
+class BaseFormatter(BasePlugin):
+    """Splits a raw item into named parts (``oaken_core.parts.Part``) before triage. ``formats`` lists
+    the ``format`` strings it handles (``email/rfc822``); an item whose format nobody handles stays one
+    ``body`` part. Deterministic: no model, nothing stored."""
+    kind: ClassVar[str] = "formatter"
+
+    formats: ClassVar[tuple[str, ...]] = ()
+
+    @_default
+    async def split(self, raw: Any) -> Any:
+        raise NotImplementedError("a formatter must implement split()")
 
 
 class BaseTriager(BaseAnalyzer):

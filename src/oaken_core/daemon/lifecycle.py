@@ -1,16 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """Running core as a process: one instance, a clean stop on a signal, reload on SIGHUP.
 
-Lifted from oaken-mail's ``daemon/lifecycle.py`` (cf3b187); detach and restart are left out (run
-under a service manager). The runtime file is the single-instance lock and how clients find the
+Lifted from oaken-mail's ``daemon/lifecycle.py`` (cf3b187). ``start`` runs in the background
+unless ``--fg``. The runtime file is the single-instance lock and how clients find the
 port. SIGINT and SIGTERM stop core: it stops accepting, lets jobs finish or hands their leases
 back, closes the database and removes the runtime file.
 """
 
+import argparse
 import asyncio
 import contextlib
 import os
 import signal
+import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -206,14 +208,52 @@ def reload(runtime: Path | None = None) -> bool:
     return found is not None and _signal(found, signal.SIGHUP, "signal")
 
 
+def detach(*, timeout: float = 30.0, runtime: Path | None = None) -> dict[str, Any]:
+    """Start core in the background (a new session, stdio to the null device) and return its runtime
+    file once it is listening. It logs only to ``log.file`` if that is set."""
+    path = runtime or paths.runtime_file()
+    if status(path) is not None:
+        raise Conflict("core is already running")
+    child = subprocess.Popen(  # noqa: S603 (our own interpreter, fixed arguments)
+        [sys.executable, "-m", "oaken_core.daemon"],
+        stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        close_fds=True, start_new_session=True,
+    )  # fmt: skip
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        found = status(path)
+        if found is not None and found.get("port"):
+            return found
+        if child.poll() is not None:
+            raise Unavailable(f"core exited while starting (code {child.returncode}); run `{identity.prog} start --fg` to see why")
+        time.sleep(0.05)
+    raise Unavailable(f"core did not start listening within {timeout:.0f}s")
+
+
 def cli(argv: list[str], make: MakeCore = Core) -> int:
-    """``start`` (foreground), ``stop`` and ``reload``: the verbs that work with no core running."""
-    verb = argv[0]
-    if verb == "start":
-        return run(make=make)
-    if verb == "stop":
-        result = stop_gracefully()
-        print("stopped" if result.running else "core is not running")
-        return 0
+    """``start`` and ``restart`` (background unless ``--fg``), ``stop`` and ``reload``: the verbs
+    that work with no core running."""
+    ap = argparse.ArgumentParser(prog=f"{identity.prog} {argv[0]}")
+    ap.add_argument("verb")
+    ap.add_argument("--fg", action="store_true", help="Run in the foreground, logging to this terminal.")
+    ap.add_argument("--grace", type=float, default=DEFAULT_GRACE, help="Seconds core gets to finish before it is killed.")
+    ap.add_argument("--no-kill", action="store_true", help="Report an error instead of killing core.")
+    args = ap.parse_args(argv)
+    try:
+        if args.verb in ("start", "restart"):
+            if args.verb == "restart":
+                stop_gracefully(grace=args.grace, kill=not args.no_kill)
+            if args.fg:
+                return run(make=make)
+            info = detach()
+            print(f"core running (pid {info.get('pid')}, port {info.get('port')})")
+            return 0
+        if args.verb == "stop":
+            result = stop_gracefully(grace=args.grace, kill=not args.no_kill)
+            print("stopped" if result.running else "core is not running")
+            return 0
+    except (Conflict, Unavailable) as exc:
+        print(f"{identity.prog}: {exc}", file=sys.stderr)
+        return 1
     print("reloading" if reload() else "core is not running")
     return 0

@@ -45,8 +45,9 @@ class QueueListOut(BaseModel):
 @operation("queue_list", "Depth, running, failed, oldest wait and last error for every queue.",
            permission="read", input=Empty, output=QueueListOut, mcp="on", group="queue")  # fmt: skip
 async def queue_list(ctx: OpContext, inp: Empty) -> QueueListOut:
+    hidden = {q.name for q in ctx.svc.queues.all() if q.hidden}
     rows = await ctx.svc.jobs.stats()
-    return QueueListOut(queues=[QueueRow(**r.__dict__) for r in rows])
+    return QueueListOut(queues=[QueueRow(**r.__dict__) for r in rows if r.queue not in hidden])
 
 
 class QueueRef(BaseModel):

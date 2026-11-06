@@ -26,7 +26,7 @@ from oaken_core.events import EventBus
 from oaken_core.intake import Intake, IntakeItem
 from oaken_core.jobs import Jobs, JobRunner
 from oaken_core.ids import SubjectId
-from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore
+from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore, ReservedLabel
 from oaken_core.logging import get_logger
 from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
@@ -104,7 +104,7 @@ class Core:
         maker.set_validator("queue", queues.validate_label)
         for key, t in s.labels.items():
             try:
-                maker.register_config(BaseLabel.new(key, t.description, tuple(t.values)))
+                maker.register_config((ReservedLabel if t.reserved else BaseLabel).new(key, t.description, tuple(t.values), tuple(t.writers)))
             except LabelError as exc:
                 raise ConfigError(f"[labels.{key}]: {exc.message}") from None
         changelog = ChangeLog(clock)
@@ -121,7 +121,7 @@ class Core:
         self.runner = JobRunner(jobs)
         register_maintenance_jobs(self.runner, db)
         self.eventlog = EventLog(event_log_path(s.log.events_file), max_bytes=s.log.file_max_bytes, backups=s.log.file_backups) if s.log.events_file else None
-        self.intake = Intake(jobs, labels, db, changelog, triager_source=self._triagers, ingest=self._ingest, router=self.router)
+        self.intake = Intake(jobs, labels, db, changelog, triager_source=self._triagers, formatter_for=self._formatter, ingest=self._ingest, router=self.router)
         self.intake.register(self.runner)
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, labels=labels, changelog=changelog,
@@ -148,7 +148,7 @@ class Core:
             raise ConfigError("this product defines its own queues: remove [queues.*] from config.toml")
         for name, q in tables.items():
             check_queue_kind(self.host.kinds, name, q.kind)
-            queues.new_queue(name, q.description, q.workers, kind=q.kind, label=q.label)
+            queues.new_queue(name, q.description, q.workers, kind=q.kind, label=q.label, disabled=tuple(q.disabled))
         return queues
 
     def request_reload(self) -> None:
@@ -158,9 +158,21 @@ class Core:
             raise Unavailable("core was not started by the daemon, so there is nothing to reload it")
         asyncio.get_running_loop().call_later(0.5, self.reload_hook)
 
-    def _triagers(self) -> list[_Triager]:
-        """The healthy triagers right now, so one that starts or stops counts from the next item."""
-        return [_Triager(name, plugin) for name, plugin in self.host.named_triagers().items()]
+    def _triagers(self, stage: str) -> list[_Triager]:
+        """The healthy triagers of one stage right now, so one that starts or stops counts from the next item.
+        A triager runs in the stage its ``stage`` setting names, else in the first triager stage."""
+        queues = self.runner.jobs.queues
+        first = next((q.name for q in queues.all() if q.kind == "triager"), None)
+        off = queues.get(stage).disabled if stage in [q.name for q in queues.all()] else ()
+        return [_Triager(name, plugin) for name, plugin in self.host.named_triagers().items()
+                if name not in off and (self.host.tables.table("triager", name).get("stage") or first) in (stage, None)]  # fmt: skip
+
+    def _formatter(self, fmt: str | None) -> Any:
+        """The healthy formatter for an item's ``format`` (a format it declares, or its own name), or None."""
+        if not fmt:
+            return None
+        found = self.host.usable("formatter")
+        return next((p for n, p in found.items() if fmt == n or fmt in getattr(p, "formats", ())), None)
 
     async def _ingest(self, item: IntakeItem) -> SubjectId:
         """Hand an accepted item to the active ingestor. With none, the item waits in intake (it is

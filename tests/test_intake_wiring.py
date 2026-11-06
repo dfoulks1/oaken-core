@@ -10,7 +10,7 @@ import pytest
 from oaken_core.clock import FakeClock
 from oaken_core.daemon.core import Core
 from oaken_core.ids import SubjectId
-from oaken_core.intake import KIND, IntakeItem, Verdict
+from oaken_core.intake import KIND, STORE_KIND, IntakeItem, Verdict
 from oaken_core.plugins.base import BaseIngestor, BasePlugin, BaseTriager
 from oaken_core.plugins.host import PluginTables
 from oaken_core.settings import Settings
@@ -70,7 +70,7 @@ async def test_a_provider_submits_the_triager_accepts_and_the_ingestor_stores(co
     prov = await submit(core)("feed", {"text": "hello"}, labels={"confidential": "true"})
     await core.runner.drain()
     assert [i.body for i in Shelf.stored] == [{"text": "hello"}]
-    assert await core.host.label_store.all("real-1") == {"priority": "high", "confidential": "true"}
+    assert await core.host.label_store.all("real-1") == {"priority": "high", "confidential": "true", "format": "none"}
     assert await core.host.label_store.all(prov) == {}  # the labels moved to the real subject
 
 
@@ -90,7 +90,7 @@ async def test_with_no_ingestor_an_accepted_item_waits_without_failing_and_flows
         await core.host.disable("shelf")
         await submit(core)("feed", {"text": "hello"})
         await core.runner.drain()
-        (job,) = await core.runner.jobs.query(kind=KIND)
+        (job,) = await core.runner.jobs.query(kind=STORE_KIND)
         assert job.status == "queued" and job.attempts == 0 and "no ingestor" in (job.last_error or "")
         await core.host.enable("shelf")
         clock.advance(seconds=core.settings.router.wait_seconds + 1)

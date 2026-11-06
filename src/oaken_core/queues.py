@@ -19,6 +19,8 @@ if TYPE_CHECKING:
     from oaken_core.jobs import Enqueued, JobSpec, Jobs, Metrics, Stats
 
 DEFAULT = "default"
+STORE = "store"  # hidden, just after default: items labelled ``store`` wait here to be stored
+EMBED = "embed"  # hidden, after store: items labelled ``embed`` wait here for their vector
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
 
 
@@ -31,6 +33,8 @@ class Queue:
     workers: int = 1  # concurrent workers the runner starts for this queue
     kind: str = ""  # the one analyzer plugin kind this queue is the stage of ("" for ``default``)
     label: str = ""  # its title in the console
+    hidden: bool = False  # a stage core runs for you: not listed, not edited
+    disabled: tuple[str, ...] = ()  # plugins switched off in this stage only (still on in another)
 
     _jobs: "Jobs | None" = field(default=None, compare=False, repr=False)  # set by ``Queues.bind``
 
@@ -75,19 +79,19 @@ class Queues:
     def __init__(self, default_workers: int = 2) -> None:
         self._jobs: "Jobs | None" = None
         self._queues: dict[str, Queue] = {
-            DEFAULT: Queue(DEFAULT, "Where unlabeled work starts: intake and triage", default_workers)
+            DEFAULT: Queue(DEFAULT, "Where an item enters: formatters split it into parts, then it moves on to triage", default_workers, kind="formatter", label="Intake"),
+            STORE: Queue(STORE, "Items labelled store wait here to be stored", 1, hidden=True),
+            EMBED: Queue(EMBED, "Items labelled embed wait here for their vector", 1, hidden=True),
         }
 
-    def new_queue(self, name: str, description: str = "", workers: int = 1, *, kind: str = "", label: str = "") -> Queue:
+    def new_queue(self, name: str, description: str = "", workers: int = 1, *, kind: str = "", label: str = "", disabled: tuple[str, ...] = ()) -> Queue:
         if not _NAME.match(name):
             raise ConfigError(f"queue name {name!r} must match {_NAME.pattern}")
         if name in self._queues:
             raise ConfigError(f"queue {name!r} already exists")
         if workers < 1:
             raise ConfigError("a queue needs at least one worker")
-        if kind and (other := next((q.name for q in self._queues.values() if q.kind == kind), None)):
-            raise ConfigError(f"queue {other!r} already serves {kind!r}: a plugin kind belongs to one queue, so each plugin has one stage")
-        spec = self._queues[name] = Queue(name, description, workers, kind, label, self._jobs)
+        spec = self._queues[name] = Queue(name, description, workers, kind, label, disabled=tuple(disabled), _jobs=self._jobs)
         return spec
 
     def bind(self, jobs: "Jobs") -> None:

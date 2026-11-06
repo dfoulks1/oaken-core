@@ -308,8 +308,13 @@ async def test_reload_says_when_core_is_not_run_by_the_daemon(rig: Rig) -> None:
 
 
 async def test_test_these_settings_tries_a_throwaway_copy_saves_nothing_and_needs_no_confirm(rig: Rig, oaken_home: Path) -> None:
-    ok = await rig.post("/ui/plugins/enricher/notes/try", f_greeting="yo", f_limit="5")
-    assert ok.status_code == 200 and "works" in ok.text and "true" in ok.text.lower()
+    sent = await rig.post("/ui/plugins/enricher/notes/try", back="/plugins", f_greeting="yo", f_limit="5")
+    assert sent.status_code == 303 and sent.headers["location"].startswith("/plugins?test=")  # back to the page, not a receipt
+    ok = await rig.c.get(sent.headers["location"])
+    assert ok.status_code == 200 and "Test: works." in ok.text and 'class="dialog pinned"' in ok.text
+    assert 'value="yo"' in ok.text and 'value="5"' in ok.text  # what was typed is still in the form
+    assert "Test: works." not in (await rig.c.get("/plugins")).text  # the page by itself shows no result
+    assert "Test: works." not in (await rig.c.get("/plugins?test=forged")).text  # a made-up token shows nothing
     bad = await rig.post("/ui/plugins/enricher/notes/try", f_greeting="yo", f_limit="lots")
     assert bad.status_code == 422 and "limit" in bad.text.lower()  # the form is checked before anything starts
     assert not (oaken_home / "config" / "config.toml").exists()  # nothing was saved
@@ -374,9 +379,12 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
         assert home.index(">General<") < home.index(">Pipeline<") < home.index(">Enrichment<") < home.index(">Config<") < home.index(">Capabilities<")  # stages sit right of Pipeline
         assert "Queues<" not in home.split("</header>")[0]
         stage = await client.get("/stage/enrich")
+        assert "Done (1h)" in stage.text  # what finished lately, beside what waits
         assert stage.status_code == 200 and 'aria-current="page">Enrichment' in stage.text
         assert "notes" in stage.text and "flow-strip" in stage.text and "Intake" in stage.text
-        assert (await client.get("/stage/default")).status_code == 404  # intake is not a stage page
+        intake = await client.get("/stage/default")  # Intake is a stage too: the first, where formatters run
+        assert intake.status_code == 200 and "Intake" in intake.text and "Delete queue" not in intake.text
+        assert home.index(">Pipeline<") < home.index(">Intake<") < home.index(">Enrichment<")
         assert (await client.get("/stage/nope")).status_code == 404
         machinery = (await client.get("/pipeline/machinery")).text
         assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
@@ -397,9 +405,10 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
     try:
         page = (await client.get("/")).text
         assert 'popovertarget="add-stage"' in page and 'action="/ui/queues/add"' in page  # a button, and the form it opens
+        assert '<details class="card fold" id="fold-g-" open>' in page  # the active plugins fold, open while there are some
         assert 'value="triager"' in page and 'value="action"' in page
-        assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
-        assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index("<span>Active plugins</span>")  # by the Queues table
+        assert 'value="enricher"' in page and 'value="embedder"' not in page  # analyzers only; a kind may have several stages
+        assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index('Active plugins <span class="muted small">')  # by the Queues table
         assert 'popovertarget="add-stage"' not in (await client.get("/pipeline/machinery")).text  # only on General
         form = {"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"}  # a title only: the name comes from it
         first = await client.post("/ui/queues/add", data=form)
@@ -407,8 +416,8 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
         second = await client.post("/ui/queues/add", data={**form, "confirm": "1"})
         assert second.status_code == 200 and "Added my_triage" in second.text and "restart" in second.text  # the rig has no daemon to reload it
         assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["queues"]["my_triage"] == {"kind": "triager", "label": "My Triage", "workers": 1}
-        bad = await client.post("/ui/queues/add", data={**form, "label": "Again", "confirm": "1"})  # triager is taken now
-        assert bad.status_code == 422
+        again = await client.post("/ui/queues/add", data={**form, "label": "Again", "confirm": "1"})  # a second stage of the same kind
+        assert again.status_code == 200 and "Added again" in again.text
         core.client.svc.queues_from_config = False  # a product that fixes its own stages
         assert "add-stage" not in (await client.get("/")).text
     finally:
@@ -419,7 +428,8 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
 # -- capabilities: what MCP clients may call, from the registry the CLI lists ------------------
 async def test_capabilities_lists_every_operation_by_who_offers_it_and_switches_mcp_per_row(rig: Rig, oaken_home: Path) -> None:
     page = (await rig.c.get("/capabilities")).text
-    assert "Core: queue" in page and "enricher plugins" in page  # core by group; a plugin's under its kind
+    assert "Core: Control" in page and "Core: Machinery" in page and "Core: Keys and doors" in page and "enricher plugins" in page  # core in a few categories; a plugin's under its kind
+    assert "Core: queue" not in page and "Core: cache" not in page  # not a table per command group
     assert 'class="mono nowrap">notes.hi' in page  # the loader put the plugin's operation here
     assert 'aria-label="Expose queue_list over MCP"' in page
     assert "core.provider.queue" in page and "core.provider.cache" in page  # a core operation's provider is core.provider.<group>
@@ -615,7 +625,7 @@ async def test_general_has_an_active_table_with_the_errors_and_an_inactive_one_t
     rec.healthy, rec.detail = False, "the server is down"  # on, but failing
     page = (await rig.c.get("/")).text
     assert "healthy</b>" not in page and "Plugins: " not in page  # the count sentence is gone
-    active = page[page.index("<span>Active plugins</span>"):]
+    active = page[page.index('Active plugins <span class="muted small">'):]
     active = active[: active.index("</table>")]
     assert "notes" in active and 'class="badge badge-ok">healthy' in active
     assert 'class="badge badge-danger">down' in active and 'class="health-detail small bad">the server is down' in active  # on but failing: why, in the bad colour
@@ -626,7 +636,7 @@ async def test_general_has_an_active_table_with_the_errors_and_an_inactive_one_t
     inactive = page[page.index(">Inactive plugins <span"):]
     assert "notes" in inactive[: inactive.index("</table>")] and "Turn a plugin on to put it back" in inactive
     assert 'id="fold-off-"><summary' in page  # folded: closed until opened
-    assert "notes" not in page[page.index("<span>Active plugins</span>"): page.index(">Inactive plugins <span")]
+    assert "notes" not in page[page.index('Active plugins <span class="muted small">'): page.index(">Inactive plugins <span")]
     on = await rig.post("/ui/plugins/enricher/notes/enable", back="/")
     assert on.status_code == 303
     assert "Inactive plugins" not in (await rig.c.get("/")).text  # back up, and the inactive table is gone again
@@ -684,6 +694,7 @@ async def test_pipeline_labels_lists_keys_and_adds_edits_and_deletes_the_owners_
         core.client.svc.labels.maker.register_config(BaseLabel.new("heat", "How upset", ("calm", "warm", "hot")))  # what a reload does
         page = (await client.get("/pipeline")).text
         assert 'action="/ui/labels/heat/edit"' in page and 'action="/ui/labels/confidential/edit"' not in page  # only the owner's own
+        assert 'popovertarget="label-heat"' in page and 'id="label-heat"' in page  # the gear opens its own dialog, whatever row it is on
         edited = await post("/ui/labels/heat/edit", confirm="1", description="Temperature", values="calm, hot")
         assert edited.status_code == 200 and saved()["heat"] == {"description": "Temperature", "values": ["calm", "hot"]}
         assert (await post("/ui/labels/confidential/delete", confirm="1")).status_code == 409  # core's
@@ -735,4 +746,76 @@ async def test_the_pipeline_has_an_analyzers_tab_with_each_kinds_stage_and_machi
         assert "Stores" in heads and "Enrichers" not in heads
     finally:
         await client.aclose()
+        await core.host.stop()
+
+
+async def test_every_core_operation_lands_in_a_named_capabilities_table_not_other(rig: Rig) -> None:
+    page = (await rig.c.get("/capabilities")).text
+    assert "Core: Other" not in page  # a new command group must be placed in CAPABILITY_CATEGORIES
+
+
+async def test_the_flow_strip_and_the_stage_page_count_what_finished_in_the_last_hour(rig: Rig) -> None:
+    from pydantic import BaseModel
+
+    class Nothing(BaseModel):
+        pass
+
+    async def ok(payload: Nothing, job: object) -> None:
+        return None
+
+    runner = rig.core.runner
+    runner.register("t.ok", Nothing, ok)
+    assert "0 done (1h)" in (await rig.c.get("/")).text
+    await runner.jobs.enqueue("t.ok", Nothing(), queue="default")
+    await runner.drain()
+    assert "1 done (1h)" in (await rig.c.get("/")).text  # a job that finished at once still shows
+
+
+async def test_a_stage_lists_its_jobs_and_its_failed_ones_with_why_and_a_requeue_button(tmp_path: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        svc = core.client.svc
+        await svc.jobs.enqueue("x.fine", "{}", queue="enrich")
+        bad = await svc.jobs.enqueue("x.bad", "{}", queue="enrich")
+        await svc.db.execute("UPDATE jobs SET status = 'failed', last_error = 'model is down' WHERE id = ?", (str(bad.job_id),))
+        page = (await client.get("/stage/enrich")).text
+        assert "x.fine" in page and "Failed jobs" in page and "model is down" in page and f"/ui/jobs/{bad.job_id}/requeue" in page
+        assert '<details class="card fold" id="fold-failed">' in page and '<details class="card fold" id="fold-jobs">' in page  # both folded
+        assert page.index("enricher plugins") < page.index('id="fold-failed"') < page.index('id="fold-jobs"')  # at the bottom, failed first
+        token = core.console.token
+        done = await client.post(f"/ui/jobs/{bad.job_id}/requeue", data={"csrf": token, "back": "/stage/enrich"})
+        assert done.status_code == 303 and done.headers["location"] == "/stage/enrich"
+        assert (await svc.jobs.get(bad.job_id)).status == "queued"
+    finally:
+        await core.host.stop()
+
+
+async def test_a_plugins_page_shows_its_calls_its_verdicts_and_the_models_savings(tmp_path: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        svc = core.client.svc
+        await svc.db.execute("INSERT INTO llm_ledger (analyzer, model, backend, calls, tokens_in, tokens_out, cache_hits, shortcut_hits, escalations, tokens_saved, updated_at)"
+                             " VALUES ('notes', 'qwen3', 'desk', 4, 900, 120, 2, 1, 0, 1500, '2026-11-06T00:00:00Z')")
+        page = (await client.get("/plugins/enricher/notes")).text
+        assert "Stats" in page and "Errors" in page and "qwen3" in page and "<b>1500</b>" in page  # calls, and what the router saved
+        assert "3 call(s) without a model" in page
+    finally:
+        await core.host.stop()
+
+
+async def test_a_page_longer_than_a_screen_starts_with_its_folds_shut_and_a_short_one_keeps_them_open(tmp_path: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        short = (await client.get("/")).text
+        assert '<details class="card fold" id="fold-g-" open>' in short  # a few plugins: room for it open
+        svc = core.client.svc
+        for i in range(40):
+            await svc.jobs.enqueue("x.fine", "{}", queue="enrich")
+        await svc.db.execute("UPDATE jobs SET status = 'failed', last_error = 'boom' WHERE queue = 'enrich'")
+        long = (await client.get("/stage/enrich")).text
+        assert long.count("<tr") > 24 and "<details" in long and " open>" not in long.split('id="fold-')[0] + "".join(p.split(">")[0] for p in long.split("<details")[1:])  # no fold is open
+    finally:
         await core.host.stop()

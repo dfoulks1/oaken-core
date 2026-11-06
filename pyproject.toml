@@ -43,8 +43,17 @@ ollama-remote = "oaken_core.ollama:OllamaRemoteLLM"
 [project.entry-points."oaken_core.ingestors"]
 items = "oaken_core.items:ItemsIngestor"
 
+[project.entry-points."oaken_core.providers"]
+socket = "oaken_core.providers.socket:SocketProvider"
+jsonl = "oaken_core.providers.jsonl:JsonlProvider"
+
 [project.entry-points."oaken_core.triagers"]
 nearjunk = "oaken_core.router.nearjunk:NearJunk"
+dedupe = "oaken_core.triage.dedupe:DedupeTriager"
+rules = "oaken_core.triage.rules:RulesTriager"
+
+[project.entry-points."oaken_core.formatters"]
+json = "oaken_core.formatters.structured:JsonFormatter"
 
 [build-system]
 requires = ["hatchling"]

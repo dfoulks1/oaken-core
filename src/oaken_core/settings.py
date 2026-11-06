@@ -52,8 +52,20 @@ class JobsSettings(BaseModel):
     max_result_bytes: int = Field(default=65536, ge=1)
     kind_limits: dict[str, int] = Field(default_factory=dict)  # concurrency cap per job kind
     requeue_cooldown_seconds: float = Field(default=60.0, ge=0)  # per job, between requeues
-    # Intake: when a triager fails on the last attempt, treat the item as "unsure" and ingest it
-    # (oaken-mail's behaviour). Off by default: a broken triager lets intake back up.
+    # Intake: is an item that passed triage stored when nothing labelled it ``store``? The ``store``
+    # label (true/false), set by a provider, a rule or a triager, decides first. A reject is not stored
+    # unless it carries ``store=true`` (a mailbox that keeps its junk labels it so).
+    store_by_default: bool = True
+    # Intake's format step. ``unmatched``: a format was asked for and no formatter handles it (maybe there is none yet).
+    # ``failed``: a formatter was asked and could not parse the item. Each is ``pass`` (go on to triage as one whole ``body``
+    # part, labelled ``format``) or ``fail`` (stop in Intake's failed jobs, payload kept, to requeue once a formatter exists).
+    unmatched_format: Literal["pass", "fail"] = "pass"
+    failed_format: Literal["pass", "fail"] = "pass"
+    # Intake: is a stored item embedded when nothing labelled it ``embed``? Off: an embedding is a copy
+    # of the text's meaning that a model has seen, so it is the owner's switch (like ``router.junk_index``).
+    embed_by_default: bool = False
+    # Intake: when a triager fails on the last attempt, treat the item as "unsure" (see ``unsure``).
+    # Off by default: a broken triager lets intake back up.
     open_gate_on_final_failure: bool = False
 
 
@@ -122,6 +134,7 @@ class QueueTable(BaseModel):
     label: str = ""  # the console's title for it; the name, capitalised, when empty
     description: str = ""
     workers: int = Field(default=1, ge=1, le=64)
+    disabled: list[str] = Field(default_factory=list)  # plugins (by name) switched off in this stage only
 
 
 class ExtensionsSettings(BaseModel):
@@ -139,6 +152,8 @@ class LabelTable(BaseModel):
 
     description: str = ""
     values: list[str] = Field(default_factory=list)  # empty: any text
+    reserved: bool = False  # locked: plugins may write it but not define it again
+    writers: list[str] = Field(default_factory=list)  # who may set it (``user``, ``system:mailrules``); empty: anyone
 
 
 class ApiSettings(BaseModel):
@@ -237,6 +252,8 @@ class Settings(BaseModel):
         except tomllib.TOMLDecodeError as exc:
             raise ConfigError(f"cannot read {source}: {exc}") from exc
         active, mcp, tables = raw.pop("active", {}), raw.pop("mcp", {}), raw.pop("plugins", {})
+        if not isinstance(mcp, dict) or set(mcp) - {"allowed"}:
+            raise ConfigError(f"{source}: [mcp] has only [mcp.allowed]; the MCP switches are [api] mcp_enabled and the like")
         if "allowed" in mcp:
             raw["operations"] = {**raw.get("operations", {}), "mcp_allowed": mcp["allowed"]}
         raw["plugins"] = {"active": active, "tables": tables}

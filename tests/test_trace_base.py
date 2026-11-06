@@ -112,16 +112,16 @@ async def test_a_provider_submits_into_intake_as_itself_and_refuses_without_one(
     from oaken_core.plugins.base import BaseProvider
     from oaken_core.plugins.contracts import PluginContext
 
-    seen: list[tuple[str, object, dict[str, str]]] = []
+    seen: list[tuple[str, object, dict[str, str], str | None]] = []
 
-    async def submit(source: str, body: object, *, labels: dict[str, str]) -> str:
-        seen.append((source, body, labels))
+    async def submit(source: str, body: object, *, labels: dict[str, str], key: str | None, format: str | None = None) -> str:
+        seen.append((source, body, labels, key))
         return "subject-1"
 
     p = BaseProvider()
     p.ctx = PluginContext(name="feed", kind="provider", clock=FakeClock(), log=None, submit=submit)  # type: ignore[arg-type]
-    assert BaseProvider.kind == "provider" and await p.submit({"a": 1}) == "subject-1" and await p.submit("x", source="other", labels={"k": "v"}) == "subject-1"
-    assert seen == [("feed", {"a": 1}, {}), ("other", "x", {"k": "v"})]
+    assert BaseProvider.kind == "provider" and await p.submit({"a": 1}) == "subject-1" and await p.submit("x", source="other", labels={"k": "v"}, key="id1") == "subject-1"
+    assert seen == [("feed", {"a": 1}, {}, None), ("other", "x", {"k": "v"}, "id1")]
     p.ctx = PluginContext(name="feed", kind="provider", clock=FakeClock(), log=None)  # type: ignore[arg-type]
     with pytest.raises(PluginError, match="no intake"):
         await p.submit("x")

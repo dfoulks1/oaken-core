@@ -37,13 +37,19 @@ class BaseLabel:
     key: str
     description: str = ""
     values: tuple[str, ...] = ()
+    # Who may set or clear it, as an actor kind (``user``, ``agent``, ``system``) or one actor
+    # (``system:mailrules``). Empty: anyone. A guard against a stage's label being applied by accident.
+    writers: tuple[str, ...] = ()
     reserved: ClassVar[bool] = False
 
     @classmethod
-    def new(cls, key: str, description: str = "", values: tuple[str, ...] = ()) -> Self:
+    def new(cls, key: str, description: str = "", values: tuple[str, ...] = (), writers: tuple[str, ...] = ()) -> Self:
         if not KEY.match(key):
             raise LabelError(f"label key {key!r} must match {KEY.pattern}")
-        return cls(key, description, tuple(values))
+        return cls(key, description, tuple(values), tuple(writers))
+
+    def may_write(self, actor: Actor) -> bool:
+        return not self.writers or actor.kind in self.writers or f"{actor.kind}:{actor.label}" in self.writers
 
 
 @dataclass(frozen=True)
@@ -62,6 +68,7 @@ class LabelMaker:
     def __init__(self) -> None:
         self._labels: dict[str, BaseLabel] = {}
         self._config: set[str] = set()  # keys the owner defined in config.toml
+        self._core: set[str] = set()  # keys core ships
         self._validators: dict[str, Validator] = {}
 
     @classmethod
@@ -72,8 +79,13 @@ class LabelMaker:
             ReservedLabel.new("queue", "The queue a job is routed to"),
             ReservedLabel.new("priority", "Urgency", ("urgent", "high", "normal", "low")),
             ReservedLabel.new("confidential", "Keep off remote models", ("true", "false")),
+            ReservedLabel.new("format", "How Intake's format step went: ok, none (no format asked), unmatched (no formatter for it), failed (it would not parse)", ("ok", "none", "unmatched", "failed")),
+            ReservedLabel.new("triage", "Waiting for a triage stage; the stage that decides clears it", ("pending",)),
+            ReservedLabel.new("embed", "Embed this item (else [jobs] embed_by_default)", ("true", "false")),
+            ReservedLabel.new("store", "Store this item (else [jobs] store_by_default)", ("true", "false")),
         ):
             maker._labels[label.key] = label
+            maker._core.add(label.key)
         return maker
 
     def register(self, label: BaseLabel) -> None:
@@ -81,12 +93,10 @@ class LabelMaker:
         have = self._labels.get(label.key)
         if have is not None:
             if have.reserved:
-                raise LabelError(f"{label.key!r} is reserved by core")
+                raise LabelError(f"{label.key!r} is reserved{' by core' if label.key in self._core else ''}: it cannot be defined again")
             if have != label:
                 raise LabelError(f"{label.key!r} is already defined differently")
             return
-        if label.reserved:
-            raise LabelError(f"only core reserves keys; {label.key!r} is not one of core's")
         self._labels[label.key] = label
 
     def register_config(self, label: BaseLabel) -> None:
@@ -97,7 +107,7 @@ class LabelMaker:
     def source(self, key: str) -> str:
         """Who defined it: ``core``, ``config`` (the owner) or ``plugin``."""
         label = self.get(key)
-        return "core" if label.reserved else "config" if key in self._config else "plugin"
+        return "core" if key in self._core else "config" if key in self._config else "plugin"
 
     def keys(self) -> list[BaseLabel]:
         """Every defined key, by name."""
@@ -113,6 +123,10 @@ class LabelMaker:
             return self._labels[key]
         except KeyError:
             raise LabelError(f"unknown label key {key!r}") from None
+
+    def check_writer(self, key: str, actor: Actor) -> None:
+        if not self.get(key).may_write(actor):
+            raise LabelError(f"{key}: only {', '.join(self.get(key).writers)} may write it, not {actor.kind}:{actor.label}")
 
     def check(self, key: str, value: str) -> None:
         label = self.get(key)
@@ -136,6 +150,7 @@ class LabelStore:
     async def set(self, subject_id: str, key: str, value: str, actor: Actor) -> bool:
         """Write ``value`` to the actor's layer. False (and no log row) if nothing changed."""
         self.maker.check(key, value)
+        self.maker.check_writer(key, actor)
         layer = layer_of(actor)
         async with self.db.transaction() as tx:
             row = await tx.fetchone(
@@ -212,6 +227,9 @@ class LabelStore:
                 sql += " AND key = ?"
                 args.append(key)
             rows = await tx.fetchall(sql, args)
+            if key is not None:
+                self.maker.check_writer(key, actor)
+            rows = [r for r in rows if self.maker.get(r["key"]).may_write(actor)]  # a sweep leaves a guarded key alone
             for r in rows:
                 await tx.execute(
                     "DELETE FROM labels WHERE subject_id = ? AND key = ? AND layer = ?",

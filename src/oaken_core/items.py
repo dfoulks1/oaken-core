@@ -29,6 +29,7 @@ class ItemRow(BaseModel):
     source: str
     created_at: str
     preview: str  # the first characters of the body, enough to recognise it
+    parts: list[str]  # the names of the parts a formatter made of it
 
 
 class ListOut(BaseModel):
@@ -49,8 +50,9 @@ class ItemsIngestor(BaseIngestor):
     async def ingest(self, item: Any) -> SubjectId:
         subject = new_subject_id()
         await self.ctx.db.execute(  # type: ignore[union-attr]
-            "INSERT INTO items_rows (subject_id, source, body_json, created_at) VALUES (?,?,?,?)",
-            (subject, item.source, json.dumps(item.body, default=str), fmt_ts(self.ctx.clock.now())),
+            "INSERT INTO items_rows (subject_id, source, body_json, parts_json, created_at) VALUES (?,?,?,?,?)",
+            (subject, item.source, json.dumps(item.body, default=str),
+             json.dumps({n: p.content for n, p in item.parts.items()}, default=str), fmt_ts(self.ctx.clock.now())),
         )
         return subject
 
@@ -59,7 +61,7 @@ class ItemsIngestor(BaseIngestor):
         db = self.ctx.db
         assert db is not None
         total = await db.fetchone("SELECT COUNT(*) AS n FROM items_rows")
-        rows = await db.fetchall("SELECT subject_id, source, body_json, created_at FROM items_rows ORDER BY created_at DESC, subject_id DESC LIMIT ?", (inp.limit,))
+        rows = await db.fetchall("SELECT subject_id, source, body_json, parts_json, created_at FROM items_rows ORDER BY created_at DESC, subject_id DESC LIMIT ?", (inp.limit,))
         return ListOut(total=int(total["n"]) if total else 0,
                        items=[ItemRow(subject_id=r["subject_id"], source=r["source"], created_at=r["created_at"],
-                                      preview=str(json.loads(r["body_json"]))[:80]) for r in rows])  # fmt: skip
+                                      preview=str(json.loads(r["body_json"]))[:80], parts=list(json.loads(r["parts_json"]))) for r in rows])  # fmt: skip

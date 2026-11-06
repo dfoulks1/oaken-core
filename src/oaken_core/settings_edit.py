@@ -65,7 +65,7 @@ SECTIONS: tuple[Section, ...] = (
         _keys(
             "lease_seconds", "max_attempts", "backoff_base_seconds", "backoff_max_seconds", "backoff_jitter",
             "handler_timeout_seconds", "max_result_bytes", "kind_limits", "requeue_cooldown_seconds",
-            "open_gate_on_final_failure",
+            "store_by_default", "embed_by_default", "unmatched_format", "failed_format", "open_gate_on_final_failure",
         ),
     ),  # fmt: skip
     Section(
