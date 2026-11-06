@@ -1,0 +1,24 @@
+{% extends "base.html" %}{% from "_plugin_table.html" import flow with context %}{% from "_fields.html" import csrf %}{% block title %}Labels{% endblock %}
+{% block body %}
+<h1>Pipeline</h1>
+{{ flow(stages) }}
+<nav class="nav" aria-label="Pipeline"><a href="/pipeline" aria-current="page">Labels</a><a href="/pipeline/plugins">Plugins</a></nav>
+<p class="muted">A label is a key and a value on a subject. A person's value (the human layer) wins over a machine's. Reserved keys are core's; plugins define the rest.</p>
+<div class="card"><div class="card-head"><span>Keys</span></div>
+<div class="table-wrap"><table class="table"><tr><th>Key</th><th>For</th><th>Allowed values</th><th></th></tr>
+{% for k in keys %}<tr><td class="mono"><a href="/pipeline?key={{ k.key }}">{{ k.key }}</a></td><td>{{ k.description }}</td><td>{{ k["values"]|join(", ") if k["values"] else "any text" }}</td><td class="muted">{{ "reserved" if k.reserved }}</td></tr>{% endfor %}</table></div></div>
+<div class="card"><div class="card-head"><span>Find</span></div>
+<form method="get" action="/pipeline" class="dialog-body"><div class="form-grid">
+<label for="lf-subject">Subject</label><input class="input mono" id="lf-subject" name="subject" value="{{ subject }}" placeholder="a subject id" autocomplete="off">
+<label for="lf-key">Or by key</label><div class="row"><select class="select" id="lf-key" name="key"><option value="">(choose)</option>{% for k in keys %}<option value="{{ k.key }}"{{ " selected" if k.key == key }}>{{ k.key }}</option>{% endfor %}</select><input class="input" name="value" value="{{ value }}" placeholder="value (optional)" autocomplete="off"></div>
+</div><div class="dialog-foot"><button class="btn btn-primary">Look up</button></div></form></div>
+{% if got is not none %}<div class="card"><div class="card-head"><span>Labels on <span class="mono">{{ subject }}</span></span></div>
+<div class="table-wrap"><table class="table"><tr><th>Key</th><th>Value</th><th>Human</th><th>Machine</th><th></th></tr>
+{% for l in got %}<tr><td class="mono">{{ l.key }}</td><td>{{ l.effective }}</td><td>{{ l.human or "" }}</td><td>{{ l.machine or "" }}</td>
+<td class="right"><form class="inline" method="post" action="/ui/labels/clear">{{ csrf(token) }}<input type="hidden" name="subject" value="{{ subject }}"><input type="hidden" name="key" value="{{ l.key }}"><button class="btn btn-sm">Clear mine</button></form></td></tr>{% else %}<tr><td colspan="5" class="muted">No labels on this subject.</td></tr>{% endfor %}</table></div>
+<form method="post" action="/ui/labels/set" class="dialog-foot">{{ csrf(token) }}<input type="hidden" name="subject" value="{{ subject }}">
+<select class="select" name="key">{% for k in keys %}<option value="{{ k.key }}">{{ k.key }}</option>{% endfor %}</select><input class="input" name="value" placeholder="value" required autocomplete="off"><button class="btn btn-primary">Set</button><span class="muted">It shows what it will do first.</span></form></div>{% endif %}
+{% if found is not none %}<div class="card"><div class="card-head"><span>Subjects with <span class="mono">{{ key }}{{ "=" ~ value if value }}</span></span><span class="muted small">{{ found|length }}</span></div>
+<div class="table-wrap"><table class="table"><tr><th>Subject</th><th>Value</th></tr>
+{% for h in found %}<tr><td class="mono"><a href="/pipeline?subject={{ h.subject_id|urlencode }}">{{ h.subject_id }}</a></td><td>{{ h.value }}</td></tr>{% else %}<tr><td colspan="2" class="muted">None.</td></tr>{% endfor %}</table></div></div>{% endif %}
+{% endblock %}

@@ -377,7 +377,7 @@ async def test_each_queue_is_a_stage_in_the_nav_with_its_kinds_plugins_and_the_r
         assert "notes" in stage.text and "flow-strip" in stage.text and "Intake" in stage.text
         assert (await client.get("/stage/default")).status_code == 404  # intake is not a stage page
         assert (await client.get("/stage/nope")).status_code == 404
-        machinery = (await client.get("/pipeline")).text
+        machinery = (await client.get("/pipeline/plugins")).text
         assert "notes" not in machinery and "sqlite" in machinery  # enrichers have their stage; the store is machinery
         assert 'aria-label="Settings for notes"' in stage.text and 'aria-label="Reload notes"' in stage.text  # icon buttons (gear, cycle)
         row = stage.text[stage.text.index('href="/plugins/enricher/notes">notes'):]
@@ -399,7 +399,7 @@ async def test_the_general_page_adds_a_stage_for_an_analyzer_kind_after_asking(t
         assert 'value="triager"' in page and 'value="action"' in page
         assert 'value="enricher"' not in page and 'value="embedder"' not in page  # one queue per kind; analyzers only
         assert page.index("<span>Queues</span>") < page.index('popovertarget="add-stage"', page.index("<span>Queues</span>")) < page.index("<span>Active plugins</span>")  # by the Queues table
-        assert 'popovertarget="add-stage"' not in (await client.get("/pipeline")).text  # only on General
+        assert 'popovertarget="add-stage"' not in (await client.get("/pipeline/plugins")).text  # only on General
         form = {"csrf": token, "name": "", "kind": "triager", "label": "My Triage", "workers": "1"}  # a title only: the name comes from it
         first = await client.post("/ui/queues/add", data=form)
         assert first.status_code == 200 and "my_triage" in first.text and not (oaken_home / "config" / "config.toml").exists()  # the confirm step shows the name
@@ -465,7 +465,7 @@ async def test_the_gear_opens_that_plugins_settings_in_a_dialog_and_a_save_comes
         dialog = page[page.index('id="set-1"'):]
         assert 'action="/ui/plugins/enricher/notes/settings"' in dialog and 'name="f_greeting"' in dialog
         assert 'id="m1-f_greeting"' in dialog and 'name="back" value="/stage/enrich"' in dialog  # unique ids; returns here
-        pipe = (await client.get("/pipeline")).text
+        pipe = (await client.get("/pipeline/plugins")).text
         ids = [i for i in __import__("re").findall(r'id="(m[a-z0-9_-]*-f_[a-z_]+)"', pipe)]
         assert len(ids) == len(set(ids))  # several dialogs on one page never share an id
         saved = await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "/stage/enrich", "f_greeting": "yo", "f_limit": "5"})
@@ -492,7 +492,7 @@ async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        for path in ("/", "/pipeline", "/stage/enrich", "/plugins", "/capabilities", "/config", "/plugins/enricher/notes"):
+        for path in ("/", "/pipeline", "/pipeline/plugins", "/stage/enrich", "/plugins", "/capabilities", "/config", "/plugins/enricher/notes"):
             html = (await client.get(path)).text
             tokens = re.findall(r'name="csrf" value="([^"]*)"', html)
             assert tokens and set(tokens) == {core.console.token}, (path, set(tokens))
@@ -548,7 +548,7 @@ async def test_the_pipeline_is_a_collapsible_section_per_kind_that_has_plugins_a
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        page = (await client.get("/pipeline")).text
+        page = (await client.get("/pipeline/plugins")).text
         heads = re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)
         assert "Stores" in heads and "Enrichers" not in heads  # a kind with plugins; a stage has its own page
         assert "LLM backends" not in heads and "Nothing installed for:" in page and "LLM backends" in page  # empties: one quiet line
@@ -591,7 +591,7 @@ async def test_a_setting_with_choices_is_a_dropdown_and_one_that_cannot_be_fille
                            [EP("picky", Picky), EP("mute", Mute)])  # fmt: skip
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        page = (await client.get("/pipeline?tab=enricher")).text
+        page = (await client.get("/pipeline/plugins?tab=enricher")).text
         picky = page[page.index('action="/ui/plugins/enricher/picky/settings"'):]
         picky = picky[: picky.index("</form>")]
         assert '<select class="select"' in picky and 'name="f_model"' in picky
@@ -656,6 +656,34 @@ async def test_a_stage_page_starts_and_stops_its_queue_and_edits_renames_and_del
         assert (await post("/ui/queues/nope/pause")).status_code == 422
         gone = await post("/ui/queues/enrich/delete", confirm="1")
         assert gone.status_code == 200 and "Delete: enrich" in gone.text
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+# -- Pipeline > Labels -------------------------------------------------------------------------
+async def test_pipeline_labels_lists_keys_looks_up_a_subject_and_sets_and_clears_after_asking(tmp_path: Path, oaken_home: Path) -> None:
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    try:
+        assert 'href="/pipeline/plugins"' in (await client.get("/pipeline")).text and 'href="/pipeline"' in (await client.get("/pipeline/plugins")).text  # the two tabs
+        page = await client.get("/pipeline")  # Labels is the default tab
+        assert page.status_code == 200 and "confidential" in page.text and "reserved" in page.text and 'aria-current="page">Pipeline' in page.text
+        form = {"csrf": token, "subject": "s1", "key": "priority", "value": "high"}
+        asked = await client.post("/ui/labels/set", data=form)
+        assert asked.status_code == 200 and "Set priority=high on s1" in asked.text
+        assert "high" not in (await client.get("/pipeline?subject=s1")).text.split("Labels on")[-1]  # nothing written yet
+        done = await client.post("/ui/labels/set", data={**form, "confirm": "1"})
+        assert done.status_code == 303 and done.headers["location"] == "/pipeline?subject=s1"
+        looked = (await client.get("/pipeline?subject=s1")).text
+        assert "Labels on" in looked and ">high<" in looked
+        by_key = (await client.get("/pipeline?key=priority&value=high")).text
+        assert "Subjects with" in by_key and 'href="/pipeline?subject=s1"' in by_key
+        assert (await client.post("/ui/labels/clear", data={"csrf": token, "subject": "s1", "key": "priority", "confirm": "1"})).status_code == 303
+        assert "No labels on this subject" in (await client.get("/pipeline?subject=s1")).text
+        assert (await client.post("/ui/labels/explode", data={"csrf": token})).status_code == 404
+        assert (await client.get("/pipeline?key=nope")).status_code == 422
     finally:
         await client.aclose()
         await core.host.stop()

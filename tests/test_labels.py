@@ -122,3 +122,21 @@ async def test_the_queue_validator_runs_on_every_write(labels: LabelStore, maker
     with pytest.raises(LabelError, match="no queue named"):
         await labels.set(S, "queue", "typo", USER)
     assert await labels.get(S, "queue") == "enrichers"
+
+
+async def test_keys_lists_every_defined_key_by_name(maker: LabelMaker) -> None:
+    keys = [b.key for b in maker.keys()]
+    assert keys == sorted(keys) and {"queue", "priority", "confidential", "heat"} <= set(keys)
+
+
+async def test_find_returns_subjects_with_the_effective_value_and_filters_on_it(labels: LabelStore) -> None:
+    await labels.set("a", "heat", "calm", SYSTEM)
+    await labels.set("a", "heat", "hot", USER)  # the person's value wins
+    await labels.set("b", "heat", "hot", SYSTEM)
+    await labels.set("c", "heat", "calm", SYSTEM)
+    assert await labels.find("heat") == [("a", "hot"), ("b", "hot"), ("c", "calm")]
+    assert await labels.find("heat", "hot") == [("a", "hot"), ("b", "hot")]
+    assert await labels.find("heat", "calm") == [("c", "calm")]  # a's machine "calm" is overridden
+    assert await labels.find("heat", limit=1) == [("a", "hot")]
+    with pytest.raises(LabelError):
+        await labels.find("nope")

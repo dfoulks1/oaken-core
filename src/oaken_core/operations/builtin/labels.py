@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from oaken_core.errors import InvalidInput
+from oaken_core.labels import LabelError
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.registry import Change, Preview, operation
 
@@ -98,4 +99,52 @@ async def label_clear(ctx: OpContext, inp: LabelClearIn) -> LabelClearOut:
     raise InvalidInput("only a person clears labels")
 
 
-OPERATIONS = (label_get, label_set, label_clear)
+class Empty(BaseModel):
+    pass
+
+
+class LabelKey(BaseModel):
+    key: str
+    description: str
+    values: list[str]  # empty: any text
+    reserved: bool  # core's own
+
+
+class LabelKeysOut(BaseModel):
+    keys: list[LabelKey]
+
+
+@operation("label_keys", "Every label key: what it is for, the values it allows, and whether core reserves it.",
+           permission="read", input=Empty, output=LabelKeysOut, mcp="on", group="label")  # fmt: skip
+async def label_keys(ctx: OpContext, inp: Empty) -> LabelKeysOut:
+    return LabelKeysOut(keys=[LabelKey(key=b.key, description=b.description, values=list(b.values), reserved=b.reserved)
+                              for b in ctx.svc.labels.maker.keys()])  # fmt: skip
+
+
+class LabelFindIn(BaseModel):
+    key: str
+    value: str | None = Field(default=None, description="Only subjects whose effective value is this.")
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class LabelHit(BaseModel):
+    subject_id: str
+    value: str
+
+
+class LabelFindOut(BaseModel):
+    key: str
+    hits: list[LabelHit]
+
+
+@operation("label_find", "Subjects that carry a label key, optionally with one value.",
+           permission="read", input=LabelFindIn, output=LabelFindOut, mcp="on", group="label")  # fmt: skip
+async def label_find(ctx: OpContext, inp: LabelFindIn) -> LabelFindOut:
+    try:
+        found = await ctx.svc.labels.find(inp.key, inp.value, inp.limit)
+    except LabelError as exc:
+        raise InvalidInput(exc.message) from None
+    return LabelFindOut(key=inp.key, hits=[LabelHit(subject_id=s, value=v) for s, v in found])
+
+
+OPERATIONS = (label_get, label_set, label_clear, label_keys, label_find)

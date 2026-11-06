@@ -88,6 +88,10 @@ class LabelMaker:
             raise LabelError(f"only core reserves keys; {label.key!r} is not one of core's")
         self._labels[label.key] = label
 
+    def keys(self) -> list[BaseLabel]:
+        """Every defined key, by name."""
+        return sorted(self._labels.values(), key=lambda b: b.key)
+
     def set_validator(self, key: str, check: Validator) -> None:
         """Add a check to a registered key, run on every write (``queue`` must name a real queue)."""
         self.get(key)
@@ -142,6 +146,14 @@ class LabelStore:
                 old=old, new=value,
             )  # fmt: skip
         return True
+
+    async def find(self, key: str, value: str | None = None, limit: int = 100) -> list[tuple[str, str]]:
+        """Subjects carrying ``key`` (with ``value``, if given), as (subject, effective value), by subject.
+        shortcut: reads every row of one key and sorts out the layers here; do it in SQL when one key holds many thousands."""
+        self.maker.get(key)
+        rows = await self.db.fetchall("SELECT subject_id, layer, value FROM labels WHERE key = ? ORDER BY subject_id, layer = 'human'", (key,))
+        effective = {r["subject_id"]: r["value"] for r in rows}  # human rows sort last, so they win
+        return [(sid, v) for sid, v in effective.items() if value is None or v == value][:limit]
 
     async def get(self, subject_id: str, key: str) -> str | None:
         """The effective value: human if set, else machine."""

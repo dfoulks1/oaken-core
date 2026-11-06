@@ -22,6 +22,7 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import jinja2
 from pydantic import BaseModel
@@ -37,8 +38,6 @@ from oaken_core.config_edit import refuse_secrets, set_table
 from oaken_core.console import forms
 from oaken_core.console.forms import Field
 from oaken_core.console.guard import ConsoleGuard, PortRef
-from oaken_core import identity
-from oaken_core.queues import DEFAULT
 from oaken_core.errors import ConfigError, InvalidInput, NotFound, OakenError, PermissionDenied
 from oaken_core.logging import get_logger
 from oaken_core.operations.caller import CallerContext
@@ -48,6 +47,7 @@ from oaken_core.operations.services import Services
 from oaken_core.plugins.contracts import UiPage, UiSpec
 from oaken_core.plugins.host import HOST_KEYS
 from oaken_core.plugins.ui import reposition
+from oaken_core.queues import DEFAULT
 
 log = get_logger("oaken_core.console")
 HERE = Path(__file__).resolve().parent
@@ -81,7 +81,9 @@ class Console:
         routes = [
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
-            Route("/pipeline", self.page(self.pipeline)),
+            Route("/pipeline", self.page(self.labels_page)),
+            Route("/pipeline/plugins", self.page(self.pipeline)),
+            Route("/ui/labels/{verb}", self.post(self.label_verb), methods=["POST"]),
             Route("/capabilities", self.page(self.capabilities)),
             Route("/stage/{queue}", self.page(self.stage)),
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
@@ -317,6 +319,29 @@ class Console:
             (sections if found else empty).append((k, self._kind_label(k), found) if found else self._kind_label(k))
         plugins = [p for _, _, ps in sections for p in ps]
         return self.render("pipeline.html", stages=stages, sections=sections, empty=empty, modals=await self._modals(plugins))
+
+    async def labels_page(self, request: Request) -> Response:
+        """Pipeline, the default tab: the keys that exist, then a look-up by subject or by key, with set and clear beside the result."""
+        stages, _ = await self._flow()
+        q = request.query_params
+        subject, key, value = q.get("subject", "").strip(), q.get("key", "").strip(), q.get("value", "").strip()
+        keys = (await self._op("label_keys"))["keys"]
+        got = (await self._op("label_get", {"subject_id": subject}))["labels"] if subject else None
+        found = (await self._op("label_find", {"key": key, "value": value or None}))["hits"] if key else None
+        return self.render("labels.html", stages=stages, keys=keys, subject=subject, key=key, value=value, got=got, found=found)
+
+    async def label_verb(self, request: Request, form: dict[str, str]) -> Response:
+        """Set or clear one label for a subject, as a person (the human layer). Shows what it will do first."""
+        verb = request.path_params["verb"]
+        if verb not in ("set", "clear"):
+            raise NotFound("no such action")
+        payload = {"subject_id": form.get("subject", "").strip(), "key": form.get("key", "").strip()}
+        if verb == "set":
+            payload["value"] = form.get("value", "")
+        out = await self._gated(f"label_{verb}", payload, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        return RedirectResponse(f"/pipeline?subject={quote(payload['subject_id'])}", 303)
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()
