@@ -13,6 +13,7 @@ phase (``anchor + k * interval``); cron expressions are evaluated in UTC (see ``
 import asyncio
 import contextlib
 from datetime import datetime, timedelta
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -102,6 +103,25 @@ class Scheduler:
 
     async def remove(self, name: str) -> bool:
         return await self.db.execute("DELETE FROM schedules WHERE name = ?", (name,)) > 0
+
+    async def rows(self) -> list[dict[str, Any]]:
+        """Every schedule, by name."""
+        return [dict(r) for r in await self.db.fetchall("SELECT * FROM schedules ORDER BY name")]
+
+    async def row(self, name: str) -> dict[str, Any] | None:
+        r = await self.db.fetchone("SELECT * FROM schedules WHERE name = ?", (name,))
+        return dict(r) if r else None
+
+    async def run_now(self, name: str) -> bool:
+        """Enqueue one run of a schedule now. Its ``next_run`` does not move. False: no such schedule."""
+        r = await self.row(name)
+        if r is None:
+            return False
+        async with self.db.transaction() as tx:
+            _, change = await self.jobs.enqueue_in(tx, r["kind"], r["payload_json"], queue=r["queue"], subject=r["subject"], priority=r["priority"],
+                                                   dedupe_key=f"schedule:{name}:manual:{fmt_ts(self.clock.now())}")  # fmt: skip
+        await self.jobs.announce(change)
+        return True
 
     async def next_run(self, name: str) -> datetime | None:
         row = await self.db.fetchone("SELECT next_run FROM schedules WHERE name = ?", (name,))

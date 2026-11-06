@@ -507,7 +507,7 @@ class BaseFormatter(BasePlugin):
 
 
 class BaseTriager(BaseAnalyzer):
-    """Rates an intake item before it is stored. Lowest ``rank`` first; the first verdict wins."""
+    """Rates an intake item before it is stored. Lowest ``rank`` first. Any reject ends it; otherwise every triager answers and the last to answer decides. ``item.verdicts`` holds what the ones before said."""
     kind: ClassVar[str] = "triager"
 
     rank: ClassVar[int] = 50

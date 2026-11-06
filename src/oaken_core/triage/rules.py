@@ -30,8 +30,8 @@ from typing import Any, ClassVar, Literal
 
 from oaken_core.intake import IntakeItem, Verdict, item_text
 from oaken_core.plugins.base import BaseTriager, command
-from oaken_core.plugins.contracts import PluginOpContext
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from oaken_core.plugins.contracts import PluginOpContext, UiField, UiPage, UiSpec
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 Scalar = str | int | float | bool
 
@@ -98,24 +98,29 @@ def _dig(body: Any, path: str) -> tuple[bool, Any]:
     return True, cur
 
 
-def matches(item: IntakeItem, when: When) -> bool:
-    checks: list[bool] = []
+def explain(item: IntakeItem, when: When) -> list[tuple[str, bool]]:
+    """Each condition of ``when``, as a short line, with whether it holds for ``item``."""
+    out: list[tuple[str, bool]] = []
     if when.source is not None:
-        checks.append(_glob_or_text(when.source, item.source))
+        out.append((f"source ~ {when.source}", _glob_or_text(when.source, item.source)))
     if when.body_contains is not None:
-        checks.append(when.body_contains.lower() in item_text(item).lower())
+        out.append((f"body contains {when.body_contains!r}", when.body_contains.lower() in item_text(item).lower()))
     for path, want in (when.field_equals or {}).items():
         found, got = _dig(item.body, path)
-        checks.append(found and got == want and type(got) is type(want))  # 1 is not True, "1" is not 1
+        out.append((f"{path} == {want!r}" + ("" if found else " (no such field)"), found and got == want and type(got) is type(want)))  # 1 is not True, "1" is not 1
     for path, text in (when.field_contains or {}).items():
         found, got = _dig(item.body, path)
-        checks.append(found and text.lower() in str(got).lower())
+        out.append((f"{path} contains {text!r}" + ("" if found else " (no such field)"), found and text.lower() in str(got).lower()))
     for path in when.field_present or []:
-        checks.append(_dig(item.body, path)[0])
+        out.append((f"{path} is present", _dig(item.body, path)[0]))
     if when.has_label is not None:
         key, _, value = when.has_label.partition("=")
-        checks.append(key in item.labels and (not value or item.labels[key] == value))
-    return all(checks)
+        out.append((f"has label {when.has_label}", key in item.labels and (not value or item.labels[key] == value)))
+    return out
+
+
+def matches(item: IntakeItem, when: When) -> bool:
+    return all(ok for _, ok in explain(item, when))
 
 
 def first_match(item: IntakeItem, rules: list[Rule]) -> Rule | None:
@@ -157,6 +162,62 @@ class TryOut(BaseModel):
     reason: str
 
 
+class CheckIn(BaseModel):
+    """The tester's form: the conditions of one rule, and an item to try them on."""
+
+    source: str | None = None
+    body_contains: str | None = None
+    field_equals: list[str] = Field(default_factory=list)
+    field_contains: list[str] = Field(default_factory=list)
+    field_present: list[str] = Field(default_factory=list)
+    has_label: str | None = None
+    item_source: str = "test"
+    item_labels: list[str] = Field(default_factory=list)
+    payload: str = ""
+
+
+class Check(BaseModel):
+    condition: str
+    holds: bool
+
+
+class CheckOut(BaseModel):
+    matches: bool
+    checks: list[Check]
+    problem: str = ""
+    toml: str = ""  # the rule, ready to paste under [[plugins.triager.rules.rules]]
+    saved: TryOut | None = None  # what the rules in config.toml would do with the payload
+
+
+def _pairs(lines: list[str]) -> dict[str, str]:
+    return {k.strip(): v.strip() for k, _, v in (ln.partition("=") for ln in lines) if k.strip()}
+
+
+def _typed(text: str) -> Any:
+    """``3`` is a number, ``true`` a bool, ``"3"`` the text 3; anything that is not JSON is text."""
+    try:
+        v = json.loads(text)
+    except ValueError:
+        return text
+    return v if isinstance(v, str | int | float | bool) else text
+
+
+TESTER = UiPage(
+    "tester", "Try a rule", load="list", test="check",
+    fields=(
+        UiField("source", "source", help="The source contains this text, or matches a glob such as voltpop*."),
+        UiField("body_contains", "body_contains", help="The body's text contains this."),
+        UiField("field_equals", "field_equals", "list", help="One path=value per line (company.size=3). 3 is a number, true a bool, \"3\" text."),
+        UiField("field_contains", "field_contains", "list", help="One path=text per line."),
+        UiField("field_present", "field_present", "list", help="One path per line."),
+        UiField("has_label", "has_label", help="A key, or key=value."),
+        UiField("item_source", "item source", help="The source the pasted item came from."),
+        UiField("item_labels", "item labels", "list", help="One key=value per line."),
+        UiField("payload", "payload", "textarea", help="The item's body: paste JSON, or plain text."),
+    ),
+)  # fmt: skip
+
+
 class RulesTriager(BaseTriager):
     """Runs before the models (rank 5): an item you have a rule for is never sent to one."""
 
@@ -168,6 +229,29 @@ class RulesTriager(BaseTriager):
     async def triage(self, item: IntakeItem) -> Verdict | None:
         rule = first_match(item, self.config.rules)
         return verdict_of(rule) if rule else None
+
+    def ui(self) -> UiSpec:
+        return UiSpec(pages=(TESTER,))
+
+    @command("check", "Try one rule's conditions on a pasted item (which hold, and the rule as TOML), and what the saved rules would decide for it. Changes nothing.", input=CheckIn, output=CheckOut)
+    async def check(self, ctx: PluginOpContext, inp: CheckIn) -> CheckOut:
+        when = {k: v for k, v in {"source": inp.source, "body_contains": inp.body_contains, "has_label": inp.has_label,
+                                  "field_equals": {k: _typed(v) for k, v in _pairs(inp.field_equals).items()},
+                                  "field_contains": _pairs(inp.field_contains), "field_present": inp.field_present}.items() if v}  # fmt: skip
+        try:
+            body: Any = json.loads(inp.payload)
+        except ValueError:
+            body = inp.payload
+        item = IntakeItem("test", inp.item_source, body, _pairs(inp.item_labels))
+        saved = await self.try_item(ctx, TryIn(source=inp.item_source, body=inp.payload, labels=_pairs(inp.item_labels))) if inp.payload.strip() else None
+        if not when and saved is not None:  # no rule typed: just the saved ones
+            return CheckOut(matches=False, checks=[], saved=saved)
+        try:
+            cond = When(**when)
+        except ValidationError as exc:
+            return CheckOut(matches=False, checks=[], problem="; ".join(e["msg"].removeprefix("Value error, ") for e in exc.errors()), saved=saved)
+        checks = [Check(condition=c, holds=ok) for c, ok in explain(item, cond)]
+        return CheckOut(matches=all(c.holds for c in checks), checks=checks, toml="when = " + json.dumps(when), saved=saved)  # shortcut: JSON is valid TOML inline-table text only for plain values, which these are; upgrade if a rule needs dates
 
     @command("list", "The rules, in the order they run.", input=Nothing, output=RulesOut)
     async def list_rules(self, ctx: PluginOpContext, inp: Nothing) -> RulesOut:

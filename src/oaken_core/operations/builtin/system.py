@@ -1,13 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 """Status, the change log, plugins and MCP exposure."""
 
+import os
 import tomllib
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from oaken_core import paths
-from oaken_core.config_edit import get_table, refuse_secrets, save_table
+from oaken_core.config_edit import get_table, refuse_secrets, remove_table, save_table
 from oaken_core.errors import InvalidInput, NotFound, PluginError
 from oaken_core.operations.builtin.queue import Empty, QueueRow, reload_core
 from oaken_core.operations.context import OpContext
@@ -274,6 +275,38 @@ async def plugin_add(ctx: OpContext, inp: PluginAddIn) -> PluginAddOut:
     return PluginAddOut(kind=plan.kind, name=plan.name, started=status.started, detail=status.detail)
 
 
+class PluginRemoveIn(BaseModel):
+    kind: str
+    name: str = Field(description="The instance's name, as listed by `plugin list`.")
+
+
+class PluginRemoveOut(BaseModel):
+    kind: str
+    name: str
+
+
+async def _plugin_remove_preview(ctx: OpContext, inp: PluginRemoveIn) -> Preview:
+    return Preview(summary=f"Remove {inp.kind} {inp.name}: stop it and delete its table from config.toml", changes=[Change(target=f"{inp.kind}.{inp.name}", field="table")], total_changes=1)
+
+
+@operation("plugin_remove", "Remove a named instance of a plugin: stopped, and its table deleted from config.toml. The plugin it was made from stays.",
+           permission="mutate", input=PluginRemoveIn, output=PluginRemoveOut, mcp="never", group="plugin",
+           preview=_plugin_remove_preview)  # fmt: skip
+async def plugin_remove(ctx: OpContext, inp: PluginRemoveIn) -> PluginRemoveOut:
+    host = need(ctx.svc.host, "the plugin host")
+    try:
+        await host.remove_instance(inp.kind, inp.name)
+    except PluginError as exc:
+        raise InvalidInput(exc.message) from None
+    path = paths.config_dir() / "config.toml"
+    if path.exists():
+        text = path.read_text(encoding="utf-8")
+        tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+        tmp.write_text(remove_table(text, ["plugins", inp.kind, inp.name]), encoding="utf-8")
+        os.replace(tmp, path)
+    return PluginRemoveOut(kind=inp.kind, name=inp.name)
+
+
 class ReloadOut(BaseModel):
     reloading: bool
     note: str
@@ -449,4 +482,4 @@ async def mcp_power(ctx: OpContext, inp: McpPowerIn) -> McpPowerOut:
 
 
 OPERATIONS = (status, log_list, plugin_list, plugin_describe, plugin_enable, plugin_disable, plugin_reload,
-              exposure_list, exposure_set, mcp_power, ai_usage, plugin_add, plugin_test, core_reload)  # fmt: skip
+              exposure_list, exposure_set, mcp_power, ai_usage, plugin_add, plugin_remove, plugin_test, core_reload)  # fmt: skip

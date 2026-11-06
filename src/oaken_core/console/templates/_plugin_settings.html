@@ -1,14 +1,16 @@
 {% from "_fields.html" import field, csrf %}{% import "_macros.html" as m with context %}
 {# A plugin's settings: one row per setting, then a footer with Test, Cancel (when in a dialog) and Save. ``mc`` is what the
    console knows of it; ``back`` is the page to return to; ``pre`` keeps ids unique when several are on one page; ``dialog``
-   is the id of the dialog this sits in, so Cancel can close it. #}
-{% macro settings_form(status, mc, back, pre="", dialog="") %}
+   is the id of the dialog this sits in, so Cancel can close it; ``here`` is the stage whose page it was opened from (the
+   stage is then known, so it is not asked). #}
+{% macro settings_form(status, mc, back, pre="", dialog="", here="") %}
 {% set t = test if test and test.key == status.kind ~ "/" ~ status.name else none %}{% set vals = t["values"] if t else mc["values"] %}{% set own = t.own if t else mc.own %}
 <form method="post" action="/ui/plugins/{{ status.kind }}/{{ status.name }}/settings">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}">
   {% if t %}<div class="dialog-body"><p class="{{ 'ok' if t.result.works else 'bad' }}" role="status"><strong>Test: {{ "works" if t.result.works else "does not work" }}.</strong> {{ t.result.detail }} <span class="muted">Nothing was saved.</span></p></div>{% endif %}
   <div class="dialog-body">
     {% for title, fs in mc.sections %}{% if mc.sections|length > 1 %}<h3 class="eyebrow">{{ title }}</h3>{% endif %}{% for f in fs %}{{ field(f, vals.get(f.name), pre) }}{% endfor %}{% endfor %}
-    {% if mc.stages %}<div class="field"><label for="{{ pre }}stage">stage</label><div><select class="input" id="{{ pre }}stage" name="stage">{% for n, title in mc.stages %}<option value="{{ n }}"{{ " selected" if n == mc.stage }}>{{ title }}</option>{% endfor %}</select>
+    {% if mc.stages and here %}<input type="hidden" name="stage" value="{{ here }}">
+    {% elif mc.stages %}<div class="field"><label for="{{ pre }}stage">stage</label><div><select class="input" id="{{ pre }}stage" name="stage">{% for n, title in mc.stages %}<option value="{{ n }}"{{ " selected" if n == mc.stage }}>{{ title }}</option>{% endfor %}</select>
       <div class="hint">The stage this one runs in. A plugin runs in one stage; add another instance of it to run it in a second.</div></div></div>{% endif %}
     {% if mc.llm %}<h3 class="eyebrow">Model</h3>
     <div class="field"><label for="{{ pre }}route_model">model</label><div><select class="input" id="{{ pre }}route_model" name="route_model">

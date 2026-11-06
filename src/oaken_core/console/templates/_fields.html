@@ -4,7 +4,7 @@
   <div>
   {% if f.kind == "bool" %}{{ m.toggle("f_" ~ f.name, value if value is not none else f.default, f.label, id=pre ~ "f_" ~ f.name) }}
   {% elif f.kind == "enum" %}<select class="select" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}"><option value=""></option>{% for c in f.choices %}<option value="{{ c }}" {% if value|string == c %}selected{% endif %}>{{ c }}</option>{% endfor %}{% if value and value|string not in f.choices %}<option value="{{ value }}" selected>{{ value }} (not offered)</option>{% endif %}</select>
-  {% elif f.kind in ("list", "json") %}<textarea class="input mono" rows="3" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}" spellcheck="false">{{ display(f, value) }}</textarea>
+  {% elif f.kind in ("list", "json", "textarea") %}<textarea class="input mono" rows="{{ 8 if f.kind == "textarea" else 3 }}" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}" spellcheck="false">{{ display(f, value) }}</textarea>
   {% elif f.kind == "number" %}<input class="input" type="number" step="any" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}" placeholder="{{ display(f, f.default) }}">
   {% else %}<input class="input" type="text" id="{{ pre }}f_{{ f.name }}" name="f_{{ f.name }}" value="{{ display(f, value) }}" placeholder="{{ display(f, f.default) }}">{% endif %}
   {% if f.help %}<div class="hint">{{ f.help }}</div>{% endif %}

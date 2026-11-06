@@ -196,13 +196,13 @@ class PluginOperation:
 
 @dataclass(frozen=True)
 class UiField:
-    """One input of a page. ``kind`` is text, number, bool, enum (``choices``) or list (one string a
-    line). ``name`` is the key in the page's ``load`` values and in what ``test`` and ``submit``
+    """One input of a page. ``kind`` is text, number, bool, enum (``choices``), list (one string a
+    line) or textarea (one string, many lines). ``name`` is the key in the page's ``load`` values and in what ``test`` and ``submit``
     receive."""
 
     name: str
     label: str = ""
-    kind: Literal["text", "number", "bool", "enum", "list"] = "text"
+    kind: Literal["text", "number", "bool", "enum", "list", "textarea"] = "text"
     choices: tuple[str, ...] = ()
     help: str = ""
     required: bool = False

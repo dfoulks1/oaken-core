@@ -24,7 +24,7 @@ async def test_the_cli_sees_everything_and_a_person_over_mcp_only_what_is_on(ops
     every = {o.name for o in await ops.client.visible(CLI)}
     mcp = {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
     assert {"queue_requeue", "agent_create", "label_clear"} <= every
-    assert mcp == {"status", "queue_list", "queue_get", "job_list", "label_get", "label_keys", "label_find", "plugin_list", "plugin_describe", "job_claim",
+    assert mcp == {"status", "queue_list", "queue_get", "job_list", "label_get", "label_keys", "label_find", "plugin_list", "plugin_describe", "schedule_list", "schedule_get", "job_claim",
                    "job_heartbeat", "job_complete", "job_fail"}  # fmt: skip
     assert not mcp & {o.name for o in ops.registry.all() if o.mcp == "never"}
 

@@ -19,10 +19,11 @@ class Rules:
     name, rank = "rules", 10
 
     def __init__(self, verdict: Verdict | None) -> None:
-        self.verdict, self.calls = verdict, 0
+        self.verdict, self.calls, self.seen = verdict, 0, []
 
     async def triage(self, item: IntakeItem) -> Verdict | None:
         self.calls += 1
+        self.seen.append(item.verdicts)
         return self.verdict
 
 
@@ -82,12 +83,30 @@ async def test_an_accept_ingests_and_the_labels_follow_the_item(kit: Kit) -> Non
     assert job.payload_json == "{}"  # the data lives in the store now
 
 
-async def test_the_lowest_rank_decides_and_later_triagers_are_not_asked(kit: Kit) -> None:
-    rules, model = Rules(Verdict("accept")), Model(Verdict("reject"))
-    intake = make(kit, [model, rules])
-    await intake.submit("web", "x")
+async def _run(kit: Kit, triagers: list, stored: list) -> None:  # type: ignore[type-arg]
+    await make(kit, triagers, stored).submit("web", "x")
     await kit.runner.drain()
-    assert (rules.calls, model.calls) == (1, 0)
+
+
+async def test_any_no_ends_it_and_a_yes_does_not(kit: Kit) -> None:
+    rules, model = Rules(Verdict("accept")), Model(Verdict("reject"))
+    stored: list = []  # type: ignore[type-arg]
+    await _run(kit, [model, rules], stored)
+    assert (rules.calls, model.calls, len(stored)) == (1, 1, 0)  # the yes did not stop the model; its no dropped the item
+
+
+async def test_a_no_ends_the_chain_so_nobody_after_it_is_asked(kit: Kit) -> None:
+    first, last = Rules(Verdict("reject")), Model(Verdict("accept"))
+    stored: list = []  # type: ignore[type-arg]
+    await _run(kit, [first, last], stored)
+    assert (first.calls, last.calls, len(stored)) == (1, 0, 0)
+
+
+async def test_the_last_to_answer_decides_and_sees_what_the_others_said(kit: Kit) -> None:
+    rules, model = Rules(Verdict("unsure", "not mine to say", {"priority": "low"})), Model(Verdict("accept", "yes"))
+    stored: list = []  # type: ignore[type-arg]
+    await _run(kit, [rules, model], stored)
+    assert len(stored) == 1 and list(model.seen[0]) == ["rules"]  # the last one saw the first's "I don't know"
 
 
 async def test_a_pass_goes_to_the_next_triager_and_no_verdict_means_unsure(kit: Kit) -> None:

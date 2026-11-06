@@ -13,7 +13,7 @@ from typing import Any
 from oaken_core.errors import InvalidInput
 from oaken_core.plugins.contracts import UiField
 
-KINDS = ("text", "number", "bool", "enum", "list", "json")
+KINDS = ("text", "number", "bool", "enum", "list", "json", "textarea")
 
 
 @dataclass(frozen=True)

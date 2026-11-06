@@ -34,7 +34,8 @@
     <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Delete queue</button><span class="muted">Refused while jobs are queued or running.</span></div>
   </form>{% endif %}
 </div>
-{{ plugin_table(active, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is active in this stage.", "Active plugins", False, "", False, True, false, stage.name, "new-instance" if bases else "") }}
+{% if bases %}{{ plugin_table(workers, "/stage/" ~ stage.name, "No instance yet: the + makes one.", "Workers", False, "w-", True, False, false, stage.name, "new-instance", True) }}{% endif %}
+{{ plugin_table(active, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is active in this stage.", "Active plugins", False, "", False, True, false, stage.name) }}
 {% if bases %}{{ new_instance_dialog("new-instance", bases, "/stage/" ~ stage.name, stage.name) }}{% endif %}
 {{ inactive_table(available, "/stage/" ~ stage.name, "avail-", stage.name, why) }}
 <details class="card fold" id="fold-failed">

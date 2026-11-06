@@ -62,7 +62,7 @@ CSS_VERSION = hashlib.sha256((HERE / "static" / "oaken.css").read_bytes()).hexdi
 # The Capabilities page's core tables: three, so a new command group does not mean a new table. A group named nowhere here
 # (a product's own) lands in "Other". Plugins keep a table per kind.
 CAPABILITY_CATEGORIES: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Control", ("queue", "job", "label", "intake", "item")),
+    ("Control", ("queue", "schedule", "job", "label", "intake", "item")),
     ("Machinery", ("general", "plugin", "config", "settings", "core", "storage", "cache", "ai", "log", "events")),  # "general": status
     ("Keys and doors", ("agent", "secret", "exposure", "mcp")),
 )
@@ -131,6 +131,7 @@ class Console:
             Route("/ui/config-file/reload", self.post(self.config_file_reload), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/settings", self.post(self.save_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/instance", self.post(self.new_instance), methods=["POST"]),
+            Route("/ui/plugins/{kind}/{name}/remove", self.post(self.remove_instance), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/try", self.post(self.try_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/button", self.post(self.press), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/pages/{page}/{action}", self.post(self.submit_page), methods=["POST"]),
@@ -379,8 +380,11 @@ class Console:
         home = {p.name: self._host().tables.table(p.kind, p.name).get("stage") or first for p in every}  # the stage each runs in
         active = [p for p in every if p.enabled and home[p.name] == name and p.name not in spec.disabled]
         available = [p for p in every if p not in active]
+        bases = self._bases(spec.kind)
+        workers = [p for p in active if p.plugin != p.name] if bases else []  # the instances of a template: the Workers table
+        active = [p for p in active if p not in workers]
         why = {p.name: ("a template: add an instance" if p.template else "off everywhere" if not p.enabled else f"runs in {home[p.name]}" if home[p.name] != name else "switched off in this stage") for p in available}
-        return self.render("stage.html", stage=spec, bases=self._bases(spec.kind), active=active, available=available, why=why, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
+        return self.render("stage.html", stage=spec, bases=bases, workers=workers, active=active, available=available, why=why, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
                            plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
@@ -634,7 +638,12 @@ class Console:
         out = await self._gated(f"{name}{PLUGIN_SEP}{op}", payload, form, request.url.path)
         if isinstance(out, Response):
             return out
-        return self.render("result.html", title=p.title, back=back, result=out.model_dump(mode="json") if out else {})
+        result = out.model_dump(mode="json") if out else {}
+        if action == "test":  # keep the form (and a pasted payload) in front of the person, result below it
+            loaded = await self._op(f"{name}{PLUGIN_SEP}{p.load}")
+            return self.render("page.html", kind=kind, name=name, p=p, fields=[forms.from_ui(f) for f in p.fields], values=payload, messages=[],
+                               rows=loaded.get("rows") or [], display=forms.display, result=result)  # fmt: skip
+        return self.render("result.html", title=p.title, back=back, result=result)
 
     async def add_queue(self, request: Request, form: dict[str, str]) -> Response:
         """The "Add a stage" form: a queue for one analyzer kind. A change, so it shows what it will do first."""
@@ -761,6 +770,15 @@ class Console:
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=f"Added {out.name}", back=f"/plugins/{kind}/{out.name}", result={"note": out.detail or ("started" if out.started else "")})
+
+    async def remove_instance(self, request: Request, form: dict[str, str]) -> Response:
+        """Delete a named instance: the same ``plugin_remove`` the API has, which shows what it will do first."""
+        kind, name = request.path_params["kind"], request.path_params["name"]
+        self._status(kind, name)
+        out = await self._gated("plugin_remove", {"kind": kind, "name": name}, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        return self.render("result.html", title=f"Removed {out.name}", back=self._back("/"), result={"note": "stopped and deleted from config.toml"})
 
     async def save_settings(self, request: Request, form: dict[str, str]) -> Response:
         """Write the plugin's table to ``config.toml`` and restart that plugin on it. Checked

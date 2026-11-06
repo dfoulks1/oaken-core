@@ -21,7 +21,7 @@ payload intact, and ``requeue`` replays it once the triager is fixed. Core never
 import hashlib
 import json
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, Field
@@ -81,6 +81,7 @@ class IntakeItem:
     labels: dict[str, str]
     key: str | None = None
     parts: dict[str, Part] = field(default_factory=dict)  # what the formatter made of the body
+    verdicts: "dict[str, Verdict]" = field(default_factory=dict)  # what the triagers before this one said, by name
 
 
 @dataclass(frozen=True)
@@ -188,12 +189,15 @@ class Intake:
 
     async def _triage_job(self, p: IntakePayload, job: Job) -> IntakeResult:
         item = IntakeItem(p.subject_id, p.source, p.body, p.labels, p.key, p.parts)
-        who, verdict = SYSTEM, None
+        who, verdict, said = SYSTEM, None, []
         try:
-            for t in self._order(job.queue):
-                verdict = await t.triage(item)
-                if verdict is not None:
-                    who = Actor("system", t.name)
+            for t in self._order(job.queue):  # the logicians' bar: any no ends it, and the last to answer decides
+                v = await t.triage(replace(item, verdicts={a.label: r for a, r in said}))
+                if v is None:
+                    continue
+                who, verdict = Actor("system", t.name), v
+                said.append((who, v))
+                if v.kind == "reject":
                     break
         except Exception:
             if not (
@@ -202,15 +206,18 @@ class Intake:
                 raise  # intake backs up; requeue replays it
             log.warning("triager failed on the last attempt; treating as unsure", job_id=job.id)
             verdict = Verdict("unsure", "triage failed")
+            said.append((who, verdict))
         if verdict is None:
             stages = self._stages()
             if job.queue in stages and stages.index(job.queue) + 1 < len(stages):  # nobody here decided: the next stage may
                 await self.jobs.enqueue(KIND, p, subject=p.subject_id, queue=stages[stages.index(job.queue) + 1], actor=SYSTEM)
                 return IntakeResult(verdict="passed")
             verdict = Verdict("unsure", "no triager decided")
+            said.append((who, verdict))
         try:
-            for key, value in verdict.labels.items():
-                await self.labels.set(p.subject_id, key, value, who)
+            for actor, r in said:  # every triager that answered labels the item, under its own name
+                for key, value in r.labels.items():
+                    await self.labels.set(p.subject_id, key, value, actor)
         except LabelError as exc:  # a triager bug: a retry would repeat it
             raise PermanentJobError(str(exc)) from exc
         await self.labels.clear_machine(p.subject_id, who, "triage")  # decided: no longer waiting

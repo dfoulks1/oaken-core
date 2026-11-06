@@ -8,6 +8,7 @@
 {% for f in fields %}{{ field(f, values.get(f.name)) }}{% endfor %}
 <p>{% if p.test %}<button formaction="{{ base }}/test">Test</button> {% endif %}{% if p.submit %}<button class="primary" formaction="{{ base }}/submit">Submit</button>{% endif %}</p></form>
 {% endif %}
+{% if result %}<div class="card"><div class="card-head"><span>Result</span></div><pre class="mono">{{ result|tojson(indent=2) }}</pre></div>{% endif %}
 {% if p.order and rows %}
 <form method="post" action="{{ base }}/order">{{ csrf(token) }}<input type="hidden" name="ids" value="{{ rows|map(attribute='id')|join(',') }}">
 <div class="table-wrap"><table class="table"><tr><th>#</th><th>Item</th></tr>{% for r in rows %}<tr><td><input class="pos" type="text" name="pos_{{ r.id }}" value="{{ loop.index }}" aria-label="position of {{ r.label }}"></td><td>{{ r.label }}</td></tr>{% endfor %}</table></div>

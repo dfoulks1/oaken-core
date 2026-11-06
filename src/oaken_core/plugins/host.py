@@ -420,6 +420,18 @@ class PluginHost:
         else:
             await self._announce(rec)
 
+    async def remove_instance(self, kind: str, name: str) -> None:
+        """Stop a named instance and forget it. The plugin it was made from is not an instance: that one is switched off, not removed."""
+        rec = self._records.get((kind, name))
+        if rec is None:
+            raise NotFound(f"no {kind} named {name!r}")
+        if rec.plugin == rec.name:
+            raise PluginError(f"{name} is a plugin, not an instance of one: switch it off instead")
+        await self._stop_one(rec)
+        del self._records[(kind, name)]
+        self.tables.tables.get(kind, {}).pop(name, None)
+        self._check_needs()
+
     @staticmethod
     def _instantiate(obj: Any) -> Any:
         if isinstance(obj, type) or inspect.isfunction(obj):

@@ -82,5 +82,18 @@ async def test_list_and_test_say_what_the_rules_would_do_without_doing_it() -> N
     assert (hit.matched, hit.verdict, hit.labels) == ("hiring", "accept", {"priority": "high"})
     miss = await t.try_item(None, TryIn(body="plain text"))  # type: ignore[arg-type]
     assert miss.matched is None and "next triager" in miss.reason
-    assert {o.name for o in t.operations()} == {"list", "test"}
+    assert {o.name for o in t.operations()} == {"list", "test", "check"}
     assert all(o.permission == "read" for o in t.operations())
+
+
+async def test_the_tester_checks_a_typed_rule_and_the_saved_rules_against_a_pasted_item() -> None:
+    from oaken_core.triage.rules import CheckIn
+
+    t = await started()
+    body = '{"company": "Acme", "signal": "hiring", "size": 3}'
+    out = await t.check(None, CheckIn(source="voltpop*", field_equals=["size=3", "signal=layoff"], payload=body, item_source="voltpop"))  # type: ignore[arg-type]
+    assert not out.matches and [c.holds for c in out.checks] == [True, True, False]  # size 3 is a number; signal differs
+    assert out.saved is not None and out.saved.matched == "hiring"  # the payload also meets a saved rule
+    assert (await t.check(None, CheckIn(payload=body))).saved is not None  # type: ignore[arg-type]  # no rule typed: just the saved ones
+    assert "at least one condition" in (await t.check(None, CheckIn())).problem  # type: ignore[arg-type]
+    assert t.ui().pages[0].test == "check"

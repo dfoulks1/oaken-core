@@ -205,7 +205,8 @@ async def test_buttons_and_pages_run_only_the_plugins_own_declared_operations(ri
     assert ok.status_code == 200 and "hello" in ok.text
     assert (await rig.post("/ui/plugins/enricher/notes/button", operation="sneaky")).status_code == 403
     assert (await rig.post("/ui/plugins/enricher/notes/button", operation="plugin_disable")).status_code == 403
-    assert "tested abc" in (await rig.post("/ui/plugins/enricher/notes/pages/rules/test", f_text="abc")).text
+    kept = (await rig.post("/ui/plugins/enricher/notes/pages/rules/test", f_text="abc")).text
+    assert "tested abc" in kept and 'value="abc"' in kept  # the result comes back under the form, which keeps what was typed
     missing = await rig.post("/ui/plugins/enricher/notes/pages/rules/test")
     assert missing.status_code == 422 and "required" in missing.text
     asked = await rig.post("/ui/plugins/enricher/notes/pages/rules/submit", f_text="abc")  # a mutate: shown first
@@ -907,6 +908,12 @@ async def test_only_a_template_gets_the_plus_and_its_instances_must_set_what_mak
         assert done.status_code == 200
         assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["plugins"]["enricher"]["jobs"]["topic"] == "hiring"
         assert any(p.name == "jobs" and p.started and not p.template for p in core.host.statuses())
+        stage = (await client.get("/stage/enrich")).text
+        assert "Workers" in stage and 'action="/ui/plugins/enricher/jobs/remove"' in stage and "/ui/plugins/enricher/jobs/reload" not in stage  # a worker row: settings and a red X, no reload
+        assert (await client.post("/ui/plugins/enricher/watcher/remove", data={"csrf": token, "confirm": "1"})).status_code == 422  # the template is switched off, never removed
+        gone = await client.post("/ui/plugins/enricher/jobs/remove", data={"csrf": token, "confirm": "1"})
+        assert gone.status_code == 200 and not any(p.name == "jobs" for p in core.host.statuses())
+        assert "jobs" not in tomllib.loads((oaken_home / "config" / "config.toml").read_text()).get("plugins", {}).get("enricher", {})
     finally:
         await core.host.stop()
 
