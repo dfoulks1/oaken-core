@@ -65,7 +65,7 @@ from oaken_core.trace import Tracer
 log = get_logger("oaken_core.plugins")
 
 _INSTANCE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
-HOST_KEYS = ("enabled", "plugin", "class", "locality", "concurrency", "route", "prompt", "guard")  # the host's settings, never the plugin's
+HOST_KEYS = ("enabled", "plugin", "class", "stage", "locality", "concurrency", "route", "prompt", "guard")  # the host's settings, never the plugin's
 RELATIONS = frozenset({"self", "parent", "children"})  # a product adds more with register_relation
 
 Discover = Callable[[str], Iterable[EntryPoint]]
@@ -138,6 +138,9 @@ class PluginStatus:
     enabled: bool = True
     enabled_default: bool = True
     loadpath: str = ""  # where it loads from: the entry point's ``module:attr`` ("" for one made from none)
+    template: bool = False  # a plugin whose contextual settings are not set: it waits for an instance that sets them
+    warning: str = ""  # what it needs from another plugin that is not running: "needs a model backend". It waits; it does not fail
+    hint: str = ""  # what to do about the warning
 
 
 @dataclass(frozen=True)
@@ -261,7 +264,8 @@ class PluginHost:
                     eps[(spec.name, ep.name)] = ep
         if not eps:
             names = [k.name for k in self.kinds]
-            hit = [e for e in catalog.entries(names) if target in (e.name, f"{e.kind}_{e.name}") and kind in (None, e.kind)]
+            want = target.replace("_", "-")  # ollama_remote and ollama-remote are the same plugin
+            hit = [e for e in catalog.entries(names) if want in (e.name, f"{e.kind}-{e.name}".replace("_", "-")) and kind in (None, e.kind)]
             if len(hit) > 1:
                 raise PluginError(f"{target!r} is {len(hit)} plugins in {catalog.DIST} ({', '.join(e.kind for e in hit)}): add one with --kind")
             if hit:  # in oaken-plugins: imported only now, and added as a class path
@@ -286,6 +290,11 @@ class PluginHost:
             raise PluginError(f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)")
         if (k, name) in self._records or name in self.tables.tables.get(k, {}):
             raise PluginError(f"{k} {name!r} already exists")
+        if base is not None and self.contextual(k, ename):
+            if base.disabled or not self._enabled_by_table(base):
+                raise PluginError(f"{ename} is switched off: turn it on to deploy instances of it")
+            if (missing := [c for c in self.contextual(k, ename) if not config.get(c)]):
+                raise PluginError(f"an instance of {ename} needs {', '.join(missing)}: that is what makes it one")
         return AddPlan(k, name, {"plugin": ename, **config}, "instance" if loaded else "reload")
 
     def _plan_class(self, target: str, kind: str | None, name: str | None, config: dict[str, Any]) -> AddPlan:
@@ -510,8 +519,20 @@ class PluginHost:
 
         return submit
 
+    def inherited(self, kind: str, name: str) -> dict[str, Any]:
+        """What an instance gets from the template it is of: the template's settings, except the ones that are each instance's
+        own (whether it runs, what it is of, where it runs). Empty for a plugin that is not an instance."""
+        rec = self._records.get((kind, name))
+        if rec is None or rec.plugin == rec.name:
+            return {}
+        return {k: v for k, v in self.tables.table(kind, rec.plugin).items() if k not in ("enabled", "plugin", "class", "stage")}
+
+    def effective(self, kind: str, name: str) -> dict[str, Any]:
+        """A plugin's settings as it runs on them: an instance's own over what it inherits."""
+        return {**self.inherited(kind, name), **self.tables.table(kind, name)}
+
     def _config(self, rec: _Record) -> dict[str, Any]:
-        return {k: v for k, v in self.tables.table(rec.kind, rec.name).items() if k not in HOST_KEYS}
+        return {k: v for k, v in self.effective(rec.kind, rec.name).items() if k not in HOST_KEYS}
 
     def _enabled_by_table(self, rec: _Record) -> bool:
         """The table's ``enabled`` wins. With none, a plugin runs unless it ships switched off
@@ -547,6 +568,12 @@ class PluginHost:
             rec.started = rec.healthy = False
             await self._announce(rec)
             return
+        if (missing := [k for k in getattr(rec.instance, "contextual", ()) if not config.get(k)]):
+            # Enabled, a template deploys instances; it does not run as itself, and that is not a failure.
+            rec.started = rec.healthy = False
+            rec.detail = f"add an instance that sets {', '.join(missing)}: the + on a stage's page"
+            await self._announce(rec)
+            return
         try:
             await self._provision(rec)
         except LabelError as exc:
@@ -563,9 +590,9 @@ class PluginHost:
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
             db=None if spec.first else self.db, labels=labels, router=self.router, submit=self._submitter(rec),
             secrets=PluginSecrets(self.secrets, rec.kind, rec.name) if self.secrets is not None else None,
-            route=dict(self.tables.table(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
-            prompt=str(self.tables.table(rec.kind, rec.name).get("prompt") or ""),
-            guard=str(self.tables.table(rec.kind, rec.name).get("guard") or ""),
+            route=dict(self.effective(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
+            prompt=str(self.effective(rec.kind, rec.name).get("prompt") or ""),
+            guard=str(self.effective(rec.kind, rec.name).get("guard") or ""),
         )  # fmt: skip
         rec.ctx = ctx
         try:
@@ -905,6 +932,48 @@ class PluginHost:
             raise PluginError(f"invalid [plugins] config ({problems})") from None
 
     # -- lookup ------------------------------------------------------------------------------
+    def _running(self, kind: str) -> bool:
+        return any(r.kind == kind and r.started and r.healthy for r in self._records.values())
+
+    def _warning(self, rec: _Record) -> tuple[str, str]:
+        """What a plugin that asks a model, or uses the vector index, is missing: a backend, an embedder or a store that is not
+        running. Such a plugin waits for one (its jobs defer), so without this it looks fine and does nothing. A plugin that is
+        off, or that says it is dormant (``nearjunk`` while its index is off), is not asked."""
+        inst = rec.instance
+        if inst is None or rec.disabled or not self._enabled_by_table(rec) or (callable(getattr(inst, "dormant", None)) and inst.dormant()):
+            return "", ""
+        need = []
+        if getattr(inst, "needs_llm", False) and not self._running("llm_backend"):
+            need.append(("a model backend", "llm_backend"))
+        if getattr(inst, "needs_vec", False):
+            need += [(label, kind) for label, kind in (("an embedder", "embedder"), ("a vector store", "vector_store")) if not self._running(kind)]
+        if not need:
+            return "", ""
+        offered = [e for e in catalog.entries(k.name for k in self.kinds) if e.kind in {kind for _, kind in need}]
+        how = (f"Add one: oaken plugin add {offered[0].name} --kind {offered[0].kind} (in oaken-plugins: {', '.join(sorted({e.name for e in offered}))})." if offered
+               else f"pip install {catalog.DIST} has some." if not catalog.installed() else "")
+        return f"needs {' and '.join(label for label, _ in need)}", how
+
+    def _is_template(self, rec: _Record) -> bool:
+        return rec.instance is not None and any(not self._config(rec).get(k) for k in getattr(rec.instance, "contextual", ()))
+
+    def describe(self, kind: str, name: str) -> dict[str, Any]:
+        """What the plugin says about itself, for its page: its docstring, ``setup_help``, ``config_example`` and the settings
+        an instance of it must be given. Written by the plugin's author, read here, never made up."""
+        rec = self._records.get((kind, name))
+        inst = rec.instance if rec is not None else None
+        cls = type(inst) if inst is not None else None
+        doc = ""
+        if cls is not None:  # the plugin's own docstring (not one inherited from a base class), else its module's
+            doc = inspect.cleandoc(cls.__dict__.get("__doc__") or "") or inspect.getdoc(inspect.getmodule(cls)) or ""
+        return {"doc": doc, "setup_help": getattr(inst, "setup_help", ""), "config_example": getattr(inst, "config_example", ""),
+                "contextual": self.contextual(kind, name)}
+
+    def contextual(self, kind: str, name: str) -> tuple[str, ...]:
+        """The settings an instance of this plugin must set (empty for most plugins)."""
+        rec = self._records.get((kind, name))
+        return tuple(getattr(rec.instance, "contextual", ())) if rec is not None and rec.instance is not None else ()
+
     def statuses(self) -> list[PluginStatus]:
         return [
             PluginStatus(
@@ -912,6 +981,7 @@ class PluginHost:
                 started=r.started, healthy=r.healthy, detail=r.detail,
                 enabled=not r.disabled and self._enabled_by_table(r),
                 enabled_default=self._enabled_default(r.instance), loadpath=r.loadpath,
+                template=self._is_template(r), warning=self._warning(r)[0], hint=self._warning(r)[1],
             )  # fmt: skip
             for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))
         ]

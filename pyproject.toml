@@ -30,15 +30,8 @@ oaken = "oaken_core.cli.commands:main"
 [project.entry-points."oaken_core.stores"]
 sqlite = "oaken_core.store:SqliteStore"
 
-[project.entry-points."oaken_core.embedders"]
-ollama = "oaken_core.ollama:OllamaEmbedder"
-
 [project.entry-points."oaken_core.vector_stores"]
 sqlite-vec = "oaken_core.vec_sqlite:SqliteVecStore"
-
-[project.entry-points."oaken_core.llm_backends"]
-ollama = "oaken_core.ollama:OllamaLLM"
-ollama-remote = "oaken_core.ollama:OllamaRemoteLLM"
 
 [project.entry-points."oaken_core.ingestors"]
 items = "oaken_core.items:ItemsIngestor"

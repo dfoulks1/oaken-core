@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% from "_plugin_table.html" import flow with context %}{% block title %}Log{% endblock %}
+{% block body %}
+<h1>Log <span class="muted">{{ title }}</span></h1>
+{% if log.path %}<div class="card"><div class="card-body"><div class="muted small">Log file</div><div class="mono" style="font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere">{{ log.path }}</div></div></div>
+{% elif log.kept_in == "table" %}<p class="muted">Kept in core's database (the <code>log_lines</code> table). Set <code>[log] file</code> to keep it in a file instead.</p>
+{% elif log.kept_in == "file" %}<p class="muted">The log file is set but nothing has been written to it yet.</p>{% endif %}
+<p class="row"><a class="btn btn-secondary btn-sm" href="{{ back }}">Back</a>
+<a class="btn btn-secondary btn-sm" href="/log/export{{ "?" ~ export if export }}" download="oaken-log.json">Export as JSON</a>
+{% for label, w in widen %}<a class="btn btn-secondary btn-sm" href="/log{{ "?" ~ (w|urlencode) if w }}">{{ label }}</a>{% endfor %}
+<span class="muted small">{{ log.lines|length }} line{{ "s" if log.lines|length != 1 }}, oldest first</span></p>
+<pre class="log">{% for l in log.lines %}{{ l.ts[11:23] }} {% if l.level in ("error", "critical") %}<span class="bad">{{ l.level|upper }}</span>{% else %}{{ l.level|upper }}{% endif %} {{ l.plugin or l.logger.replace("oaken_core.", "") }}  {{ l.event }}{% for k, v in l.data.items() %} {{ k }}={{ v }}{% endfor %}
+{% else %}{{ "Logging is off ([log] enabled = false)." if log.kept_in == "off" else "Nothing logged here yet." }}
+{% endfor %}</pre>
+{% endblock %}

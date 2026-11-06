@@ -36,7 +36,7 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_listing_names_each_plugin_and_imports_none_of_them(fake: Path) -> None:
     found = catalog.entries(KINDS)
-    assert [(e.kind, e.name, e.summary) for e in found] == [("formatter", "demo", "Splits demo text into lines."), ("triager", "big_one", "A big one.")]
+    assert [(e.kind, e.name, e.summary) for e in found] == [("formatter", "demo", "Splits demo text into lines."), ("triager", "big-one", "A big one.")]
     assert "demo_imported" not in sys.modules  # read, never run
 
 
@@ -58,7 +58,7 @@ async def test_plugin_add_finds_a_name_in_oaken_plugins_and_imports_only_that_on
 
 
 async def test_a_name_oaken_plugins_does_not_have_lists_what_it_does(rig: Rig, fake: Path) -> None:  # noqa: F811
-    with pytest.raises(Exception, match=r"no plugin named 'ghost'.*in oaken-plugins: demo, big_one"):
+    with pytest.raises(Exception, match=r"no plugin named 'ghost'.*in oaken-plugins: demo, big-one"):
         await rig.core.client.call("plugin_add", {"plugin": "ghost"}, CLI, confirm=True)
 
 

@@ -14,6 +14,11 @@ class NearJunk(BaseVecAnalyzer, BaseTriager):
     rank: ClassVar[int] = 40
     version: ClassVar[str] = "1"
 
+    def dormant(self) -> bool:
+        """Off while ``[router] junk_index`` is off, so it does not warn about an embedder it is not using."""
+        router = getattr(self.ctx, "router", None)
+        return router is None or not router.settings.junk_index
+
     async def triage(self, item: IntakeItem) -> Verdict | None:
         router = self.ctx.router
         if router is None:

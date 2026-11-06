@@ -283,6 +283,24 @@ class BaseStore(BasePlugin):
         raise NotImplementedError("a store must implement open()")
 
 
+class BaseTemplatePlugin(BasePlugin):
+    """Add to a plugin's bases when it only runs as a named instance that is given what makes it what it is: an agent's
+    instructions, an account, a mailbox. ``class Mine(BaseTemplatePlugin, BaseTriager)`` with ``contextual = ("criteria",)``.
+
+    Bare, it is a template, not a failure: it never starts, the console says so, and the **+** on its page makes an instance
+    that must set every ``contextual`` setting. Only a template gets that button. Say what it is for in the class docstring,
+    ``setup_help`` and ``config_example``: the plugin's page shows them."""
+
+    # The settings an instance must set; they are required where an instance is made.
+    contextual: ClassVar[tuple[str, ...]] = ()
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        super().__init_subclass__(**kwargs)
+        if cls.__dict__.get("kind") or any(getattr(b, "kind", "") for b in cls.__mro__[1:] if b is not BaseTemplatePlugin and b is not BasePlugin):
+            if not cls.contextual:  # a template with nothing to be given is not one
+                raise TypeError(f"{cls.__name__} is a BaseTemplatePlugin: name what an instance must be given in `contextual`")
+
+
 class BaseAnalyzer(BasePlugin):
     """What triagers, enrichers and actions share. Deterministic by default; a plugin that asks a
     model also extends ``BaseLLMAnalyzer``."""
@@ -376,7 +394,7 @@ class BaseLLMBackend(BasePlugin):
 
     async def available_models(self) -> list[str]:
         """The model ids it can run right now, for a picker to offer. The default is the one it started
-        with; a backend that can enumerate (Ollama's ``/api/tags``) overrides this."""
+        with; a backend that can enumerate its models overrides this."""
         return [self.model_id] if self.model_id else []
 
 

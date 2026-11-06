@@ -1,7 +1,14 @@
-{% extends "base.html" %}{% from "_fields.html" import csrf %}{% from "_plugin_settings.html" import settings_form with context %}{% import "_macros.html" as m with context %}{% block title %}{{ status.name }}{% endblock %}
+{% extends "base.html" %}{% from "_fields.html" import csrf %}{% from "_plugin_settings.html" import settings_form with context %}{% from "_plugin_table.html" import log_button with context %}{% import "_macros.html" as m with context %}{% block title %}{{ status.name }}{% endblock %}
 {% block body %}
-<h1>{{ status.name }} <span class="muted">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span></h1>
-<p class="{{ 'ok' if status.healthy else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
+<h1>{{ status.name }} <span class="muted">{{ status.kind }}{% if status.version %} · v{{ status.version }}{% endif %}</span> {{ log_button("plugin=" ~ status.kind ~ "/" ~ status.name) }}</h1>
+<p class="{{ 'ok' if status.healthy else 'muted' if status.template else 'bad' }}">{{ "Healthy." if status.healthy else (status.detail or "Not running.") }}</p>
+{% if status.warning %}<p><span class="badge badge-danger">{{ status.warning }}</span> <span class="muted">{{ status.hint }}</span></p>{% endif %}
+{% if docs.doc or docs.setup_help or docs.config_example or docs.contextual or docs.commands %}<details class="card fold" id="fold-docs" open><summary class="card-head">About this plugin</summary>
+<div class="card-body">{% if docs.doc %}<p style="white-space: pre-line">{{ docs.doc }}</p>{% endif %}
+{% if docs.contextual %}<p>This is a template. Its settings here are the defaults every instance starts from; an instance sets <b>{{ docs.contextual|join(", ") }}</b> and may override the rest. Make instances with the <b>+</b> on a stage's page.</p>{% endif %}
+{% if docs.setup_help %}<p>{{ docs.setup_help }}</p>{% endif %}
+{% if docs.config_example %}<pre class="mono">{{ docs.config_example }}</pre>{% endif %}
+{% if docs.commands %}<table class="table"><thead><tr><th>Command</th><th>What it does</th></tr></thead><tbody>{% for c in docs.commands %}<tr><td class="mono nowrap">{{ c.name }}</td><td class="muted">{{ c.summary }}</td></tr>{% endfor %}</tbody></table>{% endif %}</div></details>{% endif %}
 <div class="card">
 <div class="card-head"><span>Stats</span><span class="muted small">calls count from when this core started; the rest is kept</span></div>
 <div class="table-wrap"><table class="table"><tr><th>Calls</th><th>Errors</th><th>Average</th><th>Last call</th></tr>
@@ -14,7 +21,7 @@
 <div class="card-foot muted">The router answered {{ stats.usage|sum(attribute="cache_hits") + stats.usage|sum(attribute="shortcut_hits") }} call(s) without a model, saving about <b>{{ stats.saved }}</b> tokens. Spent today: {{ stats.spent_today }}.</div>{% endif %}
 </div>
 {% if sections or llm %}
-<div class="card">{{ settings_form(status, {"sections": sections, "values": values, "llm": llm, "own": own}, "/plugins/" ~ status.kind ~ "/" ~ status.name) }}</div>
+<div class="card">{{ settings_form(status, {"sections": sections, "values": values, "llm": llm, "own": own, "stages": stages, "stage": stage, "route_models": route_models, "route_now": route_now}, "/plugins/" ~ status.kind ~ "/" ~ status.name) }}</div>
 {% else %}
 <p class="muted">This plugin declares no settings.</p>
 {% if values %}<pre>{{ values|tojson(indent=2) }}</pre>{% endif %}

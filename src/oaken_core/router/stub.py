@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Stand-ins for tests and for trying core with no model: a scripted backend, a hashing embedder
-and an in-memory vector store. Real backends (Ollama, OpenAI-compatible) live in a plugins repo."""
+and an in-memory vector store. Real backends live in plugins (``oaken-plugins``)."""
 
 import json
 import math

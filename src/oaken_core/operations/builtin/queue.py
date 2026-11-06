@@ -398,6 +398,7 @@ class QueueEditIn(BaseModel):
     label: str | None = Field(default=None, description="Its title in the console. Empty clears it.")
     description: str | None = None
     workers: int | None = Field(default=None, ge=1, le=64)
+    disabled: list[str] | None = Field(default=None, description="Plugins (by name) switched off in this stage only. Replaces the list; empty clears it.")
 
 
 class QueueChangeOut(BaseModel):
@@ -410,30 +411,32 @@ def _config_path() -> Any:
     return paths.config_dir() / "config.toml"
 
 
-def _own_table(ctx: OpContext, name: str) -> tuple[str, dict[str, Any]]:
+def _own_table(ctx: OpContext, name: str, *, allow_default: bool = False) -> tuple[str, dict[str, Any]]:
     """The config text and the queue's table in it. ``Conflict`` for what the file does not own: the
     default queue, a queue a product defines in code, or a product that fixes its own queues."""
     if not ctx.svc.queues_from_config:
         raise Conflict("this product defines its own queues, so none can be changed here")
-    if name == DEFAULT:
+    if name == DEFAULT and not allow_default:
         raise Conflict("the default queue is always there and cannot be changed here")
     ctx.svc.queues.get(name)
     path = _config_path()
     text = path.read_text(encoding="utf-8") if path.exists() else ""
     table = get_table(text, ["queues", name])
-    if not table:
+    if not table and name != DEFAULT:  # Intake needs no table of its own until a plugin is switched off in it
         raise Conflict(f"queue {name!r} is not in config.toml (a product made it in code)")
     return text, table
 
 
 def _edit_plan(ctx: OpContext, inp: QueueEditIn) -> tuple[str, dict[str, Any], dict[str, Any]]:  # (text, before, after)
-    text, before = _own_table(ctx, inp.queue)
+    if inp.queue == DEFAULT and any(getattr(inp, k) is not None for k in ("label", "description", "workers")):
+        raise Conflict("the default queue is Intake: only which plugins are off in it can be changed here")
+    text, before = _own_table(ctx, inp.queue, allow_default=True)
     after = dict(before)
-    for key in ("label", "description", "workers"):
+    for key in ("label", "description", "workers", "disabled"):
         value = getattr(inp, key)
         if value is None:
             continue
-        if value == "":
+        if value == "" or value == []:
             after.pop(key, None)
         else:
             after[key] = value
@@ -454,12 +457,14 @@ async def preview_queue_edit(ctx: OpContext, inp: QueueEditIn) -> Preview:
     return Preview(summary=f"Change queue {inp.queue} and reload core", changes=changes, total_changes=len(changes))
 
 
-@operation("queue_edit", "Change a queue's title, description or workers. Written to config.toml, then core reloads.",
+@operation("queue_edit", "Change a queue's title, description, workers or which plugins are off in it. Written to config.toml, then core reloads.",
            permission="mutate", input=QueueEditIn, output=QueueChangeOut, mcp="never", group="queue",
            preview=preview_queue_edit)  # fmt: skip
 async def queue_edit(ctx: OpContext, inp: QueueEditIn) -> QueueChangeOut:
     _text, _before, after = _edit_plan(ctx, inp)
     save_table(_config_path(), ["queues", inp.queue], after)
+    if inp.disabled is not None:  # a plugin switched off in a stage is off now, not after the reload
+        ctx.svc.queues.set_disabled(inp.queue, tuple(after.get("disabled", ())))
     reloading, note = reload_core(ctx, "the change shows in a moment")
     return QueueChangeOut(name=inp.queue, reloading=reloading, note=note)
 

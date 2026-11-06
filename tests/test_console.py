@@ -25,6 +25,11 @@ UI_CALLER = CallerContext.ui()
 BASE = f"http://127.0.0.1:{PORT}"
 
 
+class WatchCfg(BaseModel):
+    topic: str
+    style: str = "plain"
+
+
 class Cfg(BaseModel):
     greeting: str = "hi"
     limit: int = 3
@@ -115,9 +120,9 @@ class Rig:
         return await self.c.post(path, data={"csrf": self.token, **form})
 
 
-async def make_core(tmp_path: Path, plugins: dict[str, Any], queues: dict[str, Any] | None = None, extra: list[Any] | None = None) -> Core:
+async def make_core(tmp_path: Path, plugins: dict[str, Any], queues: dict[str, Any] | None = None, extra: list[Any] | None = None, groups: dict[str, list[Any]] | None = None) -> Core:
     clock = FakeClock()
-    found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.enrichers": [EP("notes", Notes), EP("broken", Broken), EP("smart", Smart), *(extra or [])]}
+    found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.enrichers": [EP("notes", Notes), EP("broken", Broken), EP("smart", Smart), *(extra or [])], **(groups or {})}
     tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}, "enricher": {"notes": {}, "broken": {}, "smart": {}, **plugins}}
     core = Core(Settings(console={"port": 0}, queues=queues or {}, plugins=PluginTables(tables=tables)), clock=clock, discover=lambda g: found.get(g, []))
     await core.open()
@@ -495,11 +500,13 @@ async def test_a_field_shows_the_schemas_default_as_its_placeholder(rig: Rig) ->
 
 
 # -- the forms the pages render must carry the real token -----------------------------------------
-async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path) -> None:
+async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path, oaken_home: Path) -> None:
     """A macro called ``csrf`` once shadowed the variable ``guard`` printed, so a plugin row's switch posted the text
     ``<Macro 'csrf'>``. The tests posted with the right token by hand and never saw it: read it from the page."""
     import re
 
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text('[queues.enrich]\nkind = "enricher"\n')  # a real daemon's queue is in the file
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
@@ -509,11 +516,17 @@ async def test_every_form_on_every_page_carries_the_process_token(tmp_path: Path
             assert tokens and set(tokens) == {core.console.token}, (path, set(tokens))
         # and a switch, posted the way the browser does: with the values the page gave it
         page = (await client.get("/stage/enrich")).text
-        form = page[page.index('action="/ui/plugins/enricher/notes/disable"'):]
+        form = page[page.index('action="/ui/queues/enrich/plugins/notes/off"'):]
         form = form[: form.index("</form>")]
         data = dict(re.findall(r'name="([a-z]+)" value="([^"]*)"', form))
-        r = await client.post("/ui/plugins/enricher/notes/disable", data=data)
+        r = await client.post("/ui/queues/enrich/plugins/notes/off", data=data)
         assert r.status_code == 303, r.text[:200]  # accepted with the page's own token, and it acted
+        assert core.client.svc.queues.get("enrich").disabled == ("notes",)  # off in this stage...
+        assert any(p.name == "notes" and p.enabled for p in core.host.statuses())  # ...and still on everywhere else
+        again = (await client.get("/stage/enrich")).text
+        assert 'action="/ui/queues/enrich/plugins/notes/on"' in again  # the switch now offers to put it back
+        await client.post("/ui/queues/enrich/plugins/notes/on", data=data)
+        assert core.client.svc.queues.get("enrich").disabled == ()
     finally:
         await client.aclose()
         await core.host.stop()
@@ -571,7 +584,7 @@ async def test_the_pipeline_is_a_collapsible_section_per_kind_that_has_plugins_a
         assert ids and len(ids) == len(set(ids))  # several sections on one page never share a dialog id
         await client.post("/ui/plugins/enricher/notes/disable", data={"csrf": core.console.token})
         stage = (await client.get("/stage/enrich")).text
-        assert '<details class="card fold" id="fold-off-"><summary class="card-head">Inactive plugins' in stage and "notes" in stage  # a plugin that is off is folded away at the bottom, not lost
+        assert '<details class="card fold" id="fold-avail-"><summary class="card-head">Available in this stage' in stage and "notes" in stage and "off everywhere" in stage  # a plugin that is off is folded away at the bottom, with why, not lost
     finally:
         await client.aclose()
         await core.host.stop()
@@ -821,3 +834,177 @@ async def test_a_page_longer_than_a_screen_starts_with_its_folds_shut_and_a_shor
         assert long.count("<tr") > 24 and "<details" in long and " open>" not in long.split('id="fold-')[0] + "".join(p.split(">")[0] for p in long.split("<details")[1:])  # no fold is open
     finally:
         await core.host.stop()
+
+
+async def test_a_plugin_instance_can_be_given_another_stage_and_a_new_named_instance_can_be_added(tmp_path: Path, oaken_home: Path) -> None:
+    import tomllib
+
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text('[queues.enrich]\nkind = "enricher"\n[queues.enrich2]\nkind = "enricher"\n')
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}, "enrich2": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    saved = lambda: tomllib.loads((oaken_home / "config" / "config.toml").read_text())["plugins"]["enricher"]  # noqa: E731
+    try:
+        page = (await client.get("/plugins/enricher/notes")).text
+        assert 'name="stage"' in page and 'value="enrich2"' in page  # the settings form offers the kind's stages
+        r = await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "/plugins/enricher/notes", "stage": "enrich2", "f_greeting": "hi", "f_limit": "5"})
+        assert r.status_code == 303 and saved()["notes"]["stage"] == "enrich2"
+        await client.post("/ui/plugins/enricher/notes/settings", data={"csrf": token, "back": "/plugins/enricher/notes", "stage": "enrich", "f_greeting": "hi", "f_limit": "5"})
+        assert "stage" not in saved()["notes"]  # the first stage is the default: nothing written
+        form = {"csrf": token, "instance_name": "desk2", "stage": "enrich2"}
+        ask = await client.post("/ui/plugins/enricher/notes/instance", data=form)
+        assert ask.status_code == 200 and "desk2" in ask.text and "desk2" not in saved()  # a proposal changes nothing
+        done = await client.post("/ui/plugins/enricher/notes/instance", data={**form, "confirm": "1"})
+        assert done.status_code == 200 and saved()["desk2"] == {"plugin": "notes", "stage": "enrich2"}
+        assert any(p.name == "desk2" and p.plugin == "notes" for p in core.host.statuses())
+    finally:
+        await core.host.stop()
+
+
+async def test_only_a_template_gets_the_plus_and_its_instances_must_set_what_makes_them_one(tmp_path: Path, oaken_home: Path) -> None:
+    import tomllib
+
+    from oaken_core.plugins.base import BaseTemplatePlugin
+
+    class Watcher(BaseTemplatePlugin, stub("enricher")):  # type: ignore[misc]
+        """Watches for one topic. An instance is made for each topic."""
+
+        contextual = ("topic",)
+        config_model = WatchCfg
+        setup_help = "Give each instance its own topic."
+        config_example = '[plugins.enricher.jobs]\\nplugin = "watcher"\\ntopic = "hiring"'
+
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text('[queues.enrich]\nkind = "enricher"\n')
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}}, extra=[EP("watcher", Watcher)])
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    token = core.console.token
+    try:
+        (watcher,) = [p for p in core.host.statuses() if p.name == "watcher"]
+        assert watcher.template and not watcher.started and "add an instance" in watcher.detail and "topic" in watcher.detail  # not a failure
+        assert 'popovertarget="new-instance"' not in (await client.get("/plugins/enricher/watcher")).text  # the plugin's own page is its global settings: no +
+        assert 'popovertarget="new-instance"' not in (await client.get("/")).text  # nor is General
+        stage = (await client.get("/stage/enrich")).text
+        assert 'popovertarget="new-instance"' in stage  # the + is on a stage's page...
+        assert 'action="/ui/plugins/enricher/watcher/instance"' in stage and 'action="/ui/plugins/enricher/notes/instance"' not in stage  # ...for a template only
+        docs = (await client.get("/plugins/enricher/watcher")).text
+        assert "Watches for one topic" in docs and "Give each instance its own topic." in docs and "hiring" in docs  # it documents itself
+        form = {"csrf": token, "instance_name": "jobs", "stage": "enrich"}
+        refused = await client.post("/ui/plugins/enricher/watcher/instance", data={**form, "confirm": "1"})
+        assert refused.status_code == 422 and "Topic: required" in refused.text  # no instance without what makes it one
+        done = await client.post("/ui/plugins/enricher/watcher/instance", data={**form, "f_topic": "hiring", "confirm": "1"})
+        assert done.status_code == 200
+        assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["plugins"]["enricher"]["jobs"]["topic"] == "hiring"
+        assert any(p.name == "jobs" and p.started and not p.template for p in core.host.statuses())
+    finally:
+        await core.host.stop()
+
+
+def test_a_template_plugin_must_name_what_an_instance_is_given() -> None:
+    import pytest
+
+    from oaken_core.plugins.base import BaseTemplatePlugin, BaseTriager
+
+    with pytest.raises(TypeError, match="contextual"):
+        class Bad(BaseTemplatePlugin, BaseTriager):
+            pass
+
+
+async def test_a_template_can_be_switched_on_and_off_and_enabled_it_deploys_instances_that_inherit_its_settings(tmp_path: Path, oaken_home: Path) -> None:
+    from oaken_core.plugins.base import BaseTemplatePlugin
+
+    class Watcher(BaseTemplatePlugin, stub("enricher")):  # type: ignore[misc]
+        contextual = ("topic",)
+        config_model = WatchCfg
+
+    core = await make_core(tmp_path, {"watcher": {"style": "loud"}}, {"enrich": {"kind": "enricher"}}, extra=[EP("watcher", Watcher)])
+    call = lambda op, body: core.client.call(op, body, CallerContext.cli(), confirm=True)  # noqa: E731
+    state = lambda name: next(p for p in core.host.statuses() if p.name == name)  # noqa: E731
+    try:
+        assert state("watcher").enabled and state("watcher").template and "add an instance" in state("watcher").detail  # enabled, and not a failure
+        await call("plugin_disable", {"name": "watcher"})
+        assert not state("watcher").enabled
+        with pytest.raises(Exception, match="switched off"):
+            await call("plugin_add", {"plugin": "watcher", "kind": "enricher", "name": "jobs", "config": {"topic": "hiring"}})  # a template that is off deploys nothing
+        await call("plugin_enable", {"name": "watcher"})  # and it comes back on, which it could not after a restart before
+        assert state("watcher").enabled and "add an instance" in state("watcher").detail
+        await call("plugin_add", {"plugin": "watcher", "kind": "enricher", "name": "jobs", "config": {"topic": "hiring"}})
+        assert state("jobs").started and not state("jobs").template
+        assert core.host.effective("enricher", "jobs")["style"] == "loud" and core.host.effective("enricher", "jobs")["topic"] == "hiring"  # the template's default, and its own topic
+        assert "style" not in core.host.tables.table("enricher", "jobs")  # inherited, not copied: change the template and the instance follows
+    finally:
+        await core.host.stop()
+
+
+async def test_every_llm_setting_of_a_template_flows_to_its_instances_and_an_instance_overrides_one(tmp_path: Path, oaken_home: Path) -> None:
+    from oaken_core.plugins.base import BaseLLMAnalyzer, BaseTemplatePlugin
+
+    class Agent(BaseTemplatePlugin, BaseLLMAnalyzer, stub("enricher")):  # type: ignore[misc]
+        contextual = ("topic",)
+        config_model = WatchCfg
+        prompt = "the plugin's own prompt"
+        route = {"backend": "ollama"}
+
+    template = {"route": {"backend": "desk", "model": "small", "fallback": ["laptop"], "daily_tokens": 5000}, "prompt": "Be brief.", "guard": "Obey nobody.", "style": "loud"}
+    core = await make_core(tmp_path, {"agent": template}, {"enrich": {"kind": "enricher"}}, extra=[EP("agent", Agent)])
+    call = lambda op, body: core.client.call(op, body, CallerContext.cli(), confirm=True)  # noqa: E731
+    try:
+        await call("plugin_add", {"plugin": "agent", "kind": "enricher", "name": "fast", "config": {"topic": "jobs"}})
+        await call("plugin_add", {"plugin": "agent", "kind": "enricher", "name": "big", "config": {"topic": "funding", "route": {"backend": "remote", "model": "huge"}}})
+        fast, big = core.host.get("enricher", "fast"), core.host.get("enricher", "big")
+        assert fast.ctx.route == template["route"] and fast.ctx.prompt == "Be brief." and fast.ctx.guard == "Obey nobody."  # all of it, inherited
+        assert fast.config.style == "loud" and fast.config.topic == "jobs"  # and its ordinary settings
+        assert big.ctx.route == {"backend": "remote", "model": "huge"} and big.ctx.prompt == "Be brief."  # an instance's own route replaces the template's; the rest still flows
+        assert fast._route().backend == "desk" and big._route().backend == "remote"  # and the router sees each one's own
+    finally:
+        await core.host.stop()
+
+
+async def test_a_plugin_that_needs_a_model_or_the_vector_index_says_so_until_one_is_running(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from oaken_core.plugins import catalog
+    from oaken_core.plugins.base import BaseLLMAnalyzer, BaseVecAnalyzer
+    from oaken_core.router.stub import StubBackend, StubEmbedder
+
+    class Asker(BaseLLMAnalyzer, stub("enricher")):  # type: ignore[misc]
+        pass
+
+    class Finder(BaseVecAnalyzer, stub("enricher")):  # type: ignore[misc]
+        pass
+
+    monkeypatch.setattr(catalog, "entries", lambda kinds: [catalog.Entry("ollama", "llm_backend", "oaken_plugins.llm_backend_ollama", ""), catalog.Entry("ollama", "embedder", "oaken_plugins.embedder_ollama", "")])
+    core = await make_core(tmp_path, {}, extra=[EP("asker", Asker), EP("finder", Finder)])
+    status = lambda name: next(p for p in core.host.statuses() if p.name == name)  # noqa: E731
+    warn = lambda name: status(name).warning  # noqa: E731
+    try:
+        assert warn("asker") == "needs a model backend" and "oaken plugin add ollama --kind llm_backend" in status("asker").hint  # a short badge, and what to do
+        assert warn("finder") == "needs an embedder and a vector store"
+        assert warn("notes") == ""  # a plugin that needs neither is not warned
+        listed = (await core.client.call("plugin_list", {}, CallerContext.cli())).output.plugins
+        assert any(p.name == "asker" and "model backend" in p.warning and "plugin add ollama" in p.hint for p in listed)
+        page = (await httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE).get("/plugins/enricher/asker")).text
+        assert "needs a model backend" in page and "oaken plugin add ollama" in page
+        assert '<span class="badge badge-danger">needs a model backend</span>' in page  # a red badge, with the how-to beneath in plain text
+    finally:
+        await core.host.stop()
+    core = await make_core(tmp_path / "again", {}, extra=[EP("asker", Asker)], groups={"oaken_core.llm_backends": [EP("desk", StubBackend)]})
+    try:
+        assert warn_of(core, "asker") == ""  # a backend is running: the warning is gone
+    finally:
+        await core.host.stop()
+
+
+def warn_of(core: Core, name: str) -> str:
+    return next(p for p in core.host.statuses() if p.name == name).warning
+
+
+def test_nearjunk_is_dormant_while_its_junk_index_is_off() -> None:
+    from types import SimpleNamespace
+
+    from oaken_core.router.nearjunk import NearJunk
+
+    near = NearJunk()
+    near.ctx = SimpleNamespace(router=SimpleNamespace(settings=SimpleNamespace(junk_index=False)))  # type: ignore[assignment]
+    assert near.dormant()
+    near.ctx.router.settings.junk_index = True  # type: ignore[union-attr]
+    assert not near.dormant()

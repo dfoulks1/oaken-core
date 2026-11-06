@@ -10,7 +10,7 @@
 <td class="right nowrap">{% if k.source == "config" %}<button type="button" class="btn btn-sm btn-icon" popovertarget="label-{{ k.key }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ k.key }}">{{ m.icon("gear") }}</button>{% endif %}</td></tr>{% endfor %}</table></div></div>
 <div class="dialog" id="label-new" popover role="dialog" aria-labelledby="label-new-t">
   <div class="dialog-head"><h2 id="label-new-t">Add a label key</h2>
-    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="label-new" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+    <button class="btn btn-bare btn-sm btn-icon" type="button" popovertarget="label-new" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
   <form method="post" action="/ui/labels/new">{{ csrf(token) }}
     <div class="dialog-body"><div class="form-grid">
       <label for="ln-key">Key</label><div><input class="input mono" id="ln-key" name="key" required maxlength="64" placeholder="heat" autocomplete="off"><div class="hint">Lower case, starting with a letter: a-z, 0-9, _ and . only.</div></div>
@@ -19,12 +19,12 @@
       <label for="ln-res">Reserved</label><div><input id="ln-res" name="reserved" type="checkbox"><div class="hint">Lock the key: plugins may write it but not define it again.</div></div>
       <label for="ln-writers">Who may write it</label><div><input class="input" id="ln-writers" name="writers" placeholder="user, system:mailrules" autocomplete="off"><div class="hint">An actor kind (user, agent, system) or one actor, separated by commas. Empty: anyone. Others are refused.</div></div>
     </div></div>
-    <div class="dialog-foot"><button class="btn btn-primary">Add label</button><span class="muted">It shows what it will do before it does it.</span></div>
+    <div class="dialog-foot"><button class="btn btn-ghost">Add label</button><span class="muted">It shows what it will do before it does it.</span></div>
   </form>
 </div>
 {% for k in keys if k.source == "config" %}<div class="dialog" id="label-{{ k.key }}" popover role="dialog" aria-labelledby="label-{{ k.key }}-t">
   <div class="dialog-head"><h2 id="label-{{ k.key }}-t" class="mono">{{ k.key }}</h2>
-    <button class="btn btn-ghost btn-sm btn-icon" type="button" popovertarget="label-{{ k.key }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+    <button class="btn btn-bare btn-sm btn-icon" type="button" popovertarget="label-{{ k.key }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
   <form method="post" action="/ui/labels/{{ k.key }}/edit">{{ csrf(token) }}
     <div class="dialog-body"><div class="form-grid">
       <label for="le-desc-{{ k.key }}">For</label><input class="input" id="le-desc-{{ k.key }}" name="description" value="{{ k.description }}" autocomplete="off">
@@ -32,7 +32,7 @@
       <label for="le-res-{{ k.key }}">Reserved</label><div><input id="le-res-{{ k.key }}" name="reserved" type="checkbox"{{ " checked" if k.reserved }}><div class="hint">Lock the key: plugins may write it but not define it again.</div></div>
       <label for="le-writers-{{ k.key }}">Who may write it</label><div><input class="input" id="le-writers-{{ k.key }}" name="writers" value="{{ k.writers|join(", ") }}" autocomplete="off"><div class="hint">An actor kind (user, agent, system) or one actor, separated by commas. Empty: anyone.</div></div>
     </div></div>
-    <div class="dialog-foot"><button class="btn btn-primary">Save</button><span class="muted">It shows what it will do first.</span></div>
+    <div class="dialog-foot"><button class="btn btn-ghost">Save</button><span class="muted">It shows what it will do first.</span></div>
   </form>
   <form method="post" action="/ui/labels/{{ k.key }}/delete">{{ csrf(token) }}
     <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Delete key</button><span class="muted">Refused while any subject carries it.</span></div>

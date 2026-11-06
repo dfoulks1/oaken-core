@@ -54,6 +54,20 @@ class TraceEvent(Event):
 
 
 @dataclass(frozen=True, kw_only=True)
+class LogEvent(Event):
+    """One log line, as ``logging`` made it (already scrubbed). Published with ``publish_nowait``: only streams see it, so the
+    event log does not fill with log lines, and ``EventBus.stream`` leaves it out unless a stream asks for ``LogEvent``. The log
+    table is one such stream; ``oaken log tail -f`` is another."""
+
+    level: str
+    logger: str
+    event: str
+    plugin: str = ""  # "kind/name" when it came from a plugin's own logger
+    queue: str = ""  # the stage a job was in when it logged
+    data: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, kw_only=True)
 class JobStateChanged(Event):
     job_id: JobId
     kind: str
@@ -178,7 +192,7 @@ class EventBus:
         if event_filter is None:
 
             def accept(e: Event) -> bool:
-                return not isinstance(e, TraceEvent)  # private text: only by asking for it
+                return not isinstance(e, TraceEvent | LogEvent)  # private text, and a flood: only by asking for it
         elif isinstance(event_filter, type | tuple):
             types = event_filter
 

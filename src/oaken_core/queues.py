@@ -109,6 +109,10 @@ class Queues:
     def all(self) -> list[Queue]:
         return list(self._queues.values())
 
+    def set_disabled(self, name: str, disabled: tuple[str, ...]) -> None:
+        """Change which plugins are off in a stage, now (a ``Queue`` is frozen, so this sets the field the way ``bind`` does)."""
+        object.__setattr__(self.get(name), "disabled", tuple(disabled))
+
     def validate_label(self, value: str) -> None:
         """For ``LabelMaker.set_validator("queue", ...)``: the label must name a real queue."""
         if value not in self._queues:

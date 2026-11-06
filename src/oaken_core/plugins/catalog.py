@@ -50,7 +50,7 @@ def entries(kinds: Iterable[str]) -> list[Entry]:
             continue
         root = Path(spec.submodule_search_locations[0])
         source = root / mod.name / "__init__.py"
-        found.append(Entry(mod.name[len(kind) + 1:], kind, f"{PACKAGE}.{mod.name}", _summary(source if source.is_file() else root / f"{mod.name}.py")))
+        found.append(Entry(mod.name[len(kind) + 1:].replace("_", "-"), kind, f"{PACKAGE}.{mod.name}", _summary(source if source.is_file() else root / f"{mod.name}.py")))
     return sorted(found, key=lambda e: (e.kind, e.name))
 
 

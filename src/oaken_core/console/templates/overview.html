@@ -1,6 +1,6 @@
-{% extends "base.html" %}{% from "_plugin_table.html" import flow, plugin_table, inactive_table, add_stage_button, add_stage_dialog with context %}{% from "_fields.html" import csrf %}{% block title %}General{% endblock %}
+{% extends "base.html" %}{% from "_plugin_table.html" import flow, plugin_table, inactive_table, add_stage_button, add_stage_dialog, log_button with context %}{% from "_fields.html" import csrf %}{% block title %}General{% endblock %}
 {% block body %}
-<h1>General</h1>
+<h1>General {{ log_button() }}</h1>
 {{ flow(stages) }}
 {{ add_stage_dialog() }}
 <div class="card">

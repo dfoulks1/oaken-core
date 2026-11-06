@@ -143,7 +143,7 @@ def configure_logging(settings: LogSettings, stream: TextIO | None = None) -> No
     console = _StreamHandler(stream or sys.stderr)
     console.setFormatter(JsonFormatter() if settings.format == "json" else ConsoleFormatter())
     root.addHandler(console)
-    if settings.file:
+    if settings.file and settings.enabled:
         path = _log_path(settings.file)
         path.parent.mkdir(parents=True, exist_ok=True)
         fh = _FileHandler(path, maxBytes=settings.file_max_bytes, backupCount=settings.file_backups)

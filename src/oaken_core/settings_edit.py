@@ -57,7 +57,7 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         "log",
         "What core logs. The log file's place and rotation are set by hand.",
-        {**_keys("level", "levels", "format"), **_by_hand("file", "file_max_bytes", "file_backups", "events_file")},
+        {**_keys("enabled", "keep_days", "level", "levels", "format"), **_by_hand("file", "file_max_bytes", "file_backups", "events_file")},
     ),
     Section(
         "jobs",

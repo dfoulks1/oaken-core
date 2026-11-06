@@ -72,6 +72,8 @@ class PluginRow(BaseModel):
     healthy: bool
     enabled: bool
     detail: str
+    warning: str = ""  # what it needs that is not running
+    hint: str = ""
 
 
 class PluginListOut(BaseModel):

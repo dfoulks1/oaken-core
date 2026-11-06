@@ -24,6 +24,14 @@
   --on-accent: light-dark(#ffffff, #151513);
   --link: light-dark(#2b2b27, #e6e2d3);
   --accent-soft: light-dark(#f0eee6, #2f2e29);
+  /* Three kinds of button, by where the eye goes. PRIMARY (.btn-primary): the accent, solid. It pops: start here. GHOST (.btn-ghost, and any
+     plain .btn): the accent outline on a faint accent tint. The eye registers it, less strongly than the primary. SECONDARY (.btn-secondary):
+     light and opaque (the theme's second colour, white in every theme for now; a palette may set its own), held by its border. The eye never
+     lands on it first. (.btn-bare is no button at all: a dialog's close X.) --row is the same faint accent for a table row. */
+  --secondary: var(--surface);
+  --on-secondary: var(--text);
+  --secondary-border: var(--border);  /* a Secondary button looks like a card: the surface, the faint border, the soft shadow */
+  --row: color-mix(in srgb, var(--accent) 9%, transparent);
   --focus: light-dark(#3d3d37, #e6e2d3);
   --brand: light-dark(#8b5a2b, #d99b58);
   --ok: light-dark(#2f6f48, #7fcf9a);
@@ -201,7 +209,7 @@ small, .small { font-size: .85rem; }
 .table { width: 100%; border-collapse: collapse; font-size: .92rem; }
 .table th { padding: .6rem 1.2rem; text-align: left; font-size: .82rem; font-weight: 600; color: var(--muted); white-space: nowrap; }
 .table td { padding: .7rem 1.2rem; border-top: 1px solid var(--border); vertical-align: middle; overflow-wrap: anywhere; }
-.table tbody tr:hover { background: var(--surface-2); }
+.table tbody tr:hover { background: var(--row); }
 .table td.right, .table th.right { text-align: right; }
 .mcp-power { border-width: 2px; }
 .mcp-power.is-on { border-color: var(--ok); }
@@ -270,16 +278,20 @@ small, .small { font-size: .85rem; }
 .nowrap th, .nowrap td { white-space: nowrap; }
 
 /* ---- Buttons, forms, switches ---------------------------------------------------------------- */
-.btn { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .9rem; font: inherit; font-size: .88rem; font-weight: 500; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; text-decoration: none; }
-.btn:hover { border-color: var(--border-strong); }
+.btn, .btn-secondary { display: inline-flex; align-items: center; gap: .4rem; padding: .4rem .9rem; font: inherit; font-family: var(--font); font-size: .88rem; font-weight: 500; color: var(--on-secondary); background: var(--secondary); border: 1px solid var(--secondary-border); border-radius: var(--radius-sm); cursor: pointer; text-decoration: none; }
+.btn-secondary { box-shadow: var(--shadow-1); }
+.btn:hover, .btn-secondary:hover { border-color: var(--border-strong); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .btn-primary { color: var(--on-accent); background: var(--accent); border-color: var(--accent); }
 .btn-primary:hover { filter: brightness(1.12); }
 .btn-danger { color: var(--danger); }
 .btn-danger:hover { color: var(--on-danger); background: var(--danger); border-color: var(--danger); }
-.btn-ghost { background: transparent; border-color: transparent; }
+.btn-bare { background: transparent; border-color: transparent; }  /* no chrome at all: a dialog's close X */
 .btn-sm { padding: .3rem .7rem; font-size: .82rem; }
+.btn-equal { min-width: 4.25rem; min-height: 2.35rem; justify-content: center; }  /* buttons that read as a set (Test, X, check) are one size */
+.log-btn { float: right; margin-top: .3rem; }  /* the Log button sits at the right end of the title row */
+.log { margin: 0; border: 0; border-radius: 0; font-size: .8rem; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
 .input, .select, .textarea { width: 100%; padding: .45rem .7rem; font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
 .input:hover, .select:hover, .textarea:hover { border-color: var(--border-strong); }
 .input:focus, .select:focus, .textarea:focus { outline: 3px solid var(--focus); outline-offset: 1px; }
@@ -397,6 +409,6 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .caps th:nth-child(1) { width: 13rem; } .caps th:nth-child(2) { width: 17rem; } .caps th:nth-child(3) { width: 7rem; } .caps th:nth-child(4) { width: 4.5rem; }
 .table td > .btn-icon { vertical-align: middle; }
 /* A button never fades into what it sits on, whatever that is (page, card, dialog footer): the primary is solid accent, and
-   every other button is an accent outline on a faint accent tint. Only the close X of a dialog is bare (btn-ghost). */
-.btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger) { color: var(--brand); border-color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
-.btn:not(.btn-primary):not(.btn-ghost):not(.btn-danger):hover { background: color-mix(in srgb, var(--brand) 16%, var(--surface)); border-color: var(--brand); }
+   every other button is an accent outline on a faint accent tint (a row's button), except a Secondary button, which is white with a faint outline. Only the close X of a dialog is bare (btn-ghost). */
+.btn:not(.btn-primary):not(.btn-bare):not(.btn-danger):not(.btn-secondary) { color: var(--brand); border-color: var(--brand); background: color-mix(in srgb, var(--brand) 9%, var(--surface)); }
+.btn:not(.btn-primary):not(.btn-bare):not(.btn-danger):not(.btn-secondary):hover { background: color-mix(in srgb, var(--brand) 16%, var(--surface)); border-color: var(--brand); }

@@ -56,8 +56,9 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   once today's (UTC) spend reaches it, a model call is deferred until midnight, an escalation is skipped,
   and cache and shortcut hits stay free. Table `llm_spend`, reported by `ai_usage` as `spent_today`.
   Input budgets were already built (`input_tokens`, cut to the backend's `context_window`).
-  The Ollama embedder is lifted from oaken-mail into core (`oaken_core/ollama/`, entry point
-  `oaken_core.embedders: ollama`; PLAN had put it in the plugins repo): the client verbatim apart from
+  The Ollama embedder and LLM backends were lifted from oaken-mail into core, then (2026-11-06) moved to `oaken-plugins`
+  (`embedder_ollama`, `llm_backend_ollama`, `llm_backend_ollama_remote`): core ships the model plumbing (router, cache, ledger,
+  `sqlite-vec`, the contract suites in `oaken_core/testing/`) and no model, so every model feature waits for a plugin. The client was verbatim apart from
   renames; the plugin takes its model from its own `model` setting (mail read `ai.embed_model`) and no longer
   refuses a remote URL itself (the router's `locality` decides who may see what). `BaseEmbedder` is new.
   `oaken_core/testing/contracts.py` starts the contract suites with the embedder's. The LLM backend (`oaken_core/ollama/llm.py`,
@@ -135,6 +136,10 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   Providers (`socket`: the machine's door, `jsonl`: by hand) only provide; Intake formats and verifies. A reserved label can be
   made by a plugin or the owner and may carry `writers` (who may set it). Plugins: `oaken plugin add NAME` looks in the
   environment and `[extensions] dirs`, then in `oaken_plugins` (`oaken plugins` lists it); `json` ships in core.
+  The log is kept (2026-11-06): every line is a `LogEvent` on the bus (streams only, like the trace; the default stream and the event
+  log never see it). With no `[log] file` a writer stream keeps them in the `log_lines` table (`[log] keep_days`, default 7); with a
+  file, the file is the log. On unless `[log] enabled = false`. `log_tail` (`oaken log tail --plugin kind/name | --stage queue`) reads
+  it in widening scope; plugin, stage and General pages have a folded Log panel. Not built: `oaken log tail -f` (the bus has it).
   Not built: strict/permissive `mode` on every stage; parts as child subjects with `reads` / `ctx.content`; a batch importer.
 - **`queue.requeue`** (job or selector, `--to <queue>`, `--retriage`): `mcp="never"` by default,
   a config setting may lift it. Built on oaken-mail's `retry_job`.

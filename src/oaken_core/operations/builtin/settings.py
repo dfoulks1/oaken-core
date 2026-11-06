@@ -152,7 +152,7 @@ def _check_text(ctx: OpContext, text: str) -> None:
         raise ConfigError(exc.message) from None
     host = ctx.svc.host
     for name, q in settings.queues.items():
-        if host is not None:
+        if host is not None and name != "default":
             check_queue_kind(host.kinds, name, q.kind)
     core_keys = LabelMaker.core()
     for key, lt in settings.labels.items():

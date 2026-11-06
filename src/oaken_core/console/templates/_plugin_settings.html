@@ -8,7 +8,13 @@
   {% if t %}<div class="dialog-body"><p class="{{ 'ok' if t.result.works else 'bad' }}" role="status"><strong>Test: {{ "works" if t.result.works else "does not work" }}.</strong> {{ t.result.detail }} <span class="muted">Nothing was saved.</span></p></div>{% endif %}
   <div class="dialog-body">
     {% for title, fs in mc.sections %}{% if mc.sections|length > 1 %}<h3 class="eyebrow">{{ title }}</h3>{% endif %}{% for f in fs %}{{ field(f, vals.get(f.name), pre) }}{% endfor %}{% endfor %}
-    {% if mc.llm %}<h3 class="eyebrow">Model instructions</h3>
+    {% if mc.stages %}<div class="field"><label for="{{ pre }}stage">stage</label><div><select class="input" id="{{ pre }}stage" name="stage">{% for n, title in mc.stages %}<option value="{{ n }}"{{ " selected" if n == mc.stage }}>{{ title }}</option>{% endfor %}</select>
+      <div class="hint">The stage this one runs in. A plugin runs in one stage; add another instance of it to run it in a second.</div></div></div>{% endif %}
+    {% if mc.llm %}<h3 class="eyebrow">Model</h3>
+    <div class="field"><label for="{{ pre }}route_model">model</label><div><select class="input" id="{{ pre }}route_model" name="route_model">
+      {% if not mc.route_now %}<option value="" selected>the plugin's default</option>{% endif %}{% for v, label in mc.route_models %}<option value="{{ v }}"{{ " selected" if v == mc.route_now }}>{{ label }}</option>{% endfor %}</select>
+      <div class="hint">{% if mc.route_models %}The models your backends have right now.{% else %}No model backend is running: set one up under Pipeline, Machinery.{% endif %}</div></div></div>
+    <h3 class="eyebrow">Model instructions</h3>
     <div class="field"><label>override</label><div>{{ m.toggle("unlock", own.get("prompt") or own.get("guard"), "Override the plugin's prompt and guard", "overriding", "plugin default") }}
       <div class="hint">Locked to what the plugin ships. Switch on to use your own; off to go back to the plugin's.</div></div></div>
     <div class="field"><label for="{{ pre }}prompt">prompt</label><div><textarea class="input mono" rows="8" id="{{ pre }}prompt" name="prompt" spellcheck="false">{{ own.get("prompt") or mc.llm.prompt }}</textarea></div></div>
@@ -16,10 +22,10 @@
   </div>
   <div class="dialog-foot">
     <p class="note">Saved to <code>config.toml</code>; the plugin restarts on it. Secrets never go here.</p>
-    <button class="btn" formaction="/ui/plugins/{{ status.kind }}/{{ status.name }}/try" title="Try these settings on a throwaway copy; nothing is saved">Test</button>
-    {% if dialog and t %}<a class="btn btn-icon" href="{{ back }}" title="Close" aria-label="Close">{{ m.icon("x") }}</a>
-    {% elif dialog %}<button class="btn btn-icon" type="button" popovertarget="{{ dialog }}" popovertargetaction="hide" title="Cancel" aria-label="Cancel">{{ m.icon("x") }}</button>{% endif %}
-    <button class="btn btn-primary btn-icon" type="submit" title="Save" aria-label="Save">{{ m.icon("check") }}</button>
+    <button class="btn btn-primary btn-equal" formaction="/ui/plugins/{{ status.kind }}/{{ status.name }}/try" title="Try these settings on a throwaway copy; nothing is saved">Test</button>
+    {% if dialog and t %}<a class="btn btn-secondary btn-icon btn-equal" href="{{ back }}" title="Close" aria-label="Close">{{ m.icon("x") }}</a>
+    {% elif dialog %}<button class="btn btn-secondary btn-icon btn-equal" type="button" popovertarget="{{ dialog }}" popovertargetaction="hide" title="Cancel" aria-label="Cancel">{{ m.icon("x") }}</button>{% endif %}
+    <button class="btn btn-ghost btn-icon btn-equal" type="submit" title="Save" aria-label="Save">{{ m.icon("check") }}</button>
   </div>
 </form>
 {% endmacro %}

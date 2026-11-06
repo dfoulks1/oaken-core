@@ -19,6 +19,8 @@ Level = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
 class LogSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = True  # the kept log (the file if ``file`` is set, else the ``log_lines`` table); stderr is unaffected
+    keep_days: int = Field(default=7, ge=1, le=3650)  # how long the table keeps a line
     level: Level = "INFO"  # for everything under ``oaken_core``
     # Per-logger overrides by dotted name: {"oaken_core.jobs": "DEBUG"}. Python logging resolves
     # the most specific name, so one noisy module can be turned up without the rest.
@@ -94,7 +96,7 @@ class PluginTables(BaseModel):
 
     A table that carries ``plugin = "<entry point>"`` is a *named instance* of that plugin: any
     number of them, each with its own settings (``[plugins.llm_backend.desk]`` and
-    ``[plugins.llm_backend.laptop]`` both with ``plugin = "ollama"``).
+    ``[plugins.llm_backend.laptop]`` both with the same ``plugin``).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -130,7 +132,7 @@ class QueueTable(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    kind: str  # an analyzer plugin kind (``triager``, ``enricher``, ``action``, or a product's own)
+    kind: str = ""  # an analyzer plugin kind (``triager``, ``enricher``, ``action``, or a product's own); empty only for ``default``
     label: str = ""  # the console's title for it; the name, capitalised, when empty
     description: str = ""
     workers: int = Field(default=1, ge=1, le=64)

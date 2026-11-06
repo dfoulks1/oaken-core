@@ -13,6 +13,7 @@ pipeline), the position-box ordering (``plugins.ui.reposition``) and the Origin 
 """
 
 import dataclasses
+from urllib.parse import urlencode
 import re
 import time
 import hashlib
@@ -35,7 +36,7 @@ from starlette.staticfiles import StaticFiles
 
 from oaken_core import identity, paths
 from oaken_core.api.errors import status_for
-from oaken_core.config_edit import refuse_secrets, set_table
+from oaken_core.config_edit import get_table, refuse_secrets, save_table, set_table
 from oaken_core.console import forms
 from oaken_core.console.forms import Field
 from oaken_core.console.guard import ConsoleGuard, PortRef
@@ -92,6 +93,8 @@ class Console:
         routes = [
             Route("/", self.page(self.overview)),
             Route("/plugins", self.page(self.plugins)),
+            Route("/log", self.page(self.log_page)),
+            Route("/log/export", self.page(self.log_export)),
             Route("/pipeline", self.page(self.providers)),
             Route("/pipeline/providers", self.page(self.providers)),
             Route("/pipeline/labels", self.page(self.labels_page)),
@@ -114,12 +117,14 @@ class Console:
             Route("/ui/queues/add", self.post(self.add_queue), methods=["POST"]),
             Route("/ui/queues/{queue}/{verb}", self.post(self.queue_verb), methods=["POST"]),
             Route("/ui/jobs/{job}/requeue", self.post(self.job_requeue), methods=["POST"]),
+            Route("/ui/queues/{queue}/plugins/{name}/{state}", self.post(self.stage_plugin), methods=["POST"]),
             Route("/ui/expose", self.post(self.expose), methods=["POST"]),
             Route("/ui/mcp-power", self.post(self.mcp_power), methods=["POST"]),
             Route("/ui/config-file/test", self.post(self.config_file_test), methods=["POST"]),
             Route("/ui/config-file/save", self.post(self.config_file_save), methods=["POST"]),
             Route("/ui/config-file/reload", self.post(self.config_file_reload), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/settings", self.post(self.save_settings), methods=["POST"]),
+            Route("/ui/plugins/{kind}/{name}/instance", self.post(self.new_instance), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/try", self.post(self.try_settings), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/button", self.post(self.press), methods=["POST"]),
             Route("/ui/plugins/{kind}/{name}/pages/{page}/{action}", self.post(self.submit_page), methods=["POST"]),
@@ -208,7 +213,7 @@ class Console:
         raise NotFound(f"no {kind} plugin named {name!r}")
 
     def _values(self, kind: str, name: str) -> dict[str, Any]:
-        return {k: v for k, v in self._host().tables.table(kind, name).items() if k not in HOST_KEYS}
+        return {k: v for k, v in self._host().effective(kind, name).items() if k not in HOST_KEYS}  # what it runs on, inherited included
 
     async def _op(self, name: str, payload: Any = None) -> dict[str, Any]:
         out = (await self.client.call(name, payload or {}, UI)).output
@@ -275,6 +280,74 @@ class Console:
 
         return {**modal, "fields": [pick(f) for f in modal["fields"]], "sections": [(t, [pick(f) for f in fs]) for t, fs in modal["sections"]]}
 
+    def _log_scope(self, request: Request) -> dict[str, str]:
+        """The scope a Log page was asked for: ``?plugin=kind/name``, ``?stage=queue``, or neither for all of it."""
+        return {k: request.query_params[k] for k in ("plugin", "stage", "level") if request.query_params.get(k)}
+
+    async def log_page(self, request: Request) -> Response:
+        """The log as plain text on a page of its own. Where the file is comes first when there is one; JSON can be exported."""
+        scope = self._log_scope(request)
+        out = await self._op("log_tail", {**scope, "limit": 500})
+        back = f"/plugins/{scope['plugin']}" if "plugin" in scope else f"/stage/{scope['stage']}" if "stage" in scope else "/"
+        widen: list[tuple[str, dict[str, str]]] = []  # the log in a wider scope: the plugin's stage, then everything
+        if "plugin" in scope:
+            kind, _, name = scope["plugin"].partition("/")
+            if name and (stage := self._stage_choice(kind, name)["stage"]):
+                widen.append(("Its stage", {"stage": stage}))
+        if scope:
+            widen.append(("Everything", {}))
+        return self.render("log.html", log=out, scope=scope, back=back, export=urlencode(scope), title=scope.get("plugin") or scope.get("stage") or "Everything", widen=widen)
+
+    async def log_export(self, request: Request) -> Response:
+        """The same lines as a JSON file to save: what ``log_tail`` returned, as it returned it."""
+        out = await self._op("log_tail", {**self._log_scope(request), "limit": 2000})
+        return JSONResponse(out, headers={"Content-Disposition": 'attachment; filename="oaken-log.json"'})
+
+    async def _plugin_docs(self, kind: str, name: str) -> dict[str, Any]:
+        """The plugin's own account of itself, and the commands it offers (from the registry, with their summaries)."""
+        docs = self._host().describe(kind, name)
+        rows = (await self._op("exposure_list"))["operations"]
+        docs["commands"] = [{"name": r["name"], "summary": r["summary"], "permission": r["permission"]} for r in rows if r["plugin"] == self._status(kind, name).plugin or r["plugin"] == name]
+        return docs
+
+    def _bases(self, kind: str, only: str = "") -> list[dict[str, Any]]:
+        """The plugins of ``kind`` a new instance can be made of, each with the contextual settings it must be given (required)."""
+        out = []
+        for p in self._host().statuses():
+            if p.kind != kind or p.plugin != p.name or (only and p.name != only):
+                continue
+            must = set(self._host().contextual(kind, p.name))
+            if not must or not p.enabled:  # only an enabled template (a plugin that needs something to be one) gets the +
+                continue
+            try:
+                fields = [dataclasses.replace(f, required=True) for f in self._modal(kind, p.name)["fields"] if f.name in must]
+            except OakenError:
+                fields = []
+            out.append({"kind": kind, "name": p.name, "plugin": p.plugin, "template": p.template, "fields": fields})
+        return out
+
+    async def _route_choice(self, kind: str, name: str) -> dict[str, Any]:
+        """For a plugin that asks a model: the models the running backends report (``backend:model``), so the dialog offers what
+        exists, and the one this plugin uses now. Empty for any other plugin."""
+        host = self._host()
+        if host.llm_defaults(kind, name) is None:
+            return {}
+        models: list[tuple[str, str]] = []
+        for p in host.statuses():
+            if p.kind == "llm_backend" and p.started and p.healthy:
+                models += [(f"{p.name}:{m}", f"{p.name} · {m}") for m in (await host.setting_choices("llm_backend", p.name)).get("model", [])]
+        route = host.effective(kind, name).get("route") or {}
+        now = f"{route['backend']}:{route['model']}" if route.get("backend") and route.get("model") else ""
+        if now and now not in [v for v, _ in models]:
+            models.insert(0, (now, now.replace(":", " · ", 1)))
+        return {"route_models": models, "route_now": now}
+
+    def _stage_choice(self, kind: str, name: str) -> dict[str, Any]:
+        """The stages this kind of plugin can run in, and the one this instance is in: what its settings dialog offers as ``stage``."""
+        stages = [(q.name, q.title) for q in self.svc.queues.all() if q.kind == kind]
+        now = self._host().tables.table(kind, name).get("stage") or (stages[0][0] if stages else "")
+        return {"stages": stages, "stage": now}
+
     async def _modals(self, plugins: list[Any]) -> dict[str, dict[str, Any]]:
         """What each row's settings dialog shows (the same data as the plugin's own page). A plugin whose
         settings cannot be read has none, and its dialog says so."""
@@ -283,7 +356,8 @@ class Console:
             try:
                 modal = await self._choices(p.kind, p.name, self._modal(p.kind, p.name))
                 out[f"{p.kind}/{p.name}"] = {"sections": modal["sections"], "values": self._values(p.kind, p.name),
-                                              "llm": self._host().llm_defaults(p.kind, p.name), "own": self._host().tables.table(p.kind, p.name)}  # fmt: skip
+                                              "llm": self._host().llm_defaults(p.kind, p.name), "own": self._host().tables.table(p.kind, p.name),
+                                              **self._stage_choice(p.kind, p.name), **await self._route_choice(p.kind, p.name)}  # fmt: skip
             except OakenError:
                 continue
         return out
@@ -296,7 +370,13 @@ class Console:
         stages, rows = await self._flow()
         jobs = (await self._op("job_list", {"queue": name, "limit": 50}))["jobs"]
         failed = (await self._op("job_list", {"queue": name, "status": "failed", "limit": 50}))["jobs"]
-        return self.render("stage.html", stage=spec, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
+        first = next((q.name for q in self.svc.queues.all() if q.kind == spec.kind), None)
+        every = [p for p in self._host().statuses() if p.kind == spec.kind]
+        home = {p.name: self._host().tables.table(p.kind, p.name).get("stage") or first for p in every}  # the stage each runs in
+        active = [p for p in every if p.enabled and home[p.name] == name and p.name not in spec.disabled]
+        available = [p for p in every if p not in active]
+        why = {p.name: ("a template: add an instance" if p.template else "off everywhere" if not p.enabled else f"runs in {home[p.name]}" if home[p.name] != name else "switched off in this stage") for p in available}
+        return self.render("stage.html", stage=spec, bases=self._bases(spec.kind), active=active, available=available, why=why, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
                            plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
@@ -424,7 +504,7 @@ class Console:
         return self.render("plugin.html", status=self._status(kind, name), values=values, display=forms.display,
                            llm=self._host().llm_defaults(kind, name), own=self._host().tables.table(kind, name),
                            pages=modal["spec"].pages if modal["spec"] else (), buttons=modal["spec"].buttons if modal["spec"] else (),
-                           stats=await self._plugin_stats(kind, name), **modal)  # fmt: skip
+                           stats=await self._plugin_stats(kind, name), docs=await self._plugin_docs(kind, name), **self._stage_choice(kind, name), **await self._route_choice(kind, name), **modal)  # fmt: skip
 
     async def queues(self, request: Request) -> Response:
         return self.render("queues.html", **await self._op("queue_list"))
@@ -559,6 +639,27 @@ class Console:
             return out
         return self.render("result.html", title=f"Added {out.name}", back="/", result={"note": out.note})
 
+    async def stage_plugin(self, request: Request, form: dict[str, str]) -> Response:
+        """A stage page's switch: this plugin on or off in this stage only (the stage's ``disabled`` list). The plugin itself
+        stays on, and still runs in any other stage. The click is the confirmation."""
+        queue, name, state = request.path_params["queue"], request.path_params["name"], request.path_params["state"]
+        if state not in ("on", "off"):
+            raise NotFound("no such action")
+        stage = self.svc.queues.get(queue)
+        if state == "on":  # whatever keeps it out of this stage, undone: off everywhere, run in another stage, off here
+            kind = stage.kind
+            if not self._status(kind, name).enabled:
+                await self.client.call("plugin_enable", {"name": name}, UI, confirm=True)
+            first = next((q.name for q in self.svc.queues.all() if q.kind == kind), None)
+            if (self._host().tables.table(kind, name).get("stage") or first) != queue:
+                have = get_table(self.config_path.read_text(encoding="utf-8") if self.config_path.exists() else "", ["plugins", kind, name])
+                save_table(self.config_path, ["plugins", kind, name], {**have, "stage": queue})
+                self._host().tables.tables.setdefault(kind, {}).setdefault(name, {})["stage"] = queue
+        off = [n for n in stage.disabled if n != name] + ([name] if state == "off" else [])
+        if set(off) != set(stage.disabled):
+            await self.client.call("queue_edit", {"queue": queue, "disabled": off}, UI, confirm=True)
+        return RedirectResponse(self._back(f"/stage/{queue}"), 303)
+
     async def job_requeue(self, request: Request, form: dict[str, str]) -> Response:
         """A failed job's Requeue button: the click is the confirmation (it runs again in its own queue)."""
         await self.client.call("queue_requeue", {"job_id": request.path_params["job"]}, UI, confirm=True)
@@ -612,6 +713,16 @@ class Console:
     def _host_part(self, kind: str, name: str, form: dict[str, str]) -> dict[str, Any]:
         """The host's keys as saved, with ``prompt`` and ``guard`` taken from the form."""
         keep = {k: v for k, v in self._host().tables.table(kind, name).items() if k in HOST_KEYS and k not in ("prompt", "guard")}
+        picked_model = form.get("route_model", "")
+        if ":" in picked_model:  # the model dropdown: backend and model, over whatever else the route says
+            backend, _, model = picked_model.partition(":")
+            route = dict(self._host().effective(kind, name).get("route") or {})
+            if (route.get("backend"), route.get("model")) != (backend, model):
+                keep = {k: v for k, v in keep.items() if k != "route"} | {"route": route | {"backend": backend, "model": model}}
+        choice = self._stage_choice(kind, name)
+        picked = form.get("stage", "")
+        if picked in [n for n, _ in choice["stages"]]:  # the stage this instance runs in; the first is the default, so it is not written
+            keep = {k: v for k, v in keep.items() if k != "stage"} | ({} if picked == choice["stages"][0][0] else {"stage": picked})
         return keep | self._instructions(kind, name, form)
 
     async def try_settings(self, request: Request, form: dict[str, str]) -> Response:
@@ -631,6 +742,19 @@ class Console:
         back = self._back(f"/plugins/{kind}/{name}")
         return RedirectResponse(f"{back}{'&' if '?' in back else '?'}test={token}", 303)  # the dialog reopens with the result and what was typed
 
+    async def new_instance(self, request: Request, form: dict[str, str]) -> Response:
+        """Another named instance of this plugin, with settings of its own (a second ``llm`` with another model, in another
+        stage). The same ``plugin_add`` the command line uses: it shows what it will write, then does it."""
+        kind, name = request.path_params["kind"], request.path_params["name"]
+        status = self._status(kind, name)
+        config = {"stage": form["stage"]} if form.get("stage") in [n for n, _ in self._stage_choice(kind, name)["stages"]] else {}
+        must = set(self._host().contextual(kind, status.plugin if status.plugin == name else name))
+        config |= forms.parse([f for f in self._modal(kind, name)["fields"] if f.name in must], form)  # what makes it an instance
+        out = await self._gated("plugin_add", {"plugin": status.plugin, "kind": kind, "name": form.get("instance_name", "").strip(), "config": config}, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        return self.render("result.html", title=f"Added {out.name}", back=f"/plugins/{kind}/{out.name}", result={"note": out.detail or ("started" if out.started else "")})
+
     async def save_settings(self, request: Request, form: dict[str, str]) -> Response:
         """Write the plugin's table to ``config.toml`` and restart that plugin on it. Checked
         against its ``config_model`` first, and never a secret. Only the plugin is touched: core and
@@ -639,10 +763,12 @@ class Console:
         self._status(kind, name)
         host = self._host()
         modal = self._modal(kind, name)
-        if not modal["fields"] and host.llm_defaults(kind, name) is None:
+        if not modal["fields"] and host.llm_defaults(kind, name) is None and not self._stage_choice(kind, name)["stages"]:
             raise InvalidInput(f"{name} declares no settings to edit")
         values = forms.parse(modal["fields"], form)
         refuse_secrets(values)
+        inherited = host.inherited(kind, name)
+        values = {k: v for k, v in values.items() if k not in inherited or inherited[k] != v}  # an instance keeps only what it overrides
         table = self._host_part(kind, name, form) | values
         problems = host.check_config(name, table)
         if problems:
