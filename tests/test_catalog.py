@@ -149,3 +149,11 @@ async def test_kind_dot_name_says_both_at_once(fake: Path) -> None:
     assert (plan.kind, plan.name) == ("formatter", "demo") and plan.table["class"] == "oaken_plugins.formatter_demo:DemoFormatter"
     with pytest.raises(Exception, match="use one"):
         host.plan_add("formatter.demo", kind="embedder")
+
+
+async def test_reloading_a_plugin_loaded_from_a_class_line_or_the_catalog_keeps_it(fake: Path) -> None:
+    host = await _host({"formatter": {"demo": {}, "mine": {"class": "oaken_plugins.formatter_demo:DemoFormatter"}}})
+    for name in ("demo", "mine"):
+        await host.reload(name)
+        rec = host._records[("formatter", name)]
+        assert rec.instance is not None and rec.detail != "no longer installed", name

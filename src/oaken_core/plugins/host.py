@@ -779,6 +779,9 @@ class PluginHost:
         for rec in recs:
             await self._stop_one(rec)
             ep = found.get((rec.kind, rec.plugin))
+            base = self._records.get((rec.kind, rec.plugin)) or rec
+            if ep is None and base.loadpath:  # loaded from a class line, a directory or oaken-plugins: no entry point to find again
+                ep = EntryPoint(name=rec.plugin, value=base.loadpath, group=self.kinds.get(rec.kind).group)
             if ep is None:
                 rec.instance, rec.healthy, rec.detail = None, False, "no longer installed"
                 await self._announce(rec)
