@@ -140,3 +140,55 @@ async def test_find_returns_subjects_with_the_effective_value_and_filters_on_it(
     assert await labels.find("heat", limit=1) == [("a", "hot")]
     with pytest.raises(LabelError):
         await labels.find("nope")
+
+
+# -- the owner's keys (label_new, label_edit, label_delete) --------------------------------------
+import tomllib  # noqa: E402
+
+from oaken_core import paths  # noqa: E402
+from oaken_core.errors import Conflict, InvalidInput  # noqa: E402
+from oaken_core.operations.caller import CallerContext  # noqa: E402
+
+from .conftest import Ops  # noqa: E402
+
+
+def _saved() -> dict:  # type: ignore[type-arg]
+    return tomllib.loads((paths.config_dir() / "config.toml").read_text()).get("labels", {})
+
+
+async def test_the_owner_defines_edits_and_removes_a_key_in_config_toml(ops: Ops) -> None:
+    cli = CallerContext.cli()
+    store = ops.svc.labels
+    new = {"key": "heat", "description": "How upset", "values": ["calm", "hot"]}
+    asked = await ops.client.call("label_new", new, cli)
+    assert asked.proposal is not None and not (paths.config_dir() / "config.toml").exists()
+    await ops.client.call("label_new", new, cli, confirm=True)
+    assert _saved() == {"heat": {"description": "How upset", "values": ["calm", "hot"]}}
+    store.maker.register_config(BaseLabel.new("heat", "How upset", ("calm", "hot")))  # what a reload does
+    assert store.maker.source("heat") == "config" and store.maker.source("queue") == "core"
+    await ops.client.call("label_edit", {"key": "heat", "values": []}, cli, confirm=True)  # empty: any text
+    assert _saved() == {"heat": {"description": "How upset"}}
+    await store.set("s1", "heat", "calm", SYSTEM)
+    with pytest.raises(Conflict, match="still carry"):
+        await ops.client.call("label_delete", {"key": "heat"}, cli, confirm=True)
+    await store.clear_machine("s1", USER, "heat")
+    await ops.client.call("label_delete", {"key": "heat"}, cli, confirm=True)
+    assert "heat" not in _saved()
+
+
+async def test_a_key_core_or_a_plugin_defines_is_not_the_owners_to_change(ops: Ops) -> None:
+    cli = CallerContext.cli()
+    ops.svc.labels.maker.register(BaseLabel.new("plug", "from a plugin"))
+    for op, args, exc in [
+        ("label_edit", {"key": "queue", "description": "x"}, Conflict),
+        ("label_delete", {"key": "priority"}, Conflict),
+        ("label_edit", {"key": "plug", "description": "x"}, Conflict),
+        ("label_edit", {"key": "nope", "description": "x"}, InvalidInput),
+        ("label_new", {"key": "queue"}, Conflict),  # exists already
+        ("label_new", {"key": "Bad Key"}, InvalidInput),
+    ]:
+        with pytest.raises(exc):
+            await ops.client.call(op, args, cli, confirm=True)
+    assert not (paths.config_dir() / "config.toml").exists()  # nothing was written
+    names = {o.name for o in await ops.client.visible(CallerContext.mcp("me"))}
+    assert not {"label_new", "label_edit", "label_delete"} & names  # never over MCP

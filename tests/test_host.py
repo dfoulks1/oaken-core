@@ -28,6 +28,7 @@ class EP:
 
     def __init__(self, name: str, obj: Any) -> None:
         self.name, self._obj, self.dist = name, obj, None
+        self.value = f"{getattr(obj, '__module__', 'tests')}:{getattr(obj, '__qualname__', name)}"  # an entry point's ``module:attr``
 
     def load(self) -> Any:
         return self._obj

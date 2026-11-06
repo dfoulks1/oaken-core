@@ -124,6 +124,15 @@ class QueueTable(BaseModel):
     workers: int = Field(default=1, ge=1, le=64)
 
 
+class LabelTable(BaseModel):
+    """``[labels.<key>]``: a label key the owner defines, for a product that has none of its own."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = ""
+    values: list[str] = Field(default_factory=list)  # empty: any text
+
+
 class ApiSettings(BaseModel):
     """The authenticated door (API, MCP, gateways). The console is separate and loopback-only."""
 
@@ -193,6 +202,7 @@ class Settings(BaseModel):
     operations: OperationsSettings = Field(default_factory=OperationsSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
     queues: dict[str, QueueTable] = Field(default_factory=dict)  # in flow order: the console's nav follows it
+    labels: dict[str, LabelTable] = Field(default_factory=dict)
     plugins: PluginTables = Field(default_factory=PluginTables)
 
     @classmethod

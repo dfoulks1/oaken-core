@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 from oaken_core import paths
 from oaken_core.config_edit import refuse_secrets, save_table, set_table
 from oaken_core.errors import ConfigError, InvalidInput, NotFound
+from oaken_core.labels import BaseLabel, LabelError, LabelMaker
 from oaken_core.operations.context import OpContext
 from oaken_core.plugins.kinds import check_queue_kind
 from oaken_core.operations.registry import Change, Preview, operation
@@ -157,6 +158,14 @@ def _check_text(ctx: OpContext, text: str) -> None:
         if q.kind in served:
             raise ConfigError(f"[queues.{served[q.kind]}] already serves {q.kind!r}: a plugin kind belongs to one queue")
         served[q.kind] = name
+    core_keys = LabelMaker.core()
+    for key, lt in settings.labels.items():
+        try:
+            BaseLabel.new(key, lt.description, tuple(lt.values))
+            if key in {b.key for b in core_keys.keys()}:
+                raise LabelError(f"{key!r} is reserved by core")
+        except LabelError as exc:
+            raise ConfigError(f"[labels.{key}]: {exc.message}") from None
     for kind, named in settings.plugins.tables.items():
         for name, table in named.items():
             try:

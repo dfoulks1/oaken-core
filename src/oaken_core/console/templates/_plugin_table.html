@@ -39,6 +39,11 @@
 {% for p in plugins %}{% if not p.enabled %}{{ plugin_row(p, loop.index, back, show_kind, pre) }}{% endif %}{% endfor %}
 </tbody></table></div></details>{% endif %}
 {% endif %}
+{{ plugin_dialogs(plugins, back, pre) }}
+{% endmacro %}
+
+{# Each plugin's settings dialog, ids ``set-<pre><n>``. #}
+{% macro plugin_dialogs(plugins, back, pre) %}
 {% for p in plugins %}{% set mc = modals.get(p.kind ~ "/" ~ p.name) %}
 <div class="dialog" id="set-{{ pre }}{{ loop.index }}" popover role="dialog" aria-labelledby="set-{{ pre }}{{ loop.index }}-t">
   <div class="dialog-head"><h2 id="set-{{ pre }}{{ loop.index }}-t">{{ p.name }} <span class="muted small">{{ p.kind }}</span></h2>
@@ -48,6 +53,22 @@
   {% else %}<div class="dialog-body"><p class="muted">This plugin declares no settings.</p></div>{% endif %}
 </div>
 {% endfor %}
+{% endmacro %}
+
+{# Every disabled plugin in one table: where it loads from (or its kind), a switch to turn it on, its settings. #}
+{% macro inactive_table(plugins, back, pre="off-") %}
+{% if plugins %}<div class="card">
+<div class="card-head"><span>Inactive plugins</span><span class="muted small">{{ plugins|length }}</span></div>
+<div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>Loads from</th><th>Enabled</th><th class="right">Actions</th></tr></thead><tbody>
+{% for p in plugins %}<tr>
+<td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{% if p.plugin != p.name %} <span class="muted small">· {{ p.plugin }}</span>{% endif %}</td>
+<td class="mono small">{{ p.loadpath or p.kind }}{% if p.loadpath %} <span class="muted">{{ p.kind }}</span>{% endif %}{% if p.detail %}<div class="health-detail small muted">{{ p.detail }}</div>{% endif %}</td>
+<td class="nowrap">{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ "/enable", back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}</td>
+<td class="right nowrap"><button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ pre }}{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button></td>
+</tr>{% endfor %}
+</tbody></table></div>
+<div class="card-foot muted">Turn a plugin on to put it back in the pipeline.</div></div>
+{{ plugin_dialogs(plugins, back, pre) }}{% endif %}
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}

@@ -61,6 +61,7 @@ class LabelMaker:
 
     def __init__(self) -> None:
         self._labels: dict[str, BaseLabel] = {}
+        self._config: set[str] = set()  # keys the owner defined in config.toml
         self._validators: dict[str, Validator] = {}
 
     @classmethod
@@ -87,6 +88,16 @@ class LabelMaker:
         if label.reserved:
             raise LabelError(f"only core reserves keys; {label.key!r} is not one of core's")
         self._labels[label.key] = label
+
+    def register_config(self, label: BaseLabel) -> None:
+        """Define a key from ``[labels.<key>]``. The owner's, so the console may change it."""
+        self.register(label)
+        self._config.add(label.key)
+
+    def source(self, key: str) -> str:
+        """Who defined it: ``core``, ``config`` (the owner) or ``plugin``."""
+        label = self.get(key)
+        return "core" if label.reserved else "config" if key in self._config else "plugin"
 
     def keys(self) -> list[BaseLabel]:
         """Every defined key, by name."""

@@ -9,6 +9,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from oaken_core import paths
+from oaken_core.labels import BaseLabel
 from oaken_core.clock import FakeClock
 from oaken_core.daemon.core import Core
 from oaken_core.operations.caller import CallerContext
@@ -661,29 +662,53 @@ async def test_a_stage_page_starts_and_stops_its_queue_and_edits_renames_and_del
         await core.host.stop()
 
 
-# -- Pipeline > Labels -------------------------------------------------------------------------
-async def test_pipeline_labels_lists_keys_looks_up_a_subject_and_sets_and_clears_after_asking(tmp_path: Path, oaken_home: Path) -> None:
+# -- Pipeline > Labels ------------------------------------------------------------------------
+async def test_pipeline_labels_lists_keys_and_adds_edits_and_deletes_the_owners_after_asking(tmp_path: Path, oaken_home: Path) -> None:
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     token = core.console.token
+    post = lambda path, **kw: client.post(path, data={"csrf": token, **kw})  # noqa: E731
+    saved = lambda: tomllib.loads((oaken_home / "config" / "config.toml").read_text()).get("labels", {})  # noqa: E731
     try:
         assert 'href="/pipeline/plugins"' in (await client.get("/pipeline")).text and 'href="/pipeline"' in (await client.get("/pipeline/plugins")).text  # the two tabs
-        page = await client.get("/pipeline")  # Labels is the default tab
-        assert page.status_code == 200 and "confidential" in page.text and "reserved" in page.text and 'aria-current="page">Pipeline' in page.text
-        form = {"csrf": token, "subject": "s1", "key": "priority", "value": "high"}
-        asked = await client.post("/ui/labels/set", data=form)
-        assert asked.status_code == 200 and "Set priority=high on s1" in asked.text
-        assert "high" not in (await client.get("/pipeline?subject=s1")).text.split("Labels on")[-1]  # nothing written yet
-        done = await client.post("/ui/labels/set", data={**form, "confirm": "1"})
-        assert done.status_code == 303 and done.headers["location"] == "/pipeline?subject=s1"
-        looked = (await client.get("/pipeline?subject=s1")).text
-        assert "Labels on" in looked and ">high<" in looked
-        by_key = (await client.get("/pipeline?key=priority&value=high")).text
-        assert "Subjects with" in by_key and 'href="/pipeline?subject=s1"' in by_key
-        assert (await client.post("/ui/labels/clear", data={"csrf": token, "subject": "s1", "key": "priority", "confirm": "1"})).status_code == 303
-        assert "No labels on this subject" in (await client.get("/pipeline?subject=s1")).text
-        assert (await client.post("/ui/labels/explode", data={"csrf": token})).status_code == 404
-        assert (await client.get("/pipeline?key=nope")).status_code == 422
+        page = (await client.get("/pipeline")).text  # Labels is the default tab
+        assert "confidential" in page and "core" in page and 'popovertarget="label-new"' in page
+        assert 'name="subject"' not in page and "Find" not in page  # settings only: no look-up of a subject's labels
+        form = {"key": "heat", "description": "How upset", "values": "calm, warm,hot"}
+        asked = await post("/ui/labels/new", **form)
+        assert asked.status_code == 200 and "Define label heat" in asked.text and not (oaken_home / "config" / "config.toml").exists()
+        done = await post("/ui/labels/new", confirm="1", **form)
+        assert done.status_code == 200 and "restart" in done.text  # the rig has no daemon to reload it
+        assert saved()["heat"] == {"description": "How upset", "values": ["calm", "warm", "hot"]}
+        core.client.svc.labels.maker.register_config(BaseLabel.new("heat", "How upset", ("calm", "warm", "hot")))  # what a reload does
+        page = (await client.get("/pipeline")).text
+        assert 'action="/ui/labels/heat/edit"' in page and 'action="/ui/labels/confidential/edit"' not in page  # only the owner's own
+        edited = await post("/ui/labels/heat/edit", confirm="1", description="Temperature", values="calm, hot")
+        assert edited.status_code == 200 and saved()["heat"] == {"description": "Temperature", "values": ["calm", "hot"]}
+        assert (await post("/ui/labels/confidential/delete", confirm="1")).status_code == 409  # core's
+        assert (await post("/ui/labels/heat/explode")).status_code == 404
+        assert (await post("/ui/labels/new", confirm="1", key="Bad Key")).status_code == 422
+        gone = await post("/ui/labels/heat/delete", confirm="1")
+        assert gone.status_code == 200 and "heat" not in saved()
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+async def test_the_plugins_tab_lumps_every_disabled_plugin_at_the_bottom_with_where_it_loads_from(tmp_path: Path, oaken_home: Path) -> None:
+    import re
+
+    core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        await core.client.call("plugin_disable", {"name": "sqlite"}, CallerContext.cli(), confirm=True)
+        page = (await client.get("/pipeline/plugins")).text
+        head = page.index("<span>Inactive plugins</span>")
+        assert "Stores" not in re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)  # a kind with nothing live has no section
+        table = page[head:]
+        assert "sqlite" in table[: table.index("</table>")] and "Loads from" in table  # one table, with a loadpath column
+        assert re.search(r'class="mono small">[\w.]+:\w+', table)  # the entry point's module:attr
+        assert page.count("<span>Inactive plugins</span>") == 1
     finally:
         await client.aclose()
         await core.host.stop()

@@ -22,7 +22,6 @@ from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
 
 import jinja2
 from pydantic import BaseModel
@@ -83,7 +82,8 @@ class Console:
             Route("/plugins", self.page(self.plugins)),
             Route("/pipeline", self.page(self.labels_page)),
             Route("/pipeline/plugins", self.page(self.pipeline)),
-            Route("/ui/labels/{verb}", self.post(self.label_verb), methods=["POST"]),
+            Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
+            Route("/ui/labels/{key}/{verb}", self.post(self.label_verb), methods=["POST"]),
             Route("/capabilities", self.page(self.capabilities)),
             Route("/stage/{queue}", self.page(self.stage)),
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
@@ -309,39 +309,43 @@ class Console:
 
     async def pipeline(self, request: Request) -> Response:
         """The machinery: a collapsible section for each kind of plugin that is not a stage's (stores, providers, models,
-        embedders...) that has something in it. A stage's own plugins are on its page."""
+        embedders...) with something in the pipeline, then one table of every disabled one, whatever its kind. A stage's own
+        plugins are on its page."""
         stage_kinds = {q.kind for q in self._stage_specs()}
         stages, _ = await self._flow()
         every = self._host().statuses()
-        sections, empty = [], []
+        sections, empty, plugins = [], [], []
         for k in (k.name for k in self._host().kinds if k.name not in stage_kinds):
             found = [p for p in every if p.kind == k]
-            (sections if found else empty).append((k, self._kind_label(k), found) if found else self._kind_label(k))
-        plugins = [p for _, _, ps in sections for p in ps]
-        return self.render("pipeline.html", stages=stages, sections=sections, empty=empty, modals=await self._modals(plugins))
+            plugins += found
+            live = [p for p in found if p.enabled]
+            if live:
+                sections.append((k, self._kind_label(k), live))
+            elif not found:
+                empty.append(self._kind_label(k))
+        return self.render("pipeline.html", stages=stages, sections=sections, empty=empty, inactive=[p for p in plugins if not p.enabled],
+                           modals=await self._modals(plugins))
 
     async def labels_page(self, request: Request) -> Response:
-        """Pipeline, the default tab: the keys that exist, then a look-up by subject or by key, with set and clear beside the result."""
+        """Pipeline, the default tab: the label keys that exist, and the owner's own to add, change or remove.
+        Settings only: what labels subjects carry is content, and not for this console."""
         stages, _ = await self._flow()
-        q = request.query_params
-        subject, key, value = q.get("subject", "").strip(), q.get("key", "").strip(), q.get("value", "").strip()
-        keys = (await self._op("label_keys"))["keys"]
-        got = (await self._op("label_get", {"subject_id": subject}))["labels"] if subject else None
-        found = (await self._op("label_find", {"key": key, "value": value or None}))["hits"] if key else None
-        return self.render("labels.html", stages=stages, keys=keys, subject=subject, key=key, value=value, got=got, found=found)
+        return self.render("labels.html", stages=stages, keys=(await self._op("label_keys"))["keys"])
 
     async def label_verb(self, request: Request, form: dict[str, str]) -> Response:
-        """Set or clear one label for a subject, as a person (the human layer). Shows what it will do first."""
-        verb = request.path_params["verb"]
-        if verb not in ("set", "clear"):
+        """Add, change or remove one of the owner's label keys. Each shows what it will do first."""
+        verb = request.path_params.get("verb", "new")
+        key = request.path_params.get("key", form.get("key", "").strip())
+        if verb not in ("new", "edit", "delete"):
             raise NotFound("no such action")
-        payload = {"subject_id": form.get("subject", "").strip(), "key": form.get("key", "").strip()}
-        if verb == "set":
-            payload["value"] = form.get("value", "")
+        values = [v.strip() for v in form.get("values", "").replace("\n", ",").split(",") if v.strip()]
+        payload = {"new": {"key": key, "description": form.get("description", ""), "values": values},
+                   "edit": {"key": key, "description": form.get("description", ""), "values": values},
+                   "delete": {"key": key}}[verb]  # fmt: skip
         out = await self._gated(f"label_{verb}", payload, form, request.url.path)
         if isinstance(out, Response):
             return out
-        return RedirectResponse(f"/pipeline?subject={quote(payload['subject_id'])}", 303)
+        return self.render("result.html", title=f"{verb.capitalize()}: {out.key}", back="/pipeline", result={"note": out.note})
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()

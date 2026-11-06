@@ -343,11 +343,11 @@ async def preview_queue_new(ctx: OpContext, inp: QueueNewIn) -> Preview:
 async def queue_new(ctx: OpContext, inp: QueueNewIn) -> QueueNewOut:
     name, table = _new_plan(ctx, inp)
     save_table(paths.config_dir() / "config.toml", ["queues", name], table)
-    reloading, note = _reload(ctx, "the stage appears in the nav in a moment")
+    reloading, note = reload_core(ctx, "the stage appears in the nav in a moment")
     return QueueNewOut(name=name, reloading=reloading, note=note)
 
 
-def _reload(ctx: OpContext, after: str) -> tuple[bool, str]:
+def reload_core(ctx: OpContext, after: str) -> tuple[bool, str]:
     """Ask the daemon to rebuild core on the file just written. (reloading, what to tell the person.)"""
     restart = (False, "saved to config.toml; restart core to start the queue's workers")
     if ctx.svc.reload is None:
@@ -459,7 +459,7 @@ async def preview_queue_edit(ctx: OpContext, inp: QueueEditIn) -> Preview:
 async def queue_edit(ctx: OpContext, inp: QueueEditIn) -> QueueChangeOut:
     _text, _before, after = _edit_plan(ctx, inp)
     save_table(_config_path(), ["queues", inp.queue], after)
-    reloading, note = _reload(ctx, "the change shows in a moment")
+    reloading, note = reload_core(ctx, "the change shows in a moment")
     return QueueChangeOut(name=inp.queue, reloading=reloading, note=note)
 
 
@@ -494,7 +494,7 @@ async def queue_delete(ctx: OpContext, inp: QueueRef) -> QueueChangeOut:
     tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
     tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, path)
-    reloading, note = _reload(ctx, "the stage leaves the nav in a moment")
+    reloading, note = reload_core(ctx, "the stage leaves the nav in a moment")
     return QueueChangeOut(name=inp.queue, reloading=reloading, note=note)
 
 
@@ -548,7 +548,7 @@ async def queue_rename(ctx: OpContext, inp: QueueRenameIn) -> QueueChangeOut:
         await tx.execute("UPDATE labels SET value = ? WHERE key = 'queue' AND value = ?", (new, inp.queue))  # shortcut: no change-log row per subject; add one if an audit of label moves is wanted
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)
-    reloading, note = _reload(ctx, "the stage shows under its new name in a moment")
+    reloading, note = reload_core(ctx, "the stage shows under its new name in a moment")
     return QueueChangeOut(name=new, reloading=reloading, note=note)
 
 

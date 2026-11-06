@@ -26,7 +26,7 @@ from oaken_core.events import EventBus
 from oaken_core.intake import Intake, IntakeItem
 from oaken_core.jobs import Jobs, JobRunner
 from oaken_core.ids import SubjectId
-from oaken_core.labels import LabelMaker, LabelStore
+from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
@@ -102,6 +102,11 @@ class Core:
         queues = self._make_queues()
         maker = LabelMaker.core()
         maker.set_validator("queue", queues.validate_label)
+        for key, t in s.labels.items():
+            try:
+                maker.register_config(BaseLabel.new(key, t.description, tuple(t.values)))
+            except LabelError as exc:
+                raise ConfigError(f"[labels.{key}]: {exc.message}") from None
         changelog = ChangeLog(clock)
         labels = LabelStore(db, maker, changelog, clock)
         self.host.attach_labels(labels, maker)

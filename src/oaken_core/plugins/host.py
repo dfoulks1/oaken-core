@@ -91,6 +91,7 @@ class _Record:
     auto_disabled: bool = False  # switched off for want of configuration: retried, not forced off
     faulted: bool = False  # switched off for a fault (label error, needs cycle): ``enable`` retries
     inactive: bool = False  # an exclusive kind with another plugin active
+    loadpath: str = ""
 
 
 @dataclass(frozen=True)
@@ -122,6 +123,7 @@ class PluginStatus:
     detail: str
     enabled: bool = True
     enabled_default: bool = True
+    loadpath: str = ""  # where it loads from: the entry point's ``module:attr`` ("" for one made from none)
 
 
 @dataclass(frozen=True)
@@ -220,7 +222,7 @@ class PluginHost:
         self._loaded = True
 
     def _load_one(self, spec: KindSpec, ep: EntryPoint) -> _Record:
-        rec = _Record(spec.name, ep.name, ep.name)
+        rec = _Record(spec.name, ep.name, ep.name, loadpath=ep.value)
         try:
             obj = ep.load()
             rec.factory = obj
@@ -239,8 +241,8 @@ class PluginHost:
 
     def _instance_of(self, spec: KindSpec, name: str, base: str) -> _Record:
         """A named instance: another object made from plugin ``base``'s factory."""
-        rec = _Record(spec.name, name, base)
         found = self._records.get((spec.name, base))
+        rec = _Record(spec.name, name, base, loadpath=found.loadpath if found else "")
         if found is None or found.factory is None:
             rec.disabled, rec.detail = True, f"failed to load: no {spec.name} plugin named {base!r}"
         elif not (isinstance(found.factory, type) or inspect.isfunction(found.factory)):
@@ -813,7 +815,7 @@ class PluginHost:
                 kind=r.kind, name=r.name, plugin=r.plugin, version=r.info.version if r.info else "",
                 started=r.started, healthy=r.healthy, detail=r.detail,
                 enabled=not r.disabled and self._enabled_by_table(r),
-                enabled_default=self._enabled_default(r.instance),
+                enabled_default=self._enabled_default(r.instance), loadpath=r.loadpath,
             )  # fmt: skip
             for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))
         ]
