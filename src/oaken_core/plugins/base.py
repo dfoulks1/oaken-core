@@ -137,6 +137,9 @@ class BasePlugin:
             if inspect.iscoroutinefunction(fn) and not getattr(fn, "_oaken_default", False) and not getattr(fn, "_oaken_traced", False):
                 setattr(cls, name, _traced(name, fn))
 
+    # The plugin kind this base is for (``triager``, ``llm_backend``...): how ``plugin add <class path>`` knows
+    # where a class belongs without being told. Empty on the base of all of them.
+    kind: ClassVar[str] = ""
     api_version: ClassVar[int] = PLUGIN_API_VERSION
     version: ClassVar[str] = ""
     # A version range of Oaken Core this plugin works with (``">=0.1,<0.2"``). Empty: any. The
@@ -234,6 +237,7 @@ class BasePlugin:
 
 class BaseStore(BasePlugin):
     """A store hands core a ``Database``. Core and plugins write portable SQL against it."""
+    kind: ClassVar[str] = "store"
 
     @_default
     async def open(self) -> Database:
@@ -302,6 +306,7 @@ class BaseLLMAnalyzer(BaseAnalyzer):
 
 class BaseEmbedder(BasePlugin):
     """Turns text into vectors. Analyzers reach it only through the router (``embed``)."""
+    kind: ClassVar[str] = "embedder"
 
     model_id: str = ""
     dimensions: int = 0
@@ -315,6 +320,7 @@ class BaseEmbedder(BasePlugin):
 class BaseLLMBackend(BasePlugin):
     """Runs a chat model. The router calls ``generate``; where the model runs (``locality``) is the
     instance's table, not the class, so the owner decides who may send it what."""
+    kind: ClassVar[str] = "llm_backend"
 
     model_id: str = ""
     context_window: int = 0
@@ -348,6 +354,7 @@ class VectorStats:
 class BaseVectorStore(BasePlugin):
     """Stores vectors under a collection and a key, and finds the nearest. A collection never mixes
     vector sizes, and one collection never sees another's vectors. ``score`` is cosine similarity."""
+    kind: ClassVar[str] = "vector_store"
 
     @_default
     async def upsert(self, collection: str, items: Sequence[VectorItem]) -> None:
@@ -370,6 +377,7 @@ class BaseCache(BasePlugin):
     """The router's answer cache, swapped for another store. Override all five members. ``key`` may return
     any tuple of strings; ``get`` and ``put`` get that tuple back. Core's own (``AnswerCache``, a table in
     core's database) is what runs unless ``[router] cache_store`` names a healthy instance of one of these."""
+    kind: ClassVar[str] = "cache_store"
 
     @_default
     def key(self, analyzer: str, version: str, content_hash: str, model: str) -> tuple[str, ...]:
@@ -395,6 +403,7 @@ class BaseCache(BasePlugin):
 class BaseIngestor(BasePlugin):
     """Stores an item intake accepted and returns its real ``SubjectId``. The product's own: core
     knows nothing about what an item is. One is active at a time."""
+    kind: ClassVar[str] = "ingestor"
 
     @_default
     async def ingest(self, item: Any) -> Any:
@@ -403,6 +412,7 @@ class BaseIngestor(BasePlugin):
 
 class BaseTriager(BaseAnalyzer):
     """Rates an intake item before it is stored. Lowest ``rank`` first; the first verdict wins."""
+    kind: ClassVar[str] = "triager"
 
     rank: ClassVar[int] = 50
 
@@ -413,12 +423,16 @@ class BaseTriager(BaseAnalyzer):
 
 class BaseEnricher(BaseAnalyzer):
 
+    kind: ClassVar[str] = "enricher"
+
     @_default
     async def enrich(self, target: Any) -> Any:
         raise NotImplementedError("an enricher must implement enrich()")
 
 
 class BaseAction(BaseAnalyzer):
+
+    kind: ClassVar[str] = "action"
     routes: ClassVar[tuple[str, ...]] = ()
 
     @_default

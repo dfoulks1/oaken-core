@@ -96,7 +96,7 @@ class Core:
         """Build the graph. Opens the database; ``stop`` closes it."""
         s, clock = self.settings, self.clock
         self.bus = EventBus()
-        self.host = PluginHost(s.plugins, clock, self.bus, discover=self._discover, core_version=__version__)
+        self.host = PluginHost(s.plugins, clock, self.bus, discover=self._discover, extensions_dirs=s.extensions.dirs, core_version=__version__)
         self.host.secrets = self.secrets
         db = await self.host.start_store()
         queues = self._make_queues()

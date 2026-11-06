@@ -7,13 +7,14 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from oaken_core import paths
-from oaken_core.config_edit import refuse_secrets, save_table
-from oaken_core.errors import InvalidInput, NotFound
-from oaken_core.operations.builtin.queue import Empty, QueueRow
+from oaken_core.config_edit import get_table, refuse_secrets, save_table
+from oaken_core.errors import InvalidInput, NotFound, PluginError
+from oaken_core.operations.builtin.queue import Empty, QueueRow, reload_core
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.exposure import OP, PLUGIN, scope_of
 from oaken_core.operations.registry import Change, Preview, operation
 from oaken_core.operations.services import need
+from oaken_core.plugins.host import AddPlan
 
 
 class StatusOut(BaseModel):
@@ -121,9 +122,10 @@ async def plugin_reload(ctx: OpContext, inp: PluginRef) -> PluginAffected:
 
 
 class PluginAddIn(BaseModel):
-    kind: str = Field(description="The plugin kind, e.g. embedder or llm_backend.")
-    name: str = Field(description="The new instance's name; it is what the config table is called.")
-    plugin: str = Field(description="The installed plugin to make an instance of.")
+    plugin: str = Field(json_schema_extra={"positional": True},
+                        description="What to add: a plugin's name (installed, or a directory in [extensions] dirs), or a class path such as pkg.module.Class.")  # fmt: skip
+    kind: str | None = Field(default=None, description="The plugin kind. Only needed when the name is shared or a class does not say.")
+    name: str | None = Field(default=None, description="A name for this instance. Empty: the plugin's own name, which switches it on.")
     config: dict[str, Any] = Field(default_factory=dict, description="Its settings. Secrets are refused.")
 
 
@@ -132,30 +134,39 @@ class PluginAddOut(BaseModel):
     name: str
     started: bool
     detail: str
+    reloading: bool = False
+
+
+def _plan(ctx: OpContext, inp: PluginAddIn) -> AddPlan:
+    try:
+        return need(ctx.svc.host, "the plugin host").plan_add(inp.plugin, kind=inp.kind, name=inp.name, config=inp.config)
+    except PluginError as exc:
+        raise InvalidInput(exc.message) from None
 
 
 async def _plugin_add_preview(ctx: OpContext, inp: PluginAddIn) -> Preview:
-    problems = need(ctx.svc.host, "the plugin host").check_new_instance(inp.kind, inp.name, inp.plugin, inp.config)
-    if problems:
-        raise InvalidInput("; ".join(problems))
-    changes = [Change(target=f"{inp.kind}.{inp.name}", field="plugin", after=inp.plugin)]
-    changes += [Change(target=f"{inp.kind}.{inp.name}", field=k) for k in sorted(inp.config)]  # names only, never values
-    return Preview(summary=f"Add {inp.kind} {inp.name} (an instance of {inp.plugin}) and write it to config.toml", changes=changes, total_changes=len(changes))
+    plan = _plan(ctx, inp)
+    where = f"{plan.kind}.{plan.name}"
+    changes = [Change(target=where, field=k, after=v if k in ("plugin", "class", "enabled") else None) for k, v in sorted(plan.table.items())]  # names only, never values
+    then = " and reload core to find it" if plan.how == "reload" else ""
+    return Preview(summary=f"Add {plan.kind} {plan.name} ({inp.plugin}), write it to config.toml{then}", changes=changes, total_changes=len(changes))
 
 
-@operation("plugin_add", "Add a named instance of an installed plugin: checked, written to config.toml, started.",
+@operation("plugin_add", "Add a plugin by name (installed, or in an extensions directory) or by class path: written to config.toml, started, and core reloaded if it has to find it.",
            permission="mutate", input=PluginAddIn, output=PluginAddOut, mcp="never", group="plugin",
            preview=_plugin_add_preview)  # fmt: skip
 async def plugin_add(ctx: OpContext, inp: PluginAddIn) -> PluginAddOut:
     host = need(ctx.svc.host, "the plugin host")
-    problems = host.check_new_instance(inp.kind, inp.name, inp.plugin, inp.config)
-    if problems:
-        raise InvalidInput("; ".join(problems))
-    table = {**inp.config, "plugin": inp.plugin}
-    save_table(paths.config_dir() / "config.toml", ["plugins", inp.kind, inp.name], table)  # refuses a secret first
-    await host.add_instance(inp.kind, inp.name, inp.plugin, inp.config)
-    status = next(s for s in host.statuses() if (s.kind, s.name) == (inp.kind, inp.name))
-    return PluginAddOut(kind=inp.kind, name=inp.name, started=status.started, detail=status.detail)
+    plan = _plan(ctx, inp)
+    path = paths.config_dir() / "config.toml"
+    have = get_table(path.read_text(encoding="utf-8") if path.exists() else "", ["plugins", plan.kind, plan.name])
+    save_table(path, ["plugins", plan.kind, plan.name], {**have, **plan.table})  # refuses a secret first
+    if plan.how == "reload":
+        reloading, note = reload_core(ctx, "the plugin starts in a moment")
+        return PluginAddOut(kind=plan.kind, name=plan.name, started=False, detail=note, reloading=reloading)
+    await host.apply_add(plan)
+    status = next(s for s in host.statuses() if (s.kind, s.name) == (plan.kind, plan.name))
+    return PluginAddOut(kind=plan.kind, name=plan.name, started=status.started, detail=status.detail)
 
 
 class ReloadOut(BaseModel):

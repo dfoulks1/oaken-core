@@ -17,12 +17,13 @@ Plugins run in-process with full access and are not sandboxed.
 
 import asyncio
 import contextlib
+import importlib
 import inspect
 import re
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from importlib.metadata import EntryPoint, entry_points
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from pydantic import ValidationError
 
@@ -34,6 +35,7 @@ from oaken_core.errors import NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import LabelError, LabelMaker, LabelStore
 from oaken_core.logging import get_logger
+from oaken_core.plugins import extensions
 from oaken_core.plugins.contracts import (
     Health,
     PluginContext,
@@ -63,10 +65,22 @@ from oaken_core.trace import Tracer
 log = get_logger("oaken_core.plugins")
 
 _INSTANCE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
-HOST_KEYS = ("enabled", "plugin", "locality", "concurrency", "route", "prompt", "guard")  # the host's settings, never the plugin's
+HOST_KEYS = ("enabled", "plugin", "class", "locality", "concurrency", "route", "prompt", "guard")  # the host's settings, never the plugin's
 RELATIONS = frozenset({"self", "parent", "children"})  # a product adds more with register_relation
 
 Discover = Callable[[str], Iterable[EntryPoint]]
+
+
+@dataclass(frozen=True)
+class AddPlan:
+    """What ``plugin add`` will do, worked out before anything is written. ``table`` is what to merge into
+    ``[plugins.<kind>.<name>]``. ``how``: ``enable`` (a loaded plugin, switched on), ``instance`` (another instance of a
+    loaded one, started now) or ``reload`` (not loaded yet: core must reload to find it)."""
+
+    kind: str
+    name: str
+    table: dict[str, Any]
+    how: Literal["enable", "instance", "reload"]
 
 
 def discover_entry_points(group: str) -> Iterable[EntryPoint]:
@@ -169,6 +183,7 @@ class PluginHost:
         *,
         kinds: KindRegistry | None = None,
         discover: Discover = discover_entry_points,
+        extensions_dirs: Sequence[str] = (),
         health_interval: float = 30.0,
         call_timeout: float = 30.0,
         core_version: str = __version__,
@@ -182,6 +197,8 @@ class PluginHost:
         self.intake: Any = None  # set by core: ``Intake``, behind ``ctx.submit``
         self.secrets: Any = None  # set by core: a ``SecretStore``, handed to each plugin as its own ``ctx.secrets``
         self._discover = discover
+        self.extensions_dirs = tuple(extensions_dirs)  # directories of plugin directories (``[extensions] dirs``)
+        extensions.prepare(self.extensions_dirs)
         self.health_interval = health_interval
         self.call_timeout = call_timeout
         self.core_version = core_version
@@ -209,17 +226,86 @@ class PluginHost:
         """Find every installed plugin and validate it, then the named instances the config asks
         for. Nothing is started yet."""
         for spec in self.kinds.ordered():
-            for ep in sorted(self._discover(spec.group), key=lambda e: e.name):
+            for ep in sorted(self._entry_points(spec.group), key=lambda e: e.name):
                 if (spec.name, ep.name) in self._records:
                     log.error("duplicate plugin name ignored", kind=spec.name, name=ep.name)
                     continue
                 self._records[(spec.name, ep.name)] = self._load_one(spec, ep)
+        for spec in self.kinds:  # a table with ``class = "module:Class"`` is a plugin with no entry point
+            for name, table in self.tables.tables.get(spec.name, {}).items():
+                if table.get("class") and (spec.name, name) not in self._records:
+                    self._records[(spec.name, name)] = self._load_one(spec, EntryPoint(name=name, value=str(table["class"]), group=spec.group))
         for spec in self.kinds:
             for name, base in self.tables.instances(spec.name).items():
                 if (spec.name, name) not in self._records:
                     self._records[(spec.name, name)] = self._instance_of(spec, name, base)
         self._check_needs()
         self._loaded = True
+
+    def _entry_points(self, group: str) -> list[EntryPoint]:
+        """What is installed, then what the extension directories offer."""
+        return [*self._discover(group), *extensions.entry_points(self.extensions_dirs, group)]
+
+    def plan_add(self, target: str, *, kind: str | None = None, name: str | None = None, config: dict[str, Any] | None = None) -> AddPlan:
+        """Work out how to add ``target``: a plugin's name (installed, or a directory in ``[extensions] dirs``), or a class
+        path (``pkg.module.Class`` or ``pkg.module:Class``). Raises ``PluginError`` saying why not. Writes nothing."""
+        config = dict(config or {})
+        if kind is not None and kind not in self.kinds:
+            raise PluginError(f"no plugin kind {kind!r} (known: {', '.join(k.name for k in self.kinds)})")
+        if "." in target or ":" in target:
+            return self._plan_class(target, kind, name, config)
+        eps = {(spec.name, ep.name): ep for spec in self.kinds if kind in (None, spec.name) for ep in self._entry_points(spec.group) if ep.name == target}
+        for ep in extensions.in_directory(self.extensions_dirs, target):  # a directory's name stands for what it offers
+            for spec in self.kinds:
+                if spec.group == ep.group and kind in (None, spec.name):
+                    eps[(spec.name, ep.name)] = ep
+        if not eps:
+            where = ", ".join(self.extensions_dirs) or "none set"
+            raise PluginError(f"no plugin named {target!r}: it is not installed and not a directory in [extensions] dirs ({where})")
+        if len(eps) > 1:
+            raise PluginError(f"{target!r} offers {len(eps)} plugins ({', '.join(f'{k}/{n}' for k, n in sorted(eps))}): add one by its name, with --kind if the name is shared")
+        (k, ename), _ep = next(iter(eps.items()))
+        name = name or ename
+        loaded = (k, ename) in self._records
+        base = self._records.get((k, ename))
+        if base is not None and base.instance is not None:  # a loaded plugin can say now whether these settings fit
+            self._validate_config(base.instance, {c: v for c, v in config.items() if c not in HOST_KEYS})
+        if name == ename:
+            return AddPlan(k, name, {"enabled": True, **config}, "enable" if loaded else "reload")
+        if not _INSTANCE_NAME.match(name):
+            raise PluginError(f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)")
+        if (k, name) in self._records or name in self.tables.tables.get(k, {}):
+            raise PluginError(f"{k} {name!r} already exists")
+        return AddPlan(k, name, {"plugin": ename, **config}, "instance" if loaded else "reload")
+
+    def _plan_class(self, target: str, kind: str | None, name: str | None, config: dict[str, Any]) -> AddPlan:
+        value = target if ":" in target else ".".join(target.split(".")[:-1]) + ":" + target.split(".")[-1]
+        module, _, attr = value.partition(":")
+        try:
+            cls = getattr(importlib.import_module(module), attr)
+        except Exception as exc:  # noqa: BLE001 - whatever the import raises is the answer
+            raise PluginError(f"cannot import {value}: {type(exc).__name__}: {exc}") from None
+        kind = kind or getattr(cls, "kind", "")
+        if not kind:
+            raise PluginError(f"{value} does not say what kind of plugin it is: pass --kind")
+        if kind not in self.kinds:
+            raise PluginError(f"{kind!r} is not a plugin kind (known: {', '.join(k.name for k in self.kinds)})")
+        if name is None:  # CrmTriager as a triager is "crm"
+            words = re.sub(r"(?<!^)(?=[A-Z])", "_", getattr(cls, "__name__", attr)).lower()
+            name = re.sub(r"[^a-z0-9_-]", "", words.removesuffix("_" + kind.replace("_backend", "").replace("_store", ""))) or attr.lower()
+        if not _INSTANCE_NAME.match(name):
+            raise PluginError(f"{name!r} is not a valid instance name (lowercase letters, digits, - and _): pass --name")
+        if (kind, name) in self._records or name in self.tables.tables.get(kind, {}):
+            raise PluginError(f"{kind} {name!r} already exists")
+        return AddPlan(kind, name, {"class": value, **config}, "reload")
+
+    async def apply_add(self, plan: AddPlan) -> None:
+        """Do a plan that does not need a reload, now. The file is written by the caller."""
+        if plan.how == "instance":
+            await self.add_instance(plan.kind, plan.name, plan.table["plugin"], {k: v for k, v in plan.table.items() if k != "plugin"})
+        elif plan.how == "enable":
+            self.tables.tables.setdefault(plan.kind, {}).setdefault(plan.name, {}).update(plan.table)
+            await self.enable(plan.name)
 
     def _load_one(self, spec: KindSpec, ep: EntryPoint) -> _Record:
         rec = _Record(spec.name, ep.name, ep.name, loadpath=ep.value)

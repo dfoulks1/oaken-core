@@ -70,6 +70,10 @@ def add_flags(
             continue
         kind = prop.get("type")
         helptext = str(raw.get("description") or prop.get("description") or "")
+        if raw.get("positional") and kind == "string":  # a field marked ``positional`` is the command's argument: ``plugin add NAME``
+            parser.add_argument(name, nargs="?", default=argparse.SUPPRESS, help=helptext or None)
+            fields.append(name)
+            continue
         kw: dict[str, Any] = {"dest": name, "help": helptext or None}
         if name in required and enforce_required:
             kw["required"] = True
@@ -123,8 +127,9 @@ def secret_fields(schema: dict[str, Any]) -> list[str]:
 
 def missing_required(schema: dict[str, Any], payload: dict[str, Any]) -> list[str]:
     """The required flags (``--account-id``) that neither a flag nor ``--json-input`` supplied."""
+    props = schema.get("properties", {})
     return [
-        "--" + name.replace("_", "-")
+        name if props.get(name, {}).get("positional") else "--" + name.replace("_", "-")
         for name in schema.get("required", [])
         if name not in payload and name not in secret_fields(schema)
     ]

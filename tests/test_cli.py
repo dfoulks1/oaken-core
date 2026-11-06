@@ -139,3 +139,12 @@ async def test_help_lists_core_s_own_commands_even_when_no_core_is_running(capsy
     code = await amain([], prog="oaken", client_factory=down)
     assert "Core is not running" in capsys.readouterr().out
     assert await amain(["status"], prog="oaken", client_factory=down) == 3  # a real command still exits 3
+
+
+def test_a_field_marked_positional_is_the_commands_argument_not_a_flag() -> None:
+    from oaken_core.cli.schema_flags import missing_required, parse_flags
+    from oaken_core.operations.builtin.system import PluginAddIn
+
+    schema = PluginAddIn.model_json_schema()
+    assert parse_flags(schema, ["oaken-triager-crm", "--name", "crm2"], prog="plugin add") == {"plugin": "oaken-triager-crm", "name": "crm2"}
+    assert missing_required(schema, {}) == ["plugin"]  # named as the argument, not as --plugin

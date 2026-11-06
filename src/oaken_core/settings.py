@@ -124,6 +124,14 @@ class QueueTable(BaseModel):
     workers: int = Field(default=1, ge=1, le=64)
 
 
+class ExtensionsSettings(BaseModel):
+    """``[extensions]``: directories of plugin directories (each holds ``oaken-<kind>-<name>/pyproject.toml``)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    dirs: list[str] = Field(default_factory=list)
+
+
 class LabelTable(BaseModel):
     """``[labels.<key>]``: a label key the owner defines, for a product that has none of its own."""
 
@@ -203,6 +211,7 @@ class Settings(BaseModel):
     api: ApiSettings = Field(default_factory=ApiSettings)
     queues: dict[str, QueueTable] = Field(default_factory=dict)  # in flow order: the console's nav follows it
     labels: dict[str, LabelTable] = Field(default_factory=dict)
+    extensions: ExtensionsSettings = Field(default_factory=ExtensionsSettings)
     plugins: PluginTables = Field(default_factory=PluginTables)
 
     @classmethod

@@ -75,6 +75,14 @@ nouns: no message, no person. Products (oaken-mail, oaken-grove) are plugin sets
   submit|pause|resume` (CLI `oaken q ...`); new, edit, rename and delete write `[queues.<name>]` in config.toml and
   reload, and refuse `default` and queues a product makes in code; rename and delete refuse while jobs are queued
   or running. The stage page has Start/Stop and a settings dialog (edit, rename, delete).
+- Extensions (2026-11-06): `[extensions] dirs = [...]` names directories of plugin directories (`~/local/oaken-plugins`:
+  `oaken-<kind>-<name>/pyproject.toml` + `src/`). `PluginHost` reads each pyproject's `oaken_core.*` entry points (a
+  group of another Oaken, `oaken.providers`, is ignored), puts `src/` on `sys.path`, and loads them like installed
+  ones; a world-writable root is skipped. `oaken plugin add NAME|CLASS` is a thin handle on `host.plan_add` and
+  `apply_add`: NAME is a plugin name (installed or in a directory) or a directory name; CLASS is `pkg.mod.Class`
+  (kind from the class's `kind`, or `--kind`; persisted as `class = "mod:Class"`, which the host loads at start).
+  It writes `[plugins.<kind>.<name>]` first, starts the plugin now when it is loaded, and reloads core when it
+  has to find it. Not built: installing a plugin's own dependencies, `extension_list`, `git pull`.
 - Step 6: the console (`oaken_core/console/`). Core's own, no plugin involved: its own listener on a
   hard-coded 127.0.0.1 (`[console] port` only; `extra="forbid"` refuses a host), its own unit in the
   daemon, started before the host so a failing plugin cannot take it down. Guard: Host (name and
