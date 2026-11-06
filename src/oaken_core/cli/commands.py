@@ -96,11 +96,13 @@ def _payload(args: argparse.Namespace, op: OpInfo) -> dict[str, Any]:
             raise CliError("--json-input must be a JSON object", ExitCode.USAGE)
         payload.update(value)
     schema = dict(op.input_schema or {})
-    for name in schema.get("properties", {}):
+    for name, prop in schema.get("properties", {}).items():
         if hasattr(args, name):
             payload[name] = getattr(args, name)
         if getattr(args, f"_stdin_{name}", False):
             payload[name] = sys.stdin.readline().rstrip("\r\n")
+        elif prop.get("stdin") and name not in payload and not sys.stdin.isatty():  # a field marked ``stdin``: pipe into it
+            payload[name] = sys.stdin.read()
     if missing := missing_required(schema, payload):
         raise CliError(f"{op.name} needs {', '.join(missing)}", ExitCode.USAGE)
     for name in secret_fields(schema):

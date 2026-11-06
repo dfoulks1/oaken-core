@@ -205,7 +205,7 @@ class BasePlugin:
             try:
                 self.config = self.config_model.model_validate(ctx.config)
             except ValidationError as exc:
-                fields = ", ".join(str(e["loc"][0]) for e in exc.errors() if e["loc"])
+                fields = ", ".join(str(e["loc"][0]) if e["loc"] else str(e["msg"]).removeprefix("Value error, ") for e in exc.errors())  # a check on the whole table has no field to name
                 raise PluginError(
                     f"{ctx.name}: invalid [plugins.{ctx.kind}.{ctx.name}] settings ({fields})"
                 ) from None
@@ -233,6 +233,23 @@ class BasePlugin:
                 )  # fmt: skip
             )
         return found
+
+
+class BaseProvider(BasePlugin):
+    """A source: it gets items from outside (a file, a socket, a service) and puts each into intake with
+    ``submit``. Core knows no noun: what an item is (a line of JSON, a fax, a message) is the product's, and the
+    body goes in as given. Run your own loop or server from ``start`` and end it in ``stop``."""
+
+    kind: ClassVar[str] = "provider"
+
+    async def submit(self, body: Any, *, source: str | None = None, labels: dict[str, str] | None = None) -> str:
+        """Put one item into intake (triage, then the ingestor). Returns its provisional subject id. ``source`` is
+        what the record calls where it came from (default: this plugin's name). Raises ``PluginError`` in a bare
+        context with no intake."""
+        submit = self.ctx.submit
+        if submit is None:
+            raise PluginError(f"{self.ctx.name}: no intake in this context")
+        return await submit(source or self.ctx.name, body, labels=labels or {})
 
 
 class BaseStore(BasePlugin):

@@ -105,3 +105,45 @@ def test_a_base_class_placeholder_is_not_mistaken_for_an_implementation() -> Non
             return LLMResponse(text="ok")
 
     assert is_implemented(Real(), "generate")
+
+
+async def test_a_provider_submits_into_intake_as_itself_and_refuses_without_one() -> None:
+    from oaken_core.errors import PluginError
+    from oaken_core.plugins.base import BaseProvider
+    from oaken_core.plugins.contracts import PluginContext
+
+    seen: list[tuple[str, object, dict[str, str]]] = []
+
+    async def submit(source: str, body: object, *, labels: dict[str, str]) -> str:
+        seen.append((source, body, labels))
+        return "subject-1"
+
+    p = BaseProvider()
+    p.ctx = PluginContext(name="feed", kind="provider", clock=FakeClock(), log=None, submit=submit)  # type: ignore[arg-type]
+    assert BaseProvider.kind == "provider" and await p.submit({"a": 1}) == "subject-1" and await p.submit("x", source="other", labels={"k": "v"}) == "subject-1"
+    assert seen == [("feed", {"a": 1}, {}), ("other", "x", {"k": "v"})]
+    p.ctx = PluginContext(name="feed", kind="provider", clock=FakeClock(), log=None)  # type: ignore[arg-type]
+    with pytest.raises(PluginError, match="no intake"):
+        await p.submit("x")
+
+
+async def test_a_settings_check_with_no_field_still_says_what_is_wrong() -> None:
+    from pydantic import BaseModel, model_validator
+
+    from oaken_core.errors import PluginError
+    from oaken_core.plugins.base import BaseProvider
+    from oaken_core.plugins.contracts import PluginContext
+
+    class Either(BaseModel):
+        a: str = ""
+        b: str = ""
+
+        @model_validator(mode="after")
+        def _one(self) -> "Either":
+            raise ValueError("set a or b")
+
+    class P(BaseProvider):
+        config_model = Either
+
+    with pytest.raises(PluginError, match=r"settings \(set a or b\)"):
+        await P().start(PluginContext(name="p", kind="provider", clock=FakeClock(), log=None))  # type: ignore[arg-type]

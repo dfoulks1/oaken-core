@@ -148,3 +148,24 @@ def test_a_field_marked_positional_is_the_commands_argument_not_a_flag() -> None
     schema = PluginAddIn.model_json_schema()
     assert parse_flags(schema, ["oaken-triager-crm", "--name", "crm2"], prog="plugin add") == {"plugin": "oaken-triager-crm", "name": "crm2"}
     assert missing_required(schema, {}) == ["plugin"]  # named as the argument, not as --plugin
+
+
+def test_a_field_marked_stdin_is_filled_from_a_pipe_when_no_flag_gave_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    import argparse
+    import io
+
+    from oaken_core.cli.client import OpInfo
+    from oaken_core.cli.commands import _payload
+
+    schema = {"properties": {"text": {"type": "string", "stdin": True}, "source": {"type": "string"}}, "required": ["text"]}
+    op = OpInfo(name="p.ingest", summary="", permission="mutate", input_schema=schema)
+    piped = io.StringIO('{"a": 1}\n{"a": 2}\n')
+    piped.isatty = lambda: False  # type: ignore[method-assign]
+    monkeypatch.setattr("sys.stdin", piped)
+    assert _payload(argparse.Namespace(source="x"), op) == {"text": '{"a": 1}\n{"a": 2}\n', "source": "x"}
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # a terminal: nothing to read, so the field is missing
+    tty = io.StringIO("")
+    tty.isatty = lambda: True  # type: ignore[method-assign]
+    monkeypatch.setattr("sys.stdin", tty)
+    with pytest.raises(Exception, match="--text"):
+        _payload(argparse.Namespace(), op)
