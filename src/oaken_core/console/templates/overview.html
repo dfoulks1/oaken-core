@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_plugin_table.html" import flow, plugin_table, add_stage_button, add_stage_dialog with context %}{% from "_fields.html" import csrf %}{% block title %}General{% endblock %}
+{% extends "base.html" %}{% from "_plugin_table.html" import flow, plugin_table, inactive_table, add_stage_button, add_stage_dialog with context %}{% from "_fields.html" import csrf %}{% block title %}General{% endblock %}
 {% block body %}
 <h1>General</h1>
 {{ flow(stages) }}
@@ -8,5 +8,6 @@
 <div class="table-wrap"><table class="table"><tr><th>Queue</th><th>Queued</th><th>Running</th><th>Failed</th><th>State</th></tr>
 {% for q in status.queues %}<tr><td>{{ q.queue }}</td><td>{{ q.queued }}</td><td>{{ q.running }}</td><td class="{{ 'bad' if q.failed }}">{{ q.failed }}</td><td>{{ "paused" if q.paused else "running" }}</td></tr>{% endfor %}</table></div>
 </div>
-{{ plugin_table(plugins, "/", "No plugins installed.", "Active plugins", True, "g-", False, False, True) }}
+{{ plugin_table(plugins, "/", "No active plugins.", "Active plugins", True, "g-", False, False) }}
+{{ inactive_table(plugins, "/") }}
 {% endblock %}

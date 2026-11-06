@@ -10,36 +10,23 @@
 </tr>
 {% endmacro %}
 
-{# The plugins in ``plugins`` as cards: the ones in the pipeline first, then the inactive ones folded away. ``back`` is the
-   page a button returns to; ``show_kind`` adds the kind beside a name, for a page that mixes kinds. #}
-{% macro plugin_table(plugins, back, empty="No plugins here.", title="Plugins", show_kind=False, pre="", fold=False, hint=True, split=False) %}
-{% set inactive = plugins|rejectattr("enabled")|list %}
-{% set live = plugins|length - inactive|length %}
-{% if fold %}<details class="card fold" id="fold-{{ pre }}"{% if live %} open{% endif %}><summary class="card-head">{{ title }} <span class="muted small">{{ live }}</span></summary>
+{# The live plugins in ``plugins`` as a card (a disabled one is ignored: ``inactive_table`` lists those). ``back`` is the page a
+   button returns to; ``show_kind`` adds the kind beside a name, for a page that mixes kinds; ``fold`` makes the card a section
+   that opens when it has something in it. #}
+{% macro plugin_table(plugins, back, empty="None active.", title="Plugins", show_kind=False, pre="", fold=False, hint=True) %}
+{% set live = plugins|selectattr("enabled")|list %}
+{% if fold %}<details class="card fold" id="fold-{{ pre }}"{% if live %} open{% endif %}><summary class="card-head">{{ title }} <span class="muted small">{{ live|length }}</span></summary>
 {% else %}<div class="card">
-<div class="card-head"><span>{{ title }}</span><span class="muted small">{{ live }}</span></div>
+<div class="card-head"><span>{{ title }}</span><span class="muted small">{{ live|length }}</span></div>
 {% endif %}
 <div class="table-wrap"><table class="table">
 <thead><tr><th>Plugin</th><th>Health</th><th>Enabled</th><th class="right">Actions</th></tr></thead>
 <tbody>
-{% for p in plugins %}{% if p.enabled %}{{ plugin_row(p, loop.index, back, show_kind, pre) }}{% endif %}{% else %}<tr><td colspan="4" class="muted">{{ empty }}</td></tr>{% endfor %}
-{% if plugins and not live %}<tr><td colspan="4" class="muted">Nothing here is in the pipeline: every plugin below is inactive.</td></tr>{% endif %}
+{% for p in live %}{{ plugin_row(p, loop.index, back, show_kind, pre) }}{% else %}<tr><td colspan="4" class="muted">{{ empty }}</td></tr>{% endfor %}
 </tbody></table></div>
 {% if hint %}<div class="card-foot muted">Turn a plugin off to take it out of the pipeline for now; turn it on to put it back.</div>{% endif %}
 {% if fold %}</details>{% else %}</div>{% endif %}
-{% if inactive %}
-{% if split %}<div class="card">
-<div class="card-head"><span>Inactive plugins</span><span class="muted small">{{ inactive|length }}</span></div>
-<div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>Health</th><th>Enabled</th><th class="right">Actions</th></tr></thead><tbody>
-{% for p in plugins %}{% if not p.enabled %}{{ plugin_row(p, loop.index, back, show_kind, pre) }}{% endif %}{% endfor %}
-</tbody></table></div>
-<div class="card-foot muted">Turn a plugin on to move it up to the active plugins.</div></div>
-{% else %}<details class="card fold"><summary class="card-head">{{ inactive|length }} inactive (disabled){% if fold %} <span class="muted small">{{ title }}</span>{% endif %}</summary>
-<div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>Health</th><th>Enabled</th><th class="right">Actions</th></tr></thead><tbody>
-{% for p in plugins %}{% if not p.enabled %}{{ plugin_row(p, loop.index, back, show_kind, pre) }}{% endif %}{% endfor %}
-</tbody></table></div></details>{% endif %}
-{% endif %}
-{{ plugin_dialogs(plugins, back, pre) }}
+{{ plugin_dialogs(live, back, pre) }}
 {% endmacro %}
 
 {# Each plugin's settings dialog, ids ``set-<pre><n>``. #}
@@ -55,20 +42,21 @@
 {% endfor %}
 {% endmacro %}
 
-{# Every disabled plugin in one table: where it loads from (or its kind), a switch to turn it on, its settings. #}
+{# Every disabled plugin in ``plugins`` (the enabled are ignored) as one folded table at the bottom of a page: where it loads
+   from (or its kind), a switch to turn it on, its settings. #}
 {% macro inactive_table(plugins, back, pre="off-") %}
-{% if plugins %}<div class="card">
-<div class="card-head"><span>Inactive plugins</span><span class="muted small">{{ plugins|length }}</span></div>
+{% set off = plugins|rejectattr("enabled")|list %}
+{% if off %}<details class="card fold" id="fold-{{ pre }}"><summary class="card-head">Inactive plugins <span class="muted small">{{ off|length }}</span></summary>
 <div class="table-wrap"><table class="table"><thead><tr><th>Plugin</th><th>Loads from</th><th>Enabled</th><th class="right">Actions</th></tr></thead><tbody>
-{% for p in plugins %}<tr>
+{% for p in off %}<tr>
 <td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{% if p.plugin != p.name %} <span class="muted small">· {{ p.plugin }}</span>{% endif %}</td>
 <td class="mono small">{{ p.loadpath or p.kind }}{% if p.loadpath %} <span class="muted">{{ p.kind }}</span>{% endif %}{% if p.detail %}<div class="health-detail small muted">{{ p.detail }}</div>{% endif %}</td>
 <td class="nowrap">{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ "/enable", back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}</td>
 <td class="right nowrap"><button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ pre }}{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button></td>
 </tr>{% endfor %}
 </tbody></table></div>
-<div class="card-foot muted">Turn a plugin on to put it back in the pipeline.</div></div>
-{{ plugin_dialogs(plugins, back, pre) }}{% endif %}
+<div class="card-foot muted">Turn a plugin on to put it back in the pipeline.</div></details>
+{{ plugin_dialogs(off, back, pre) }}{% endif %}
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}

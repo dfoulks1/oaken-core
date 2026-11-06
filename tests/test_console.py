@@ -561,7 +561,7 @@ async def test_the_pipeline_is_a_collapsible_section_per_kind_that_has_plugins_a
         assert ids and len(ids) == len(set(ids))  # several sections on one page never share a dialog id
         await client.post("/ui/plugins/enricher/notes/disable", data={"csrf": core.console.token})
         stage = (await client.get("/stage/enrich")).text
-        assert "inactive (disabled)" in stage and "notes" in stage  # a plugin that is off is folded away, not lost
+        assert '<details class="card fold" id="fold-off-"><summary class="card-head">Inactive plugins' in stage and "notes" in stage  # a plugin that is off is folded away at the bottom, not lost
     finally:
         await client.aclose()
         await core.host.stop()
@@ -623,9 +623,10 @@ async def test_general_has_an_active_table_with_the_errors_and_an_inactive_one_t
     off = await rig.post("/ui/plugins/enricher/notes/disable", back="/")
     assert off.status_code == 303 and off.headers["location"] == "/"  # a switch on General returns to General
     page = (await rig.c.get("/")).text
-    inactive = page[page.index("<span>Inactive plugins</span>"):]
-    assert "notes" in inactive[: inactive.index("</table>")] and "Turn a plugin on to move it up" in inactive
-    assert "notes" not in page[page.index("<span>Active plugins</span>"): page.index("<span>Inactive plugins</span>")]
+    inactive = page[page.index(">Inactive plugins <span"):]
+    assert "notes" in inactive[: inactive.index("</table>")] and "Turn a plugin on to put it back" in inactive
+    assert 'id="fold-off-"><summary' in page  # folded: closed until opened
+    assert "notes" not in page[page.index("<span>Active plugins</span>"): page.index(">Inactive plugins <span")]
     on = await rig.post("/ui/plugins/enricher/notes/enable", back="/")
     assert on.status_code == 303
     assert "Inactive plugins" not in (await rig.c.get("/")).text  # back up, and the inactive table is gone again
@@ -703,12 +704,12 @@ async def test_the_plugins_tab_lumps_every_disabled_plugin_at_the_bottom_with_wh
     try:
         await core.client.call("plugin_disable", {"name": "sqlite"}, CallerContext.cli(), confirm=True)
         page = (await client.get("/pipeline/plugins")).text
-        head = page.index("<span>Inactive plugins</span>")
+        head = page.index(">Inactive plugins <span")
         assert "Stores" not in re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)  # a kind with nothing live has no section
         table = page[head:]
         assert "sqlite" in table[: table.index("</table>")] and "Loads from" in table  # one table, with a loadpath column
         assert re.search(r'class="mono small">[\w.]+:\w+', table)  # the entry point's module:attr
-        assert page.count("<span>Inactive plugins</span>") == 1
+        assert page.count(">Inactive plugins <span") == 1
     finally:
         await client.aclose()
         await core.host.stop()

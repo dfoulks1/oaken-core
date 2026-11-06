@@ -1,4 +1,4 @@
-{% extends "base.html" %}{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}{% from "_plugin_table.html" import plugin_table, flow with context %}{% block title %}{{ stage.title }}{% endblock %}
+{% extends "base.html" %}{% from "_fields.html" import csrf %}{% import "_macros.html" as m with context %}{% from "_plugin_table.html" import plugin_table, inactive_table, flow with context %}{% block title %}{{ stage.title }}{% endblock %}
 {% block body %}
 <h1>{{ stage.title }}</h1>
 {{ flow(stages, stage.name) }}
@@ -33,5 +33,6 @@
     <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Delete queue</button><span class="muted">Refused while jobs are queued or running.</span></div>
   </form>
 </div>
-{{ plugin_table(plugins, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is installed.", stage.kind ~ " plugins") }}
+{{ plugin_table(plugins, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is active.", stage.kind ~ " plugins") }}
+{{ inactive_table(plugins, "/stage/" ~ stage.name) }}
 {% endblock %}

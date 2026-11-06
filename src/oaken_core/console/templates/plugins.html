@@ -1,5 +1,6 @@
-{% extends "base.html" %}{% from "_plugin_table.html" import plugin_table with context %}{% block title %}Plugins{% endblock %}
+{% extends "base.html" %}{% from "_plugin_table.html" import plugin_table, inactive_table with context %}{% block title %}Plugins{% endblock %}
 {% block body %}
 <h1>Plugins</h1>
-{{ plugin_table(plugins, "/plugins", "No plugins installed.") }}
+{{ plugin_table(plugins, "/plugins", "No active plugins.", "Plugins", True) }}
+{{ inactive_table(plugins, "/plugins") }}
 {% endblock %}
