@@ -168,6 +168,7 @@ class Api:
             extra_hosts=[*cfg.allowed_hosts, cfg.host],
         )  # fmt: skip
         agent_body = svc.settings.jobs.max_result_bytes + 64 * 1024
+        self.policy.names = lambda: svc.host.api_names() if svc.host else frozenset()
         self.policy.surfaces = [
             Surface("general", "/v1/", self._general, cfg.max_body_bytes, max_concurrent=64),
             Surface("agent", "/v1/agent/", self._agent, agent_body, max_concurrent=16),

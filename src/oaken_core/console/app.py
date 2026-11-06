@@ -105,8 +105,6 @@ class Console:
             Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
             Route("/ui/labels/{key}/{verb}", self.post(self.label_verb), methods=["POST"]),
             Route("/capabilities", self.page(self.capabilities)),
-            Route("/docs", self.page(self.docs_index)),
-            Route("/docs/all", self.page(self.docs_all)),
             Route("/stage/{queue}", self.page(self.stage)),
             Route("/plugins/{kind}/{name}", self.page(self.plugin)),
             Route("/plugins/{kind}/{name}/pages/{page}", self.page(self.plugin_page)),
@@ -135,7 +133,7 @@ class Console:
             Route("/ui/plugins/{kind}/{name}/{verb}", self.post(self.plugin_verb), methods=["POST"]),
             Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
         ]
-        self.app = ConsoleGuard(Starlette(routes=routes), self.port)
+        self.app = ConsoleGuard(Starlette(routes=routes), self.port, lambda: self.svc.host.console_names() if self.svc.host else frozenset())
 
     def bind(self, port: int) -> None:
         self.port.value = port
@@ -252,7 +250,7 @@ class Console:
     def _nav(self) -> list[tuple[str, str]]:
         """General, the machinery, then a link per stage in the order they were made, then Config and Capabilities."""
         stages = [(f"/stage/{q.name}", q.title) for q in self._stage_specs()]
-        return [("/", "General"), ("/pipeline", "Pipeline"), *stages, ("/config", "Config"), ("/capabilities", "Capabilities"), ("/docs", "Docs")]
+        return [("/", "General"), ("/pipeline", "Pipeline"), *stages, ("/config", "Config"), ("/capabilities", "Capabilities")]
 
     async def _flow(self) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
         """Intake, then each stage, with what waits in it; and the queue rows by name."""
@@ -306,29 +304,6 @@ class Console:
         """The same lines as a JSON file to save: what ``log_tail`` returned, as it returned it."""
         out = await self._op("log_tail", {**self._log_scope(request), "limit": 2000})
         return JSONResponse(out, headers={"Content-Disposition": 'attachment; filename="oaken-log.json"'})
-
-    async def docs_index(self, request: Request) -> Response:
-        """Docs: the documentation of *this* stack, built from the plugins that are in it. How an item moves through the stages,
-        then each plugin, by kind, with a page of its own."""
-        found = (await self._op("plugin_describe", {}))["plugins"]
-        by_stage = []
-        order = [q for q in self.svc.queues.all() if not q.hidden] + [q for q in self.svc.queues.all() if q.hidden]  # the way an item moves: Intake, your stages, then store and embed
-        for q in order:  # every stage, hidden ones too: core's own description of each
-            kind = q.kind or q.serves
-            first = next((x.name for x in self.svc.queues.all() if x.kind == q.kind), None) if q.kind else None
-            here = [p for p in found if kind and p["kind"] == kind and p["enabled"] and p["name"] not in q.disabled
-                    and (not q.kind or (self._host().tables.table(p["kind"], p["name"]).get("stage") or first) == q.name)]
-            by_stage.append({"stage": q.title, "name": q.name, "kind": kind, "hidden": q.hidden, "description": q.description, "plugins": here})
-        labels = (await self._op("label_keys"))["keys"]
-        kinds: dict[str, list[dict[str, Any]]] = {}
-        for p in found:
-            kinds.setdefault(p["kind"], []).append(p)
-        return self.render("docs.html", flow=by_stage, labels=labels, kinds=sorted(kinds.items()), total=len(found))
-
-    async def docs_all(self, request: Request) -> Response:
-        """The whole document on one page, to read through, print or save."""
-        found = (await self._op("plugin_describe", {}))["plugins"]
-        return self.render("docs_all.html", plugins=sorted(found, key=lambda p: (p["kind"], p["name"])))
 
     async def _plugin_docs(self, kind: str, name: str) -> dict[str, Any]:
         """The plugin's own account of itself, and the commands it offers (from the registry, with their summaries)."""

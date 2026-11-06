@@ -10,6 +10,7 @@ CSP with no script at all (ADR 0018: core owns the chrome).
 
 import ipaddress
 import json
+from collections.abc import Callable
 
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
@@ -32,8 +33,8 @@ def loopback(scope: Scope) -> bool:
 
 
 class ConsoleGuard:
-    def __init__(self, app: ASGIApp, port: "PortRef") -> None:
-        self.app, self.port = app, port
+    def __init__(self, app: ASGIApp, port: "PortRef", names: Callable[[], frozenset[str]] = frozenset) -> None:
+        self.app, self.port, self.names = app, port, names  # names: friendly hosts a plugin adds (BaseConsoleName)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -43,12 +44,14 @@ class ConsoleGuard:
         origin, method = headers.get("origin"), scope["method"]
         if not loopback(scope):
             return await self._refuse(send, 403, "local_only", "the console is for this machine only")
-        if headers.get("host", "").lower() not in {f"127.0.0.1:{port}", f"localhost:{port}"}:
+        # only *.localhost may be added: a browser resolves those to this machine itself, so they cannot be rebound
+        hosts = {"127.0.0.1", "localhost"} | {n for n in self.names() if n.endswith(".localhost") and ":" not in n}
+        if headers.get("host", "").lower() not in {f"{h}:{port}" for h in hosts}:
             return await self._refuse(send, 400, "bad_host", "this host name is not allowed")
         if method not in SAFE:
             # ``Origin: null`` is what a browser may send on a same-site form post; the CSRF token
             # is the real defense there. Any other origin must be the console itself.
-            own = {f"http://127.0.0.1:{port}", f"http://localhost:{port}"}
+            own = {f"http://{h}:{port}" for h in hosts}
             if (origin is not None and origin != "null" and origin not in own) or headers.get("sec-fetch-site") == "cross-site":
                 return await self._refuse(send, 403, "bad_origin", "cross-origin requests are not allowed")
             if headers.get("content-type", "").split(";")[0].strip().lower() != FORM:

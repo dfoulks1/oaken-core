@@ -306,6 +306,20 @@ class BaseTemplatePlugin(BasePlugin):
                 raise TypeError(f"{cls.__name__} is a BaseTemplatePlugin: name what an instance must be given in `contextual`")
 
 
+class BaseFriendlyNames(BasePlugin):
+    """Add to a plugin's bases to give the console and the API (the MCP endpoint) friendly host names, such as ``oaken.localhost``.
+    Both stay on 127.0.0.1; the names only join the Host values their guards accept. Only ``*.localhost`` names count (browsers
+    resolve those to this machine themselves, so a hostile page cannot rebind them); the guards ignore any other."""
+
+    def console_names(self) -> list[str]:
+        """Host names for the console, without a port."""
+        return []
+
+    def api_names(self) -> list[str]:
+        """Host names for the API and MCP endpoint, without a port."""
+        return []
+
+
 class BaseAnalyzer(BasePlugin):
     """What triagers, enrichers and actions share. Deterministic by default; a plugin that asks a
     model also extends ``BaseLLMAnalyzer``."""

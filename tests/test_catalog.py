@@ -2,11 +2,13 @@
 """``oaken-plugins``: one distribution, a subpackage per plugin, nothing imported until it is added."""
 
 import sys
+from typing import Any
 from pathlib import Path
 
 import pytest
 
 from oaken_core.cli.commands import main
+from oaken_core.plugins.host import PluginTables
 from oaken_core.plugins import catalog
 from oaken_core.plugins.kinds import KindRegistry
 
@@ -107,3 +109,30 @@ def test_naming_a_checkout_of_oaken_plugins_in_extensions_dirs_is_enough_to_list
     assert main(["plugins"]) == 0
     out = capsys.readouterr().out
     assert "checked" in out and "From a checkout." in out
+
+
+async def _host(tables: dict[str, Any]):  # type: ignore[no-untyped-def]
+    from oaken_core.clock import FakeClock
+    from oaken_core.events import EventBus
+    from oaken_core.plugins.host import PluginHost
+
+    host = PluginHost(PluginTables(tables=tables), FakeClock(), EventBus(), discover=lambda g: [])
+    await host.load()
+    return host
+
+
+async def test_a_settings_table_with_no_plugin_behind_it_is_listed_inactive_with_the_reason_and_how_to_get_it(fake: Path) -> None:
+    host = await _host({"formatter": {"demo": {"x": 1}, "ghost": {}}})
+    by = {s.name: s for s in host.statuses()}
+    assert not by["demo"].enabled and not by["demo"].started  # inactive, not silently ignored
+    assert "no formatter plugin named 'demo' is installed" in by["demo"].detail and "oaken plugin add demo --kind formatter" in by["demo"].detail and "settings are kept" in by["demo"].detail
+    assert "`oaken plugins` lists what could be added" in by["ghost"].detail  # not in oaken-plugins: it says where to look
+
+
+async def test_adding_a_plugin_adopts_the_settings_table_that_was_waiting_for_it(fake: Path) -> None:
+    host = await _host({"formatter": {"demo": {"x": 1}}})
+    plan = host.plan_add("demo", kind="formatter")
+    assert plan.kind == "formatter" and plan.name == "demo" and plan.table["class"] == "oaken_plugins.formatter_demo:DemoFormatter" and plan.how == "reload"  # not "already exists"
+    loaded = await _host({"formatter": {"demo": {"class": "x:Y"}}})
+    with pytest.raises(Exception, match="already exists"):
+        loaded.plan_add("demo", kind="formatter")  # one that already has its class really does exist

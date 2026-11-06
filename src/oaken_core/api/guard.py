@@ -77,6 +77,11 @@ class Policy:
         self.hosts: set[str] = set()
         self.origins: set[str] = {dev_origin} if dev_origin else set()
         self.surfaces: list[Surface] = []
+        self.names: Callable[[], frozenset[str]] = frozenset  # friendly *.localhost hosts a plugin adds (BaseFriendlyNames)
+        self.port = 0
+
+    def friendly(self) -> set[str]:
+        return {f"{n}:{self.port}" for n in self.names() if n.endswith(".localhost") and ":" not in n}
 
     def bind(self, port: int) -> None:
         names = (
@@ -84,6 +89,7 @@ class Policy:
             f"localhost:{port}",
             *(f"{h}:{port}" for h in self.extra_hosts),
         )
+        self.port = port
         self.hosts = set(names)
         self.origins = {f"http://{n}" for n in names} | (
             {self.dev_origin} if self.dev_origin else set()
@@ -149,7 +155,9 @@ class Guard:
         path: str = scope["path"]
         origin = headers.get("origin")
 
-        if headers.get("host", "").lower() not in p.hosts:
+        host = headers.get("host", "").lower()
+        friendly = p.friendly()
+        if host not in p.hosts and host not in friendly:
             await _send_json(send, 400, "bad_host", "this host name is not allowed")
             return
 
@@ -176,7 +184,7 @@ class Guard:
         # ``Origin: null`` on a same-site form post, so that one value is let through there.
         form_post = path.startswith("/ui/") and origin == "null"
         if mutating and (
-            (origin is not None and origin not in p.origins and not form_post)
+            (origin is not None and origin not in p.origins and origin.removeprefix("http://") not in friendly and not form_post)
             or headers.get("sec-fetch-site") == "cross-site"
         ):
             log.warning(

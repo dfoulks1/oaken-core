@@ -106,6 +106,7 @@ class _Record:
     faulted: bool = False  # switched off for a fault (label error, needs cycle): ``enable`` retries
     inactive: bool = False  # an exclusive kind with another plugin active
     loadpath: str = ""
+    missing: bool = False  # config.toml has a table for it and no plugin by that name is installed
 
 
 @dataclass(frozen=True)
@@ -242,8 +243,20 @@ class PluginHost:
             for name, base in self.tables.instances(spec.name).items():
                 if (spec.name, name) not in self._records:
                     self._records[(spec.name, name)] = self._instance_of(spec, name, base)
+        for spec in self.kinds:  # a table with nothing behind it is not silently ignored: it is listed, inactive, with the reason
+            for name in self.tables.tables.get(spec.name, {}):
+                if (spec.name, name) not in self._records:
+                    rec = _Record(spec.name, name, name, missing=True)
+                    rec.disabled, rec.detail = True, self._missing(spec.name, name)
+                    self._records[(spec.name, name)] = rec
         self._check_needs()
         self._loaded = True
+
+    def _missing(self, kind: str, name: str) -> str:
+        """Why a configured plugin is not there, and how to get it."""
+        found = [e for e in catalog.entries(k.name for k in self.kinds) if e.kind == kind and e.name == name.replace("_", "-")]
+        how = f"it is in oaken-plugins: oaken plugin add {found[0].name} --kind {kind}" if found else "`oaken plugins` lists what could be added"
+        return f"no {kind} plugin named {name!r} is installed, but [plugins.{kind}.{name}] is in config.toml ({how}; your settings are kept)"
 
     def _entry_points(self, group: str) -> list[EntryPoint]:
         """What is installed, then what the extension directories offer."""
@@ -314,9 +327,11 @@ class PluginHost:
             name = re.sub(r"[^a-z0-9_-]", "", words.removesuffix("_" + kind.replace("_backend", "").replace("_store", ""))) or attr.lower()
         if not _INSTANCE_NAME.match(name):
             raise PluginError(f"{name!r} is not a valid instance name (lowercase letters, digits, - and _): pass --name")
-        if (kind, name) in self._records or name in self.tables.tables.get(kind, {}):
+        have = self._records.get((kind, name))
+        table = self.tables.tables.get(kind, {}).get(name) or {}
+        if (have is not None and not have.missing) or "class" in table or "plugin" in table:
             raise PluginError(f"{kind} {name!r} already exists")
-        return AddPlan(kind, name, {"class": value, **config}, "reload")
+        return AddPlan(kind, name, {"class": value, **config}, "reload")  # a settings-only table for it is adopted: the class is added, the settings kept
 
     async def apply_add(self, plan: AddPlan) -> None:
         """Do a plan that does not need a reload, now. The file is written by the caller."""
@@ -817,6 +832,22 @@ class PluginHost:
             )
 
     # -- what plugins offer ------------------------------------------------------------------
+    def console_names(self) -> frozenset[str]:
+        """The extra console host names the running plugins ask for (``BaseFriendlyNames``)."""
+        return self._friendly("console_names")
+
+    def api_names(self) -> frozenset[str]:
+        """The extra API and MCP host names the running plugins ask for."""
+        return self._friendly("api_names")
+
+    def _friendly(self, method: str) -> frozenset[str]:
+        out: set[str] = set()
+        for r in self._shared():
+            fn = getattr(r.instance, method, None)
+            if callable(fn):
+                out.update(str(n).lower() for n in fn())
+        return frozenset(out)
+
     def _shared(self) -> list[_Record]:
         return [
             r for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))

@@ -62,27 +62,6 @@ async def test_with_no_name_it_is_an_overview_of_this_stack_and_an_unknown_name_
         await core.host.stop()
 
 
-async def test_the_docs_pages_are_built_from_the_plugins_and_from_core(tmp_path: Path) -> None:
-    core = await make(tmp_path)
-    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
-    try:
-        index = (await client.get("/docs")).text
-        assert 'href="/docs"' in (await client.get("/")).text  # a Docs link in the navbar
-        for q in core.client.svc.queues.all():
-            assert str(escape(q.description)) in index  # each stage's description is core's own, hidden stages included
-        for k in (await core.client.call("label_keys", {}, CLI)).output.keys:
-            assert str(escape(k.description)) in index  # and each label's: core's, a plugin's or the owner's
-        assert "Watches for one topic." in index and 'href="/plugins/enricher/watcher"' in index  # each plugin's own first line, linking to the plugin's own page
-        assert index.index(">Intake<") < index.index(">store<") < index.index(">embed<")  # stages in the order an item moves: Intake, then store and embed last
-        page = (await client.get("/plugins/enricher/watcher")).text  # the plugin's documentation is on the plugin's own page
-        assert "Give each instance its own topic." in page and "it does not run as itself" in page and 'plugin = &#34;watcher&#34;' in page  # setup, core's template note, the example
-        everything = (await client.get("/docs/all")).text
-        assert "Watches for one topic." in everything and 'id="store-sqlite"' in everything  # every plugin on one page
-        assert (await client.get("/docs/enricher/watcher")).status_code == 404  # no second copy of it under Docs
-    finally:
-        await core.host.stop()
-
-
 def test_the_command_line_prints_documentation_as_text(capsys: pytest.CaptureFixture[str]) -> None:
     from oaken_core.cli.commands import _human
 
@@ -94,7 +73,7 @@ async def test_no_page_uses_an_inline_style_because_the_console_forbids_them(tmp
     core = await make(tmp_path)
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        for path in ("/", "/docs", "/docs/all", "/plugins/enricher/watcher", "/stage/enrich", "/log", "/pipeline", "/capabilities", "/config"):
+        for path in ("/", "/plugins/enricher/watcher", "/stage/enrich", "/log", "/pipeline", "/capabilities", "/config"):
             page = await client.get(path)
             assert ' style="' not in page.text, path  # style-src 'self': an inline style is blocked, and the page looks wrong
         css = (await client.get("/static/oaken.css")).text
