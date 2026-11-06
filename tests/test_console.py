@@ -370,6 +370,14 @@ async def test_save_refuses_a_file_core_would_not_start_on_and_writes_nothing(ri
     assert saved_config() == before
 
 
+async def test_a_plugin_table_that_does_not_fit_saves_with_a_warning_so_it_can_be_fixed_from_the_console(rig: Rig) -> None:
+    text = "[plugins.enricher.notes]\nlimit = \"many\"\n"
+    tested = await rig.post("/ui/config-file/test", text=text)
+    assert "stay disabled until fixed" in tested.text and "Invalid:" not in tested.text
+    saved = await rig.post("/ui/config-file/save", text=text)
+    assert "Saved." in saved.text and "stay disabled until fixed" in saved.text and "many" in (saved_config() or "")
+
+
 async def test_the_file_editor_posts_need_the_token(rig: Rig) -> None:
     r = await rig.c.post("/ui/config-file/save", data={"text": "[api]\nport = 1\n"})
     assert r.status_code == 403 and saved_config() is None

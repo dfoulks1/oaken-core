@@ -139,12 +139,15 @@ class ConfigText(BaseModel):
 class ConfigValidateOut(BaseModel):
     ok: bool
     error: str = ""
+    warnings: list[str] = Field(default_factory=list, description="Plugin settings that do not fit: it loads, and these plugins stay disabled until fixed.")
 
 
-def _check_text(ctx: OpContext, text: str) -> None:
-    """Raise ``ConfigError`` unless ``text`` is a config core would start on: valid TOML, no secret,
-    core's sections sound, and each plugin table fits its plugin's ``config_model``. A plugin that is
-    not installed is not an error here (it fails at reload, visibly, and the rest keeps running)."""
+def _check_text(ctx: OpContext, text: str) -> list[str]:
+    """Raise ``ConfigError`` unless ``text`` is a config core would start on: valid TOML, no secret and
+    core's sections sound. A plugin table that does not fit its plugin's ``config_model`` is not an error: it
+    is returned, because core loads anyway and that plugin stays disabled with the reason, to fix from the
+    console. A plugin that is not installed is the same (it shows as missing and the rest keeps running)."""
+    warnings: list[str] = []
     settings = Settings.from_text(text)  # TOML and core's sections
     try:
         refuse_secrets(tomllib.loads(text))
@@ -168,24 +171,25 @@ def _check_text(ctx: OpContext, text: str) -> None:
                 problems = host.check_config(name, {k: v for k, v in table.items() if k != "plugin"}) if host else []
             except NotFound:
                 continue
-            if problems:
-                raise ConfigError("; ".join(problems))
+            warnings += problems
+    return warnings
 
 
 @operation("config_validate", "Check the text of a whole config.toml without saving it.",
            permission="read", input=ConfigText, output=ConfigValidateOut, mcp="never", group="config")  # fmt: skip
 async def config_validate(ctx: OpContext, inp: ConfigText) -> ConfigValidateOut:
     try:
-        _check_text(ctx, inp.text)
+        warnings = _check_text(ctx, inp.text)
     except ConfigError as exc:
         return ConfigValidateOut(ok=False, error=exc.message.replace("config.toml: ", ""))
-    return ConfigValidateOut(ok=True)
+    return ConfigValidateOut(ok=True, warnings=warnings)
 
 
 class ConfigSaveOut(BaseModel):
     saved: bool
     backup: str = ""
     note: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 async def _save_preview(ctx: OpContext, inp: ConfigText) -> Preview:
@@ -197,7 +201,7 @@ async def _save_preview(ctx: OpContext, inp: ConfigText) -> Preview:
            permission="mutate", input=ConfigText, output=ConfigSaveOut, mcp="never", group="config",
            preview=_save_preview)  # fmt: skip
 async def config_save(ctx: OpContext, inp: ConfigText) -> ConfigSaveOut:
-    _check_text(ctx, inp.text)  # raises: nothing is written for a file core would not start on
+    warnings = _check_text(ctx, inp.text)  # raises: nothing is written for a file core would not start on
     path = _config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     backup = ""
@@ -207,7 +211,7 @@ async def config_save(ctx: OpContext, inp: ConfigText) -> ConfigSaveOut:
     tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
     tmp.write_text(inp.text, encoding="utf-8")
     os.replace(tmp, path)
-    return ConfigSaveOut(saved=True, backup=backup, note=RELOAD_NOTE)
+    return ConfigSaveOut(saved=True, backup=backup, note=RELOAD_NOTE, warnings=warnings)
 
 
 OPERATIONS = (settings_get, settings_set, config_validate, config_save)

@@ -38,7 +38,7 @@ DAEMON = {  # work with no core running, so they are handled before one is asked
     "restart": "Stop core, then start it again (--fg to stay attached).",
     "stop": "Stop the running core.",
     "reload": "Tell the running core to re-read its settings.",
-    "plugins": "List the plugins in oaken-plugins you can add (oaken plugin add NAME).",
+    "plugins": "List the plugins in oaken-plugins you can add (oaken plugin add KIND.NAME).",
 }
 
 
@@ -282,8 +282,8 @@ def _catalog(args: list[str]) -> int:
     if "--json" in args:
         print_json(rows)
     elif rows:
-        print_table(rows, ["name", "kind", "from", "summary"], title="plugins")
-        print_text(f"Add one: {identity.prog} plugin add NAME")
+        print_table([{"plugin": f"{r['kind']}.{r['name']}", **r} for r in rows], ["plugin", "from", "summary"], title="plugins")  # what `plugin add` takes
+        print_text(f"Add one: {identity.prog} plugin add KIND.NAME")
     elif catalog.installed() or dirs:
         print_text("No plugins found in [extensions] dirs or in " + catalog.DIST + ".")
     else:

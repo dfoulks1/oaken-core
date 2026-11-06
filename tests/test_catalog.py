@@ -45,7 +45,7 @@ def test_listing_names_each_plugin_and_imports_none_of_them(fake: Path) -> None:
 def test_oaken_plugins_prints_the_list_and_says_when_it_is_missing(fake: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     assert main(["plugins"]) == 0
     out = capsys.readouterr().out
-    assert "demo" in out and "Splits demo text" in out and "plugin add NAME" in out
+    assert "demo" in out and "Splits demo text" in out and "plugin add KIND.NAME" in out
     monkeypatch.setattr(catalog, "installed", lambda: False)
     monkeypatch.setattr(catalog, "entries", lambda kinds: [])
     main(["plugins"])
@@ -121,18 +121,31 @@ async def _host(tables: dict[str, Any]):  # type: ignore[no-untyped-def]
     return host
 
 
-async def test_a_settings_table_with_no_plugin_behind_it_is_listed_inactive_with_the_reason_and_how_to_get_it(fake: Path) -> None:
-    host = await _host({"formatter": {"demo": {"x": 1}, "ghost": {}}})
-    by = {s.name: s for s in host.statuses()}
-    assert not by["demo"].enabled and not by["demo"].started  # inactive, not silently ignored
-    assert "no formatter plugin named 'demo' is installed" in by["demo"].detail and "oaken plugin add demo --kind formatter" in by["demo"].detail and "settings are kept" in by["demo"].detail
-    assert "`oaken plugins` lists what could be added" in by["ghost"].detail  # not in oaken-plugins: it says where to look
+async def test_settings_for_a_plugin_oaken_plugins_offers_load_it_with_no_class_line(fake: Path) -> None:
+    host = await _host({"formatter": {"demo": {"x": 1}}})
+    rec = host._records[("formatter", "demo")]
+    assert not rec.missing and rec.instance is not None  # found in the catalog by kind and name
+
+
+async def test_a_settings_table_with_no_plugin_behind_it_is_listed_inactive_with_the_reason(fake: Path) -> None:
+    host = await _host({"formatter": {"ghost": {}}})
+    ghost = {s.name: s for s in host.statuses()}["ghost"]
+    assert not ghost.enabled and not ghost.started  # inactive, not silently ignored
+    assert "[plugins.formatter.ghost] is in config.toml" in ghost.detail and "no formatter plugin called 'ghost'" in ghost.detail and "settings are kept" in ghost.detail
 
 
 async def test_adding_a_plugin_adopts_the_settings_table_that_was_waiting_for_it(fake: Path) -> None:
-    host = await _host({"formatter": {"demo": {"x": 1}}})
-    plan = host.plan_add("demo", kind="formatter")
-    assert plan.kind == "formatter" and plan.name == "demo" and plan.table["class"] == "oaken_plugins.formatter_demo:DemoFormatter" and plan.how == "reload"  # not "already exists"
+    host = await _host({"formatter": {"mine": {"x": 1}}})
+    plan = host.plan_add("oaken_plugins.formatter_demo:DemoFormatter", kind="formatter", name="mine")
+    assert plan.name == "mine" and plan.table["class"] == "oaken_plugins.formatter_demo:DemoFormatter" and plan.how == "reload"  # not "already exists"
     loaded = await _host({"formatter": {"demo": {"class": "x:Y"}}})
     with pytest.raises(Exception, match="already exists"):
-        loaded.plan_add("demo", kind="formatter")  # one that already has its class really does exist
+        loaded.plan_add("oaken_plugins.formatter_demo:DemoFormatter", kind="formatter", name="demo")  # one that already has its class really does exist
+
+
+async def test_kind_dot_name_says_both_at_once(fake: Path) -> None:
+    host = await _host({})
+    plan = host.plan_add("formatter.demo")
+    assert (plan.kind, plan.name) == ("formatter", "demo") and plan.table["class"] == "oaken_plugins.formatter_demo:DemoFormatter"
+    with pytest.raises(Exception, match="use one"):
+        host.plan_add("formatter.demo", kind="embedder")

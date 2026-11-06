@@ -77,6 +77,10 @@ Handler = Callable[[Request], Awaitable[Response]]
 _PROCESS_TOKEN = secrets.token_urlsafe(32)
 
 
+def _unfit(out: dict[str, Any]) -> str:
+    return "Loads, but these stay disabled until fixed: " + "; ".join(out["warnings"])
+
+
 class Console:
     """An ASGI app. ``bind(port)`` is called once the socket is open (the Host check needs it)."""
 
@@ -526,7 +530,9 @@ class Console:
     async def config_file_test(self, request: Request, form: dict[str, str]) -> Response:
         text = form.get("text", "")
         out = await self._op("config_validate", {"text": text})
-        return self._file_page(text, ("ok", "Valid. Safe to save.") if out["ok"] else ("danger", f"Invalid: {out['error']}"))
+        if not out["ok"]:
+            return self._file_page(text, ("danger", f"Invalid: {out['error']}"))
+        return self._file_page(text, ("warn", _unfit(out)) if out["warnings"] else ("ok", "Valid. Safe to save."))
 
     async def config_file_save(self, request: Request, form: dict[str, str]) -> Response:
         """The Save button is the person's confirmation, so the call is confirmed. A file core would not
@@ -537,7 +543,7 @@ class Console:
             return self._file_page(text, ("danger", f"Not saved: {out['error']}"))
         saved = (await self.client.call("config_save", {"text": text}, UI, confirm=True)).output
         note = "Saved. Reload to apply it." + (f" The old file is {saved.backup}." if saved and saved.backup else "")  # type: ignore[attr-defined]
-        return self._file_page(text, ("ok", note))
+        return self._file_page(text, ("warn", f"{note} {_unfit(out)}") if out["warnings"] else ("ok", note))
 
     async def config_file_reload(self, request: Request, form: dict[str, str]) -> Response:
         out = (await self.client.call("core_reload", {}, UI, confirm=True)).output

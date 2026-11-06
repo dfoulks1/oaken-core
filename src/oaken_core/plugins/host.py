@@ -243,6 +243,12 @@ class PluginHost:
             for name, base in self.tables.instances(spec.name).items():
                 if (spec.name, name) not in self._records:
                     self._records[(spec.name, name)] = self._instance_of(spec, name, base)
+        offered = {(e.kind, e.name.replace("-", "_")): e for e in catalog.entries(k.name for k in self.kinds)}
+        for spec in self.kinds:  # settings for a plugin oaken-plugins offers: it loads from there, no `plugin add` needed
+            for name, table in self.tables.tables.get(spec.name, {}).items():
+                entry = offered.get((spec.name, name.replace("-", "_")))
+                if entry and (spec.name, name) not in self._records and "plugin" not in table:
+                    self._records[(spec.name, name)] = self._load_one(spec, EntryPoint(name=name, value=catalog.class_path(entry), group=spec.group))
         for spec in self.kinds:  # a table with nothing behind it is not silently ignored: it is listed, inactive, with the reason
             for name in self.tables.tables.get(spec.name, {}):
                 if (spec.name, name) not in self._records:
@@ -254,9 +260,8 @@ class PluginHost:
 
     def _missing(self, kind: str, name: str) -> str:
         """Why a configured plugin is not there, and how to get it."""
-        found = [e for e in catalog.entries(k.name for k in self.kinds) if e.kind == kind and e.name == name.replace("_", "-")]
-        how = f"it is in oaken-plugins: oaken plugin add {found[0].name} --kind {kind}" if found else "`oaken plugins` lists what could be added"
-        return f"no {kind} plugin named {name!r} is installed, but [plugins.{kind}.{name}] is in config.toml ({how}; your settings are kept)"
+        return (f"[plugins.{kind}.{name}] is in config.toml, but no {kind} plugin called {name!r} is installed. "
+                f"`oaken plugins` lists what can be added; your settings are kept.")
 
     def _entry_points(self, group: str) -> list[EntryPoint]:
         """What is installed, then what the extension directories offer."""
@@ -266,6 +271,11 @@ class PluginHost:
         """Work out how to add ``target``: a plugin's name (installed, or a directory in ``[extensions] dirs``), or a class
         path (``pkg.module.Class`` or ``pkg.module:Class``). Raises ``PluginError`` saying why not. Writes nothing."""
         config = dict(config or {})
+        head, dot, rest = target.partition(".")
+        if dot and ":" not in target and "." not in rest and head in self.kinds:  # embedder.ollama says the kind and the name at once
+            if kind not in (None, head):
+                raise PluginError(f"{target!r} says kind {head!r} but --kind says {kind!r}: use one")
+            kind, target = head, rest
         if kind is not None and kind not in self.kinds:
             raise PluginError(f"no plugin kind {kind!r} (known: {', '.join(k.name for k in self.kinds)})")
         if "." in target or ":" in target:

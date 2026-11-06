@@ -34,7 +34,7 @@ def _summary(source: Path) -> str:
         doc = ast.get_docstring(ast.parse(source.read_text(encoding="utf-8")))
     except (OSError, SyntaxError, ValueError):
         return ""
-    return (doc or "").strip().splitlines()[0] if doc else ""
+    return (doc or "").strip().splitlines()[0].replace("``", "") if doc else ""
 
 
 def entries(kinds: Iterable[str]) -> list[Entry]:
