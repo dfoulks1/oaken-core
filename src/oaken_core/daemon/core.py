@@ -26,7 +26,13 @@ from oaken_core.events import EventBus
 from oaken_core.intake import Intake, IntakeItem
 from oaken_core.jobs import Jobs, JobRunner
 from oaken_core.ids import SubjectId
-from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore, ReservedLabel
+from oaken_core.labels import (
+    BaseLabel,
+    LabelError,
+    LabelMaker,
+    LabelStore,
+    ReservedLabel,
+)
 from oaken_core.logging import get_logger
 from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
@@ -47,6 +53,7 @@ from oaken_core.trace import Tracer
 
 log = get_logger("oaken_core.daemon")
 
+
 class _Triager:
     """A plugin triager as intake wants it: with the name the host knows it by."""
 
@@ -61,7 +68,9 @@ class _Triager:
         return await self.plugin.triage(item)
 
 
-JOB_GRACE = 30.0  # seconds running jobs get to finish at stop; then their leases are released
+JOB_GRACE = (
+    30.0  # seconds running jobs get to finish at stop; then their leases are released
+)
 
 
 class Core:
@@ -74,16 +83,22 @@ class Core:
         queues_from_config: bool = True,
         secrets: SecretStore | None = None,
     ) -> None:
-        self.settings = (settings or Settings()).model_copy(update={"version": __version__})
+        self.settings = (settings or Settings()).model_copy(
+            update={"version": __version__}
+        )
         self.clock = clock or SystemClock()
         self._discover = discover
         self.secrets: SecretStore = secrets or KeyringSecrets()
-        self.queues_from_config = queues_from_config  # a product that fixes its own queues turns this off
+        self.queues_from_config = (
+            queues_from_config  # a product that fixes its own queues turns this off
+        )
         self.started: list[str] = []  # names of the units that are up, in order
         self._life: Lifecycle | None = None
         self._serving: asyncio.Task[None] | None = None
         self._console_task: asyncio.Task[None] | None = None
-        self.reload_hook: Callable[[], None] | None = None  # armed by the daemon (``serve``)
+        self.reload_hook: Callable[
+            [], None
+        ] | None = None  # armed by the daemon (``serve``)
 
     @property
     def port(self) -> int:
@@ -97,13 +112,26 @@ class Core:
         """Build the graph. Opens the database; ``stop`` closes it."""
         s, clock = self.settings, self.clock
         self.bus = EventBus()
-        self.logbus = LogToBus(self.bus) if s.log.enabled else None  # every log line goes on the bus; a table keeps them unless a file does
-        self.logtable = LogTable(self.bus, s.log.keep_days) if s.log.enabled and not s.log.file else None
+        self.logbus = (
+            LogToBus(self.bus) if s.log.enabled else None
+        )  # every log line goes on the bus; a table keeps them unless a file does
+        self.logtable = (
+            LogTable(self.bus, s.log.keep_days)
+            if s.log.enabled and not s.log.file
+            else None
+        )
         if self.logbus is not None:
             self.logbus.attach()
         if self.logtable is not None:
             self.logtable.start()
-        self.host = PluginHost(s.plugins, clock, self.bus, discover=self._discover, extensions_dirs=s.extensions.dirs, core_version=__version__)
+        self.host = PluginHost(
+            s.plugins,
+            clock,
+            self.bus,
+            discover=self._discover,
+            extensions_dirs=s.extensions.dirs,
+            core_version=__version__,
+        )
         self.host.secrets = self.secrets
         db = await self.host.start_store()
         if self.logtable is not None:
@@ -113,24 +141,60 @@ class Core:
         maker.set_validator("queue", queues.validate_label)
         for key, t in s.labels.items():
             try:
-                maker.register_config((ReservedLabel if t.reserved else BaseLabel).new(key, t.description, tuple(t.values), tuple(t.writers)))
+                maker.register_config(
+                    (ReservedLabel if t.reserved else BaseLabel).new(
+                        key, t.description, tuple(t.values), tuple(t.writers)
+                    )
+                )
             except LabelError as exc:
                 raise ConfigError(f"[labels.{key}]: {exc.message}") from None
         changelog = ChangeLog(clock)
         labels = LabelStore(db, maker, changelog, clock)
         self.host.attach_labels(labels, maker)
-        jobs = Jobs(db, clock, queues, labels=labels, changelog=changelog, settings=s.jobs, swarm=s.swarm, bus=self.bus)
+        jobs = Jobs(
+            db,
+            clock,
+            queues,
+            labels=labels,
+            changelog=changelog,
+            settings=s.jobs,
+            swarm=s.swarm,
+            bus=self.bus,
+        )
         self.agents = AgentRegistry(db, clock, s.swarm, self.bus)
         self.scheduler = Scheduler(db, jobs, clock)
-        self.tracer = Tracer(paths.data_dir() / "trace.jsonl", clock, max_bytes=s.log.file_max_bytes, backups=s.log.file_backups)
+        self.tracer = Tracer(
+            paths.data_dir() / "trace.jsonl",
+            clock,
+            max_bytes=s.log.file_max_bytes,
+            backups=s.log.file_backups,
+            enabled=s.log.trace,
+        )
         self.tracer.bus = self.bus
         self.host.tracer = self.tracer
         self.router = Router(db, clock, s.router, HostDirectory(self.host, s.router))
         self.host.router = self.router
         self.runner = JobRunner(jobs)
         register_maintenance_jobs(self.runner, db)
-        self.eventlog = EventLog(event_log_path(s.log.events_file), max_bytes=s.log.file_max_bytes, backups=s.log.file_backups) if s.log.events_file else None
-        self.intake = Intake(jobs, labels, db, changelog, triager_source=self._triagers, formatter_for=self._formatter, ingest=self._ingest, router=self.router)
+        self.eventlog = (
+            EventLog(
+                event_log_path(s.log.events_file),
+                max_bytes=s.log.file_max_bytes,
+                backups=s.log.file_backups,
+            )
+            if s.log.events_file
+            else None
+        )
+        self.intake = Intake(
+            jobs,
+            labels,
+            db,
+            changelog,
+            triager_source=self._triagers,
+            formatter_for=self._formatter,
+            ingest=self._ingest,
+            router=self.router,
+        )
         self.intake.register(self.runner)
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, labels=labels, changelog=changelog,
@@ -138,13 +202,21 @@ class Core:
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))
         self.client = CoreClient(self.registry, svc)
-        self.api = Api(self.client, token=load_or_create_token(paths.config_dir() / TOKEN_FILE), started_at=clock.now())
-        self.person = McpServer(self.client, token=load_or_create_token(paths.config_dir() / MCP_TOKEN_FILE))
+        self.api = Api(
+            self.client,
+            token=load_or_create_token(paths.config_dir() / TOKEN_FILE),
+            started_at=clock.now(),
+        )
+        self.person = McpServer(
+            self.client, token=load_or_create_token(paths.config_dir() / MCP_TOKEN_FILE)
+        )
         self.agent_door = McpServer(self.client, agents=self.agents)
         self.api.mount(self.person.surface, self.person)
         self.api.mount(self.agent_door.surface, self.agent_door)
         self.server = ApiServer(self.api)
-        self.console = Console(self.client, svc)  # core's own: no plugin can switch it off
+        self.console = Console(
+            self.client, svc
+        )  # core's own: no plugin can switch it off
         self.console_server = ConsoleServer(self.console, s.console)
         self._life = Lifecycle(self._units())
 
@@ -154,22 +226,37 @@ class Core:
         queues = Queues()
         tables = self.settings.queues
         if tables and not self.queues_from_config:
-            raise ConfigError("this product defines its own queues: remove [queues.*] from config.toml")
+            raise ConfigError(
+                "this product defines its own queues: remove [queues.*] from config.toml"
+            )
         for name, q in tables.items():
-            if name == DEFAULT:  # Intake: its table only says which plugins are off there
+            if (
+                name == DEFAULT
+            ):  # Intake: its table only says which plugins are off there
                 if q.kind or q.label or q.description or q.workers != 1:
-                    raise ConfigError("[queues.default] already exists: Intake is always there, and its table may only set `disabled`")
+                    raise ConfigError(
+                        "[queues.default] already exists: Intake is always there, and its table may only set `disabled`"
+                    )
                 queues.set_disabled(DEFAULT, tuple(q.disabled))
                 continue
             check_queue_kind(self.host.kinds, name, q.kind)
-            queues.new_queue(name, q.description, q.workers, kind=q.kind, label=q.label, disabled=tuple(q.disabled))
+            queues.new_queue(
+                name,
+                q.description,
+                q.workers,
+                kind=q.kind,
+                label=q.label,
+                disabled=tuple(q.disabled),
+            )
         return queues
 
     def request_reload(self) -> None:
         """Ask the daemon to rebuild core on ``config.toml``. Half a second later, so the page that
         asked is answered before the console it came from is stopped."""
         if self.reload_hook is None:
-            raise Unavailable("core was not started by the daemon, so there is nothing to reload it")
+            raise Unavailable(
+                "core was not started by the daemon, so there is nothing to reload it"
+            )
         asyncio.get_running_loop().call_later(0.5, self.reload_hook)
 
     def _triagers(self, stage: str) -> list[_Triager]:
@@ -177,7 +264,11 @@ class Core:
         A triager runs in the stage its ``stage`` setting names, else in the first triager stage."""
         queues = self.runner.jobs.queues
         first = next((q.name for q in queues.all() if q.kind == "triager"), None)
-        off = queues.get(stage).disabled if stage in [q.name for q in queues.all()] else ()
+        off = (
+            queues.get(stage).disabled
+            if stage in [q.name for q in queues.all()]
+            else ()
+        )
         return [_Triager(name, plugin) for name, plugin in self.host.named_triagers().items()
                 if name not in off and (self.host.tables.table("triager", name).get("stage") or first) in (stage, None)]  # fmt: skip
 
@@ -187,7 +278,14 @@ class Core:
             return None
         off = self.runner.jobs.queues.get(DEFAULT).disabled  # switched off in Intake
         found = {n: p for n, p in self.host.usable("formatter").items() if n not in off}
-        return next((p for n, p in found.items() if fmt == n or fmt in getattr(p, "formats", ())), None)
+        return next(
+            (
+                p
+                for n, p in found.items()
+                if fmt == n or fmt in getattr(p, "formats", ())
+            ),
+            None,
+        )
 
     async def _ingest(self, item: IntakeItem) -> SubjectId:
         """Hand an accepted item to the active ingestor. With none, the item waits in intake (it is
@@ -195,7 +293,9 @@ class Core:
         try:
             ingestor = self.host.get("ingestor")
         except (PluginError, NotFound) as exc:
-            raise Deferred(f"no ingestor is running ({exc})", self.settings.router.wait_seconds) from None
+            raise Deferred(
+                f"no ingestor is running ({exc})", self.settings.router.wait_seconds
+            ) from None
         return SubjectId(str(await ingestor.ingest(item)))
 
     def _units(self) -> list[ServiceUnit]:
@@ -206,7 +306,9 @@ class Core:
             await self.host.start()
             register_plugin_jobs(self.host, self.runner)
             await seed_plugin_schedules(self.host, self.scheduler)
-            await self.client.exposure.seed(self.settings.operations.mcp_allowed, self.registry)
+            await self.client.exposure.seed(
+                self.settings.operations.mcp_allowed, self.registry
+            )
 
         async def stop_jobs() -> None:
             await self.runner.stop(JOB_GRACE)
@@ -237,7 +339,9 @@ class Core:
                 await serving
 
         async def start_console() -> None:
-            self._console_task = asyncio.create_task(self._serve_console(), name="oaken-console")
+            self._console_task = asyncio.create_task(
+                self._serve_console(), name="oaken-console"
+            )
             while not self.console_server.started:
                 if self._console_task.done():
                     self._console_task.result()
@@ -275,10 +379,16 @@ class Core:
                 self.eventlog.close()
 
         return [
-            unit("events", start_events, stop_events),  # first, so the plugins' start-up is in the record
+            unit(
+                "events", start_events, stop_events
+            ),  # first, so the plugins' start-up is in the record
             unit("trace", none, stop_trace),
-            unit("console", start_console, stop_console),  # before the host: a plugin that fails to start cannot take it down
-            unit("host", start_host, self.host.stop),  # last to stop: the others write on the way out
+            unit(
+                "console", start_console, stop_console
+            ),  # before the host: a plugin that fails to start cannot take it down
+            unit(
+                "host", start_host, self.host.stop
+            ),  # last to stop: the others write on the way out
             unit("scheduler", start_scheduler, stop_scheduler),
             unit("jobs", start_jobs, stop_jobs),
             unit("mcp", start_mcp, stop_mcp),
@@ -289,13 +399,17 @@ class Core:
         try:
             await self.server.serve()
         except SystemExit:  # uvicorn exits, rather than raises, when it cannot bind
-            raise Unavailable(f"the API server could not listen on {self.settings.api.host}:{self.settings.api.port}") from None
+            raise Unavailable(
+                f"the API server could not listen on {self.settings.api.host}:{self.settings.api.port}"
+            ) from None
 
     async def _serve_console(self) -> None:
         try:
             await self.console_server.serve()
         except SystemExit:
-            raise Unavailable(f"the console could not listen on 127.0.0.1:{self.settings.console.port}") from None
+            raise Unavailable(
+                f"the console could not listen on 127.0.0.1:{self.settings.console.port}"
+            ) from None
 
     async def start(self) -> int:
         """Bring every unit up and return the port the API listens on."""

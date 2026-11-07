@@ -32,12 +32,17 @@ log = get_logger("oaken_core.daemon")
 MakeCore = Callable[[Settings], Core]
 
 
-def _install(loop: asyncio.AbstractEventLoop, sigs: dict[int, Callable[[], None]]) -> list[int]:
+def _install(
+    loop: asyncio.AbstractEventLoop, sigs: dict[int, Callable[[], None]]
+) -> list[int]:
     done: list[int] = []
     for sig, fn in sigs.items():
         try:
             loop.add_signal_handler(sig, fn)
-        except (NotImplementedError, RuntimeError):  # not the main thread, or a loop without them
+        except (
+            NotImplementedError,
+            RuntimeError,
+        ):  # not the main thread, or a loop without them
             continue
         done.append(sig)
     return done
@@ -50,7 +55,11 @@ async def _bring_up(core: Core, runtime: RuntimeFile) -> Core:
 
 
 async def _reload(
-    core: Core, runtime: RuntimeFile, make: MakeCore, load: Callable[[], Settings] | None, hook: Callable[[], None]
+    core: Core,
+    runtime: RuntimeFile,
+    make: MakeCore,
+    load: Callable[[], Settings] | None,
+    hook: Callable[[], None],
 ) -> Core:
     """Rebuild core on the configuration file, in this process (same pid and runtime file). The
     file is validated before anything is stopped, so a typo changes nothing; if the rebuilt core
@@ -61,7 +70,9 @@ async def _reload(
     try:
         settings = load()
     except ConfigError as exc:
-        log.error("reload refused; still running on the old configuration", error=str(exc))
+        log.error(
+            "reload refused; still running on the old configuration", error=str(exc)
+        )
         return core
     settings = settings.model_copy(update={"version": core.settings.version})
     if settings == core.settings:
@@ -71,10 +82,20 @@ async def _reload(
     bound, console_bound = core.port, core.console_port
     old = core.settings
     await core.stop()
-    if settings.api.port == 0 and bound:  # no port asked for: keep the one clients already know
-        settings = settings.model_copy(update={"api": settings.api.model_copy(update={"port": bound})})
-    if settings.console.port == 0 and console_bound:  # and the console page that is open in a browser
-        settings = settings.model_copy(update={"console": settings.console.model_copy(update={"port": console_bound})})
+    if (
+        settings.api.port == 0 and bound
+    ):  # no port asked for: keep the one clients already know
+        settings = settings.model_copy(
+            update={"api": settings.api.model_copy(update={"port": bound})}
+        )
+    if (
+        settings.console.port == 0 and console_bound
+    ):  # and the console page that is open in a browser
+        settings = settings.model_copy(
+            update={
+                "console": settings.console.model_copy(update={"port": console_bound})
+            }
+        )
     try:
         fresh = await _bring_up(make(settings), runtime)
     except Exception as exc:  # noqa: BLE001 - whatever it was, the old core comes back
@@ -103,7 +124,10 @@ async def serve(
     stop, reload = stop or asyncio.Event(), reload or asyncio.Event()
     runtime.claim()
     loop = asyncio.get_running_loop()
-    sigs: dict[int, Callable[[], None]] = {signal.SIGINT: stop.set, signal.SIGTERM: stop.set}
+    sigs: dict[int, Callable[[], None]] = {
+        signal.SIGINT: stop.set,
+        signal.SIGTERM: stop.set,
+    }
     if hasattr(signal, "SIGHUP"):
         sigs[signal.SIGHUP] = reload.set
     installed = _install(loop, sigs) if handle_signals else []
@@ -111,12 +135,22 @@ async def serve(
     try:
         core = await _bring_up(make(settings), runtime)
         core.reload_hook = reload.set
-        log.info("core running", port=core.port, console=f"http://127.0.0.1:{core.console_port}/", version=__version__)
+        log.info(
+            "core running",
+            port=core.port,
+            console=f"http://127.0.0.1:{core.console_port}/",
+            version=__version__,
+        )
         if ready is not None:
             ready.set()
         while not stop.is_set():
-            waiters = {asyncio.ensure_future(stop.wait()), asyncio.ensure_future(reload.wait())}
-            _, pending = await asyncio.wait(waiters, return_when=asyncio.FIRST_COMPLETED)
+            waiters = {
+                asyncio.ensure_future(stop.wait()),
+                asyncio.ensure_future(reload.wait()),
+            }
+            _, pending = await asyncio.wait(
+                waiters, return_when=asyncio.FIRST_COMPLETED
+            )
             for task in pending:
                 task.cancel()
             if reload.is_set() and not stop.is_set():
@@ -141,7 +175,13 @@ def run(settings: Settings | None = None, make: MakeCore = Core) -> int:
         cfg = settings or Settings.load()
         configure_logging(cfg.log)
         paths.remember_home()
-        asyncio.run(serve(cfg, make=make, load_settings=Settings.load if settings is None else None))
+        asyncio.run(
+            serve(
+                cfg,
+                make=make,
+                load_settings=Settings.load if settings is None else None,
+            )
+        )
     except (Conflict, ConfigError) as exc:
         print(f"{identity.prog}: {exc}", file=sys.stderr)
         return 1
@@ -172,11 +212,15 @@ def _signal(found: dict[str, Any], sig: int, what: str) -> bool:
     except ProcessLookupError:
         return False
     except PermissionError as exc:
-        raise Unavailable(f"not allowed to {what} core (pid {found['pid']}): {exc}") from exc
+        raise Unavailable(
+            f"not allowed to {what} core (pid {found['pid']}): {exc}"
+        ) from exc
     return True
 
 
-def stop_gracefully(runtime: Path | None = None, *, grace: float = DEFAULT_GRACE, kill: bool = True) -> StopResult:
+def stop_gracefully(
+    runtime: Path | None = None, *, grace: float = DEFAULT_GRACE, kill: bool = True
+) -> StopResult:
     """SIGTERM the running core and wait ``grace`` seconds; then kill it (``kill=False`` raises
     instead). The work is a durable queue with leases, so a killed core loses nothing."""
     found = status(runtime)
@@ -198,7 +242,9 @@ def stop_gracefully(runtime: Path | None = None, *, grace: float = DEFAULT_GRACE
         if time.monotonic() > gone:
             raise Unavailable(f"core (pid {pid}) is still running after a kill")
         time.sleep(0.05)
-    (runtime or paths.runtime_file()).unlink(missing_ok=True)  # a killed core cannot remove it
+    (runtime or paths.runtime_file()).unlink(
+        missing_ok=True
+    )  # a killed core cannot remove it
     return StopResult(True, killed=True, pid=pid)
 
 
@@ -225,7 +271,9 @@ def detach(*, timeout: float = 30.0, runtime: Path | None = None) -> dict[str, A
         if found is not None and found.get("port"):
             return found
         if child.poll() is not None:
-            raise Unavailable(f"core exited while starting (code {child.returncode}); run `{identity.prog} start --fg` to see why")
+            raise Unavailable(
+                f"core exited while starting (code {child.returncode}); run `{identity.prog} start --fg` to see why"
+            )
         time.sleep(0.05)
     raise Unavailable(f"core did not start listening within {timeout:.0f}s")
 
@@ -235,9 +283,22 @@ def cli(argv: list[str], make: MakeCore = Core) -> int:
     that work with no core running."""
     ap = argparse.ArgumentParser(prog=f"{identity.prog} {argv[0]}")
     ap.add_argument("verb")
-    ap.add_argument("--fg", action="store_true", help="Run in the foreground, logging to this terminal.")
-    ap.add_argument("--grace", type=float, default=DEFAULT_GRACE, help="Seconds core gets to finish before it is killed.")
-    ap.add_argument("--no-kill", action="store_true", help="Report an error instead of killing core.")
+    ap.add_argument(
+        "--fg",
+        action="store_true",
+        help="Run in the foreground, logging to this terminal.",
+    )
+    ap.add_argument(
+        "--grace",
+        type=float,
+        default=DEFAULT_GRACE,
+        help="Seconds core gets to finish before it is killed.",
+    )
+    ap.add_argument(
+        "--no-kill",
+        action="store_true",
+        help="Report an error instead of killing core.",
+    )
     args = ap.parse_args(argv)
     try:
         if args.verb in ("start", "restart"):
@@ -246,7 +307,10 @@ def cli(argv: list[str], make: MakeCore = Core) -> int:
             if args.fg:
                 return run(make=make)
             info = detach()
-            print(f"core running (pid {info.get('pid')}, port {info.get('port')})")
+            print(
+                f"core {info.get('version')} running (pid {info.get('pid')}, port {info.get('port')})"
+            )
+            print(f"console: http://127.0.0.1:{info.get('console_port')}/")
             return 0
         if args.verb == "stop":
             result = stop_gracefully(grace=args.grace, kill=not args.no_kill)

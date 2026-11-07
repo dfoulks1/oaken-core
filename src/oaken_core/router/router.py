@@ -27,10 +27,23 @@ from pydantic import BaseModel, ValidationError
 
 from oaken_core.clock import Clock
 from oaken_core.db import Database
-from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, Deferred, Unavailable
+from oaken_core.errors import (
+    AIBackendError,
+    ConfidentialRefused,
+    ConfigError,
+    Deferred,
+    Unavailable,
+)
 from oaken_core.logging import get_logger
 from oaken_core.plugins.contracts import Hit, LLMRequest, LLMResponse, VectorItem
-from oaken_core.router.store import AnswerCache, CacheEntry, Ledger, LedgerRow, Spend, SpendRow
+from oaken_core.router.store import (
+    AnswerCache,
+    CacheEntry,
+    Ledger,
+    LedgerRow,
+    Spend,
+    SpendRow,
+)
 from oaken_core.settings import RouterSettings
 from oaken_core.untrusted import UntrustedText
 
@@ -66,12 +79,14 @@ class Entry:
 class Directory(Protocol):
     """Where the router finds backends. ``HostDirectory`` reads the plugin host; a test passes a dict."""
 
-    def backends(self) -> Mapping[str, Entry]: ...
-    def embedder(self) -> Entry | None: ...
-    def cache(self, name: str) -> Any | None:
-        return self.host.usable("cache_store").get(name)
+    def backends(self) -> Mapping[str, Entry]:
+        ...
 
-    def vectors(self) -> Any | None: ...
+    def embedder(self) -> Entry | None:
+        ...
+
+    def vectors(self) -> Any | None:
+        ...
 
 
 @dataclass(frozen=True)
@@ -90,7 +105,9 @@ class Route:
     min_confidence: float | None = None
 
     @classmethod
-    def from_config(cls, cfg: Mapping[str, Any], defaults: "Route | None" = None) -> "Route":
+    def from_config(
+        cls, cfg: Mapping[str, Any], defaults: "Route | None" = None
+    ) -> "Route":
         base = defaults or cls(backend="")
         esc = cfg.get("escalate") or {}
         if not isinstance(esc, Mapping):
@@ -140,8 +157,15 @@ class HostDirectory:
     def _entry(self, kind: str, name: str, plugin: Any) -> Entry:
         table = self.host.tables.table(kind, name)
         locality = table.get("locality", "hosted")
-        if locality not in LOCALITIES:  # one typo must not take the router down, or open a door
-            log.error("unknown locality; treating as hosted", kind=kind, name=name, locality=str(locality))
+        if (
+            locality not in LOCALITIES
+        ):  # one typo must not take the router down, or open a door
+            log.error(
+                "unknown locality; treating as hosted",
+                kind=kind,
+                name=name,
+                locality=str(locality),
+            )
             locality = "hosted"
         return Entry(name, plugin, locality, max(1, int(table.get("concurrency", 1))))  # type: ignore[arg-type]
 
@@ -155,13 +179,22 @@ class HostDirectory:
         name = self.settings.embedder or next(iter(up), "")
         return self._entry("embedder", name, up.get(name)) if name else None
 
+    def cache(self, name: str) -> Any | None:
+        return self.host.usable("cache_store").get(name)
+
     def vectors(self) -> Any | None:
         up = self.host.usable("vector_store")
-        return up.get(self.settings.vector_store) if self.settings.vector_store else next(iter(up.values()), None)
+        return (
+            up.get(self.settings.vector_store)
+            if self.settings.vector_store
+            else next(iter(up.values()), None)
+        )
 
 
 class Router:
-    def __init__(self, db: Database, clock: Clock, settings: RouterSettings, directory: Directory) -> None:
+    def __init__(
+        self, db: Database, clock: Clock, settings: RouterSettings, directory: Directory
+    ) -> None:
         self.settings, self.directory = settings, directory
         self.builtin_cache = AnswerCache(db, clock)
         self.ledger = Ledger(db, clock)
@@ -182,10 +215,14 @@ class Router:
         names = [n for n in (route.backend, *route.fallback) if n]
         if not names:
             raise ConfigError(f"{call.analyzer}: no backend named; set [route] backend")
-        permitted = [n for n in names if n in known and self.allowed(known[n], call.confidential)]
+        permitted = [
+            n for n in names if n in known and self.allowed(known[n], call.confidential)
+        ]
         if not permitted:
             if call.confidential and any(n in known for n in names):
-                raise ConfidentialRefused(f"{call.analyzer}: no local or allowlisted backend for a confidential call")
+                raise ConfidentialRefused(
+                    f"{call.analyzer}: no local or allowlisted backend for a confidential call"
+                )
             raise Unavailable(f"{call.analyzer}: no such backend ({', '.join(names)})")
         for name in permitted:
             entry = known[name]
@@ -197,7 +234,9 @@ class Router:
         return self._gates.setdefault(entry.name, asyncio.Semaphore(entry.concurrency))
 
     # -- the ladder ----------------------------------------------------------------------------
-    async def ask(self, route: Route, call: Call, request: LLMRequest, output: type[T]) -> T:
+    async def ask(
+        self, route: Route, call: Call, request: LLMRequest, output: type[T]
+    ) -> T:
         """The validated answer to ``request``. A bad answer, after the one escalation, raises
         ``AIBackendError`` and stores nothing."""
         pick = None if route.model else self.resolve(route, call)
@@ -208,7 +247,13 @@ class Router:
         hit = await self._lookup(call, call.content_hash, models, output)
         if hit is not None:
             value, entry = hit
-            await self.ledger.add(call.analyzer, model, who, cache_hits=1, tokens_saved=entry.tokens_in + entry.tokens_out)
+            await self.ledger.add(
+                call.analyzer,
+                model,
+                who,
+                cache_hits=1,
+                tokens_saved=entry.tokens_in + entry.tokens_out,
+            )
             return value
 
         vector: list[float] | None = None
@@ -217,49 +262,106 @@ class Router:
             found = await self._neighbour(call, models, output, vector)
             if found is not None:
                 value, entry = found
-                await self.ledger.add(call.analyzer, model, who, shortcut_hits=1, tokens_saved=entry.tokens_in + entry.tokens_out)
+                await self.ledger.add(
+                    call.analyzer,
+                    model,
+                    who,
+                    shortcut_hits=1,
+                    tokens_saved=entry.tokens_in + entry.tokens_out,
+                )
                 return value
 
         pick = pick or self.resolve(route, call)
-        if await self._over(route, call):  # the cache and the shortcuts are free; a model call is not
+        if await self._over(
+            route, call
+        ):  # the cache and the shortcuts are free; a model call is not
             await self.spend.add(call.analyzer, deferrals=1)
-            raise Deferred(f"{call.analyzer}: today's token budget is spent", self.spend.seconds_to_reset())
+            raise Deferred(
+                f"{call.analyzer}: today's token budget is spent",
+                self.spend.seconds_to_reset(),
+            )
         value = await self._answer(route, call, request, output, pick)
         if vector is not None:
             await self._remember(call, vector)
         return value
 
     async def _over(self, route: Route, call: Call) -> bool:
-        return route.daily_tokens > 0 and await self.spend.tokens(call.analyzer) >= route.daily_tokens
+        return (
+            route.daily_tokens > 0
+            and await self.spend.tokens(call.analyzer) >= route.daily_tokens
+        )
 
-    async def _answer(self, route: Route, call: Call, request: LLMRequest, output: type[T], pick: Resolved) -> T:
+    async def _answer(
+        self,
+        route: Route,
+        call: Call,
+        request: LLMRequest,
+        output: type[T],
+        pick: Resolved,
+    ) -> T:
         """The small model's answer, then at most one escalation. Stores the answer that stands."""
-        floor = route.min_confidence if route.min_confidence is not None else self.settings.min_confidence
-        first, problem = await self._call(route, call, request, output, pick, fallbacks=True)
+        floor = (
+            route.min_confidence
+            if route.min_confidence is not None
+            else self.settings.min_confidence
+        )
+        first, problem = await self._call(
+            route, call, request, output, pick, fallbacks=True
+        )
         confidence = _confidence(first[0]) if first is not None else None
         if first is not None and (confidence is None or confidence >= floor):
             await self._store(call, pick.model, first[1])
             return first[0]
         big = None
-        if route.escalate_backend and not await self._over(route, call):  # over budget: keep the small answer
+        if route.escalate_backend and not await self._over(
+            route, call
+        ):  # over budget: keep the small answer
             try:
-                big = self.resolve(replace(route, backend=route.escalate_backend, fallback=(), model=route.escalate_model), call)
-            except (Unavailable, ConfidentialRefused) as exc:  # nothing bigger may answer: keep what we have
-                log.warning("escalation not possible", analyzer=call.analyzer, reason=exc.code)
+                big = self.resolve(
+                    replace(
+                        route,
+                        backend=route.escalate_backend,
+                        fallback=(),
+                        model=route.escalate_model,
+                    ),
+                    call,
+                )
+            except (
+                Unavailable,
+                ConfidentialRefused,
+            ) as exc:  # nothing bigger may answer: keep what we have
+                log.warning(
+                    "escalation not possible", analyzer=call.analyzer, reason=exc.code
+                )
         if big is None:
             if first is None:
-                raise AIBackendError(f"{call.analyzer}: the answer was not valid ({problem})")
-            await self._store(call, pick.model, first[1])  # low confidence, nothing bigger to ask
+                raise AIBackendError(
+                    f"{call.analyzer}: the answer was not valid ({problem})"
+                )
+            await self._store(
+                call, pick.model, first[1]
+            )  # low confidence, nothing bigger to ask
             return first[0]
         await self.ledger.add(call.analyzer, pick.model, pick.name, escalations=1)
-        second, problem = await self._call(route, call, request, output, big, fallbacks=False)
+        second, problem = await self._call(
+            route, call, request, output, big, fallbacks=False
+        )
         if second is None:
-            raise AIBackendError(f"{call.analyzer}: the escalated answer was not valid ({problem})")
+            raise AIBackendError(
+                f"{call.analyzer}: the escalated answer was not valid ({problem})"
+            )
         await self._store(call, big.model, second[1])
         return second[0]
 
     async def _call(
-        self, route: Route, call: Call, request: LLMRequest, output: type[T], pick: Resolved, *, fallbacks: bool
+        self,
+        route: Route,
+        call: Call,
+        request: LLMRequest,
+        output: type[T],
+        pick: Resolved,
+        *,
+        fallbacks: bool,
     ) -> tuple[tuple[T, CacheEntry] | None, str]:
         """One model call, with the route's fallbacks if the backend errors. Returns the validated
         answer (and what to cache), or None and why it was not valid. Counts the tokens either way."""
@@ -268,8 +370,15 @@ class Router:
         if fallbacks:
             for n in route.fallback:
                 e = known.get(n)
-                if n != pick.name and e is not None and e.plugin is not None and self.allowed(e, call.confidential):
-                    candidates.append(Resolved(n, e, route.model or str(e.plugin.model_id)))
+                if (
+                    n != pick.name
+                    and e is not None
+                    and e.plugin is not None
+                    and self.allowed(e, call.confidential)
+                ):
+                    candidates.append(
+                        Resolved(n, e, route.model or str(e.plugin.model_id))
+                    )
         error: Exception | None = None
         for cand in candidates:
             req = self._shape(request, cand)
@@ -280,21 +389,32 @@ class Router:
                         self.settings.call_timeout_seconds,
                     )
             except Exception as exc:  # noqa: BLE001 - plugin code; the next backend may be up
-                log.warning("backend call failed", analyzer=call.analyzer, backend=cand.name, error=type(exc).__name__)
+                log.warning(
+                    "backend call failed",
+                    analyzer=call.analyzer,
+                    backend=cand.name,
+                    error=type(exc).__name__,
+                )
                 error = exc
                 continue
             if not isinstance(resp, LLMResponse):
-                raise AIBackendError(f"{cand.name}: generate() must return an LLMResponse")
+                raise AIBackendError(
+                    f"{cand.name}: generate() must return an LLMResponse"
+                )
             ran = resp.model_id or cand.model
             tin = resp.input_tokens or estimate(_text(req))
             tout = resp.output_tokens or estimate(resp.text or json.dumps(resp.data))
-            await self.ledger.add(call.analyzer, ran, cand.name, calls=1, tokens_in=tin, tokens_out=tout)
+            await self.ledger.add(
+                call.analyzer, ran, cand.name, calls=1, tokens_in=tin, tokens_out=tout
+            )
             await self.spend.add(call.analyzer, tin + tout)
             value = _validate(output, resp)
             if isinstance(value, str):
                 return None, value
             return (value, CacheEntry(value.model_dump_json(), tin, tout)), ""
-        raise AIBackendError(f"{call.analyzer}: every backend failed ({type(error).__name__ if error else 'none'})")
+        raise AIBackendError(
+            f"{call.analyzer}: every backend failed ({type(error).__name__ if error else 'none'})"
+        )
 
     def _shape(self, request: LLMRequest, cand: Resolved) -> LLMRequest:
         """The request as this backend gets it: capped output, input cut to the context window."""
@@ -303,7 +423,9 @@ class Router:
         budget = self.settings.default_input_tokens
         if window:
             budget = min(budget, max(1, window - out - estimate(request.system)))
-        return replace(request, max_output_tokens=out, user=_cut(request.user, budget * 4))
+        return replace(
+            request, max_output_tokens=out, user=_cut(request.user, budget * 4)
+        )
 
     # -- cache and neighbours ------------------------------------------------------------------
     @property
@@ -311,11 +433,15 @@ class Router:
         """The answer cache: the ``cache_store`` plugin named in ``[router] cache_store`` while it is healthy,
         else core's own."""
         name = self.settings.cache_store
-        lookup = getattr(self.directory, "cache", None)  # a stand-in directory (tests) may not offer one
+        lookup = getattr(
+            self.directory, "cache", None
+        )  # a stand-in directory (tests) may not offer one
         plugin = lookup(name) if name and lookup else None
         return plugin if plugin is not None else self.builtin_cache
 
-    async def _lookup(self, call: Call, key: str, models: list[str], output: type[T]) -> tuple[T, CacheEntry] | None:
+    async def _lookup(
+        self, call: Call, key: str, models: list[str], output: type[T]
+    ) -> tuple[T, CacheEntry] | None:
         for model in models:
             cache = self.cache
             entry = await cache.get(cache.key(call.analyzer, call.version, key, model))
@@ -324,17 +450,26 @@ class Router:
             try:
                 return output.model_validate_json(entry.result_json), entry
             except ValidationError:
-                log.warning("cached answer no longer fits its schema", analyzer=call.analyzer)
+                log.warning(
+                    "cached answer no longer fits its schema", analyzer=call.analyzer
+                )
         return None
 
     async def _store(self, call: Call, model: str, entry: CacheEntry) -> None:
         cache = self.cache
-        await cache.put(cache.key(call.analyzer, call.version, call.content_hash, model), entry)
+        await cache.put(
+            cache.key(call.analyzer, call.version, call.content_hash, model), entry
+        )
 
-    async def _neighbour(self, call: Call, models: list[str], output: type[T], vector: list[float]) -> tuple[T, CacheEntry] | None:
+    async def _neighbour(
+        self, call: Call, models: list[str], output: type[T], vector: list[float]
+    ) -> tuple[T, CacheEntry] | None:
         """The stored answer of a near-duplicate, when one is close enough and still cached."""
         for hit in await self._query(self._answers(call), vector, 2):
-            if hit.key != call.content_hash and hit.score >= self.settings.near_duplicate_score:
+            if (
+                hit.key != call.content_hash
+                and hit.score >= self.settings.near_duplicate_score
+            ):
                 return await self._lookup(call, hit.key, models, output)
         return None
 
@@ -350,7 +485,9 @@ class Router:
         if entry is None or entry.plugin is None:
             raise Deferred("no healthy embedder", self.settings.wait_seconds)
         if not self.allowed(entry, confidential):
-            raise ConfidentialRefused(f"embedder {entry.name!r} may not see a confidential item")
+            raise ConfidentialRefused(
+                f"embedder {entry.name!r} may not see a confidential item"
+            )
         return entry
 
     def _vectors(self) -> Any:
@@ -361,36 +498,67 @@ class Router:
 
     def vec_ready(self) -> bool:
         e = self.directory.embedder()
-        return e is not None and e.plugin is not None and self.directory.vectors() is not None
+        return (
+            e is not None
+            and e.plugin is not None
+            and self.directory.vectors() is not None
+        )
 
-    async def embed(self, texts: Sequence[str], *, confidential: bool = False) -> list[list[float]]:
+    async def embed(
+        self, texts: Sequence[str], *, confidential: bool = False
+    ) -> list[list[float]]:
         entry = self._embedder(confidential)
         async with self._gate(replace(entry, name=f"embed:{entry.name}")):
-            vecs = await asyncio.wait_for(entry.plugin.embed(list(texts)), self.settings.call_timeout_seconds)
+            vecs = await asyncio.wait_for(
+                entry.plugin.embed(list(texts)), self.settings.call_timeout_seconds
+            )
         dims = int(entry.plugin.dimensions)
         if len(vecs) != len(texts) or any(len(v) != dims for v in vecs):
-            raise AIBackendError(f"embedder {entry.name!r} returned vectors that do not fit {len(texts)} x {dims}")
+            raise AIBackendError(
+                f"embedder {entry.name!r} returned vectors that do not fit {len(texts)} x {dims}"
+            )
         return [list(v) for v in vecs]
 
     def _collection(self, name: str) -> str:
         e = self.directory.embedder()
-        return f"{name}:{e.plugin.model_id}" if e and e.plugin else name  # a model's vectors never mix with another's
+        return (
+            f"{name}:{e.plugin.model_id}" if e and e.plugin else name
+        )  # a model's vectors never mix with another's
 
     async def _query(self, collection: str, vector: list[float], k: int) -> list[Hit]:
-        return list(await self._vectors().query(self._collection(collection), tuple(vector), k))
+        return list(
+            await self._vectors().query(self._collection(collection), tuple(vector), k)
+        )
 
     async def _upsert(self, collection: str, key: str, vector: list[float]) -> None:
-        await self._vectors().upsert(self._collection(collection), [VectorItem(key, tuple(vector))])
+        await self._vectors().upsert(
+            self._collection(collection), [VectorItem(key, tuple(vector))]
+        )
 
-    async def nearest(self, collection: str, query: str | Sequence[float], k: int = 1, *, confidential: bool = False) -> list[Hit]:
+    async def nearest(
+        self,
+        collection: str,
+        query: str | Sequence[float],
+        k: int = 1,
+        *,
+        confidential: bool = False,
+    ) -> list[Hit]:
         """The ``k`` stored items closest to ``query`` (text is embedded first), best first. For a
         ``needs_vec`` analyzer's nearest-example verdicts. Vectors never go to a model."""
-        vec = (await self.embed([query], confidential=confidential))[0] if isinstance(query, str) else list(query)
+        vec = (
+            (await self.embed([query], confidential=confidential))[0]
+            if isinstance(query, str)
+            else list(query)
+        )
         return await self._query(collection, vec, k)
 
-    async def remember(self, collection: str, key: str, text: str, *, confidential: bool = False) -> None:
+    async def remember(
+        self, collection: str, key: str, text: str, *, confidential: bool = False
+    ) -> None:
         """Add ``text``'s vector to ``collection`` under ``key`` (a content hash)."""
-        await self._upsert(collection, key, (await self.embed([text], confidential=confidential))[0])
+        await self._upsert(
+            collection, key, (await self.embed([text], confidential=confidential))[0]
+        )
 
     # -- junk: reject and learn ----------------------------------------------------------------
     async def learn_junk(self, text: str, *, confidential: bool = False) -> bool:
@@ -406,7 +574,9 @@ class Router:
         if not self.settings.junk_index:
             return None
         hits = await self.nearest(JUNK, text, 1, confidential=confidential)
-        return hits[0] if hits and hits[0].score >= self.settings.nearjunk_score else None
+        return (
+            hits[0] if hits and hits[0].score >= self.settings.nearjunk_score else None
+        )
 
     # -- the ledger ----------------------------------------------------------------------------
     async def usage(self, analyzer: str | None = None) -> list[LedgerRow]:
@@ -417,10 +587,14 @@ class Router:
 
 
 def _text(request: LLMRequest) -> str:
-    return request.system + "".join(p if isinstance(p, str) else p.unwrap() for p in request.user)
+    return request.system + "".join(
+        p if isinstance(p, str) else p.unwrap() for p in request.user
+    )
 
 
-def _cut(parts: tuple[str | UntrustedText, ...], chars: int) -> tuple[str | UntrustedText, ...]:
+def _cut(
+    parts: tuple[str | UntrustedText, ...], chars: int
+) -> tuple[str | UntrustedText, ...]:
     """The user parts, trimmed in order to ``chars`` characters in all. Later parts go first."""
     out: list[str | UntrustedText] = []
     for part in parts:
@@ -447,4 +621,7 @@ def _validate(output: type[T], resp: LLMResponse) -> T | str:
     try:
         return output.model_validate(data)
     except ValidationError as exc:
-        return "; ".join(f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}" for e in exc.errors(include_input=False, include_url=False)[:5])
+        return "; ".join(
+            f"{'.'.join(map(str, e['loc'])) or 'value'}: {e['msg']}"
+            for e in exc.errors(include_input=False, include_url=False)[:5]
+        )

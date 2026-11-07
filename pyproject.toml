@@ -64,6 +64,9 @@ dedupe = "oaken_core.triage.dedupe:DedupeTriager"
 rules = "oaken_core.triage.rules:RulesTriager"
 llm = "oaken_core.triage.llm:LlmTriager"
 
+[project.entry-points."oaken_core.enrichers"]
+llm = "oaken_core.enrich.llm:LlmEnricher"
+
 [project.entry-points."oaken_core.formatters"]
 json = "oaken_core.formatters.structured:JsonFormatter"
 

@@ -40,13 +40,40 @@ LOOPBACK = "127.0.0.1"  # hard-coded: this plugin never listens beyond this mach
 class SocketConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    unix_path: str = Field(default="", description="A Unix socket to listen on (made with mode 0600). Set this or port.")
-    port: int | None = Field(default=None, ge=0, le=65535, description="A TCP port on 127.0.0.1. 0 picks a free one. Set this or unix_path.")
-    source: str = Field(default="", description="What the record calls where these came from. Empty: this plugin's name.")
-    format: str = Field(default="", description="What the items are (json, ini, a format a formatter plugin declares): it splits each into parts before triage. Empty: a JSON object is split by key, anything else stays whole.")
-    framing: Literal["lines", "connection"] = Field(default="lines", description="One item per line, or one item per connection.")
-    parse_json: bool = Field(default=True, description="Submit each item as parsed JSON, and answer ERR to anything that is not JSON. False: submit the text as it is.")
-    max_item_bytes: int = Field(default=1_048_576, ge=1, description="The biggest item taken. A bigger one gets ERR and the connection closes.")
+    unix_path: str = Field(
+        default="",
+        description="A Unix socket to listen on (made with mode 0600). Set this or port.",
+    )
+    port: int | None = Field(
+        default=None,
+        ge=0,
+        le=65535,
+        description="A TCP port on 127.0.0.1. 0 picks a free one. Set this or unix_path.",
+    )
+    source: str = Field(
+        default="",
+        description="What the record calls where these came from. Empty: this plugin's name.",
+    )
+    format: str = Field(
+        default="",
+        description="What the items are (json, ini, a format a formatter plugin declares): it splits each into parts before triage. Empty: a JSON object is split by key, anything else stays whole.",
+    )
+    labels: dict[str, str] = Field(
+        default_factory=dict,
+        description='Labels set on every item from this door, before triage (confidential = "true" keeps them off hosted models).',
+    )
+    framing: Literal["lines", "connection"] = Field(
+        default="lines", description="One item per line, or one item per connection."
+    )
+    parse_json: bool = Field(
+        default=True,
+        description="Submit each item as parsed JSON, and answer ERR to anything that is not JSON. False: submit the text as it is.",
+    )
+    max_item_bytes: int = Field(
+        default=1_048_576,
+        ge=1,
+        description="The biggest item taken. A bigger one gets ERR and the connection closes.",
+    )
 
     @model_validator(mode="after")
     def _one_place(self) -> "SocketConfig":
@@ -78,12 +105,18 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
     """A door for the machine: whatever is written to its Unix socket (or loopback port) is submitted to intake. A template: make an
     instance per door, each with its own path or port, source and format."""
 
-    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    api_version = (
+        1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    )
     requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "0.1.0"
-    contextual: ClassVar[tuple[str, ...]] = ("unix_path|port",)  # an instance is a door: it needs somewhere to listen
-    setup_help = ("Make an instance per door (the + on a stage's page) and set a unix_path or a port. Give a door its own `source` and, if everything on it "
-                  "is one kind of thing, a `format` (ini, rfc822...): the format's formatter then splits what arrives. A door with neither path nor port does not listen.")
+    contextual: ClassVar[tuple[str, ...]] = (
+        "unix_path|port",
+    )  # an instance is a door: it needs somewhere to listen
+    setup_help = (
+        "Make an instance per door (the + on a stage's page) and set a unix_path or a port. Give a door its own `source` and, if everything on it "
+        "is one kind of thing, a `format` (ini, rfc822...): the format's formatter then splits what arrives. A door with neither path nor port does not listen."
+    )
     config_example = '[plugins.provider.socket_ini]\nplugin = "socket"\nunix_path = "~/oaken-home/oaken-socket-ini"\nsource = "socket-ini"\nformat = "ini"\n'
     config_model = SocketConfig
     config: SocketConfig
@@ -106,25 +139,37 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
                 await self._clear_stale(path)
                 old = os.umask(0o177)  # the socket is born 0600, never briefly wider
                 try:
-                    self.server = await asyncio.start_unix_server(self._handle, path, limit=limit)
+                    self.server = await asyncio.start_unix_server(
+                        self._handle, path, limit=limit
+                    )
                 finally:
                     os.umask(old)
                 self._made_path = path
             else:
-                self.server = await asyncio.start_server(self._handle, LOOPBACK, cfg.port, limit=limit)
+                self.server = await asyncio.start_server(
+                    self._handle, LOOPBACK, cfg.port, limit=limit
+                )
                 self.port = self.server.sockets[0].getsockname()[1]
         except OSError as exc:
-            raise PluginError(f"{self.ctx.name}: cannot listen on {self._wanted()}: {exc.strerror or exc}{self._hint(exc)}") from None
+            raise PluginError(
+                f"{self.ctx.name}: cannot listen on {self._wanted()}: {exc.strerror or exc}{self._hint(exc)}"
+            ) from None
 
     def _wanted(self) -> str:
         c = self.config
-        return os.path.expanduser(c.unix_path) if c.unix_path else f"{LOOPBACK}:{c.port}"
+        return (
+            os.path.expanduser(c.unix_path) if c.unix_path else f"{LOOPBACK}:{c.port}"
+        )
 
     def _hint(self, exc: OSError) -> str:
         if exc.errno == errno.EACCES:
             if self.config.unix_path:
                 return f" (the daemon must be able to write to {os.path.dirname(self._wanted()) or '.'})"
-            return " (ports under 1024 need root: pick a higher one)" if (self.config.port or 0) < 1024 else ""
+            return (
+                " (ports under 1024 need root: pick a higher one)"
+                if (self.config.port or 0) < 1024
+                else ""
+            )
         return " (something else is using it)" if exc.errno == errno.EADDRINUSE else ""
 
     @staticmethod
@@ -159,15 +204,24 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
 
     @property
     def where(self) -> str:
-        return os.path.expanduser(self.config.unix_path) if self.config.unix_path else f"{LOOPBACK}:{self.port}"
+        return (
+            os.path.expanduser(self.config.unix_path)
+            if self.config.unix_path
+            else f"{LOOPBACK}:{self.port}"
+        )
 
     async def health(self) -> Health:
         if self.server is None or not self.server.is_serving():
             return Health(False, "not listening")
-        return Health(True, f"listening on {self.where}: {self.accepted} accepted, {self.rejected} rejected")
+        return Health(
+            True,
+            f"listening on {self.where}: {self.accepted} accepted, {self.rejected} rejected",
+        )
 
     # -- one connection ----------------------------------------------------------------------
-    async def _handle(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _handle(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         self._writers.add(writer)
         try:
             if self.config.framing == "lines":
@@ -181,7 +235,9 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
             with contextlib.suppress(Exception):
                 writer.close()
 
-    async def _lines(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _lines(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         pending = ""  # JSON read so far that is not yet a whole value (a pretty-printed document spans lines)
         while True:
             try:
@@ -205,7 +261,9 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
             if last:
                 return
 
-    async def _json_lines(self, line: bytes, pending: str, writer: asyncio.StreamWriter) -> str | None:
+    async def _json_lines(
+        self, line: bytes, pending: str, writer: asyncio.StreamWriter
+    ) -> str | None:
         """Add a line to what is pending and submit every whole JSON value it completes. Returns what is still
         pending, or None when the connection must close. A value that is cut off at the end of the text is
         unfinished (more may follow); one that is wrong before its end is not JSON, and is dropped."""
@@ -233,7 +291,9 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
             return None
         return pending
 
-    async def _whole(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+    async def _whole(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
         data = b""
         while chunk := await reader.read(65536):
             data += chunk
@@ -242,7 +302,9 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
                 return
         await self._item(data, writer, blank_ok=False)
 
-    async def _item(self, raw: bytes, writer: asyncio.StreamWriter, *, blank_ok: bool = True) -> None:
+    async def _item(
+        self, raw: bytes, writer: asyncio.StreamWriter, *, blank_ok: bool = True
+    ) -> None:
         text = raw.rstrip(b"\r\n") if self.config.framing == "lines" else raw
         if blank_ok and not text.strip():
             return  # an empty line is nothing, not an item
@@ -263,13 +325,20 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
 
     async def _submit(self, body: Any, writer: asyncio.StreamWriter) -> None:
         try:
-            subject = await self.submit(body, source=self.config.source or None, format=self.config.format or None)
+            subject = await self.submit(
+                body,
+                source=self.config.source or None,
+                format=self.config.format or None,
+                labels=self.config.labels or None,
+            )
         except Exception as exc:  # noqa: BLE001 - the sender hears the kind of failure, never the detail
             self.ctx.log.warning("socket item not submitted", error=type(exc).__name__)
             return await self._reply(writer, f"ERR {type(exc).__name__}", ok=False)
         await self._reply(writer, f"OK {subject}", ok=True)
 
-    async def _reply(self, writer: asyncio.StreamWriter, line: str, *, ok: bool) -> None:
+    async def _reply(
+        self, writer: asyncio.StreamWriter, line: str, *, ok: bool
+    ) -> None:
         self.accepted += ok
         self.rejected += not ok
         writer.write(line.encode() + b"\n")

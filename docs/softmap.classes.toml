@@ -64,6 +64,13 @@ bases = ["ApiClient"]
 doc = "Drive ``CoreClient`` directly, as the CLI caller class."
 
 [[classes]]
+name = "LlmEnricher"
+module = "oaken_core.enrich.llm"
+path = ""
+bases = ["BaseMultitenant", "BaseTemplatePlugin", "BaseLLMAnalyzer", "BaseEnricher"]
+doc = ""
+
+[[classes]]
 name = "AIBackendError"
 module = "oaken_core.errors"
 path = ""

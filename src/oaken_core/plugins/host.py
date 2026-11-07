@@ -68,8 +68,20 @@ from oaken_core.trace import Tracer
 log = get_logger("oaken_core.plugins")
 
 _INSTANCE_NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
-HOST_KEYS = ("enabled", "plugin", "class", "stage", "locality", "concurrency", "route", "prompt", "guard")  # the host's settings, never the plugin's
-RELATIONS = frozenset({"self", "parent", "children"})  # a product adds more with register_relation
+HOST_KEYS = (
+    "enabled",
+    "plugin",
+    "class",
+    "stage",
+    "locality",
+    "concurrency",
+    "route",
+    "prompt",
+    "guard",
+)  # the host's settings, never the plugin's
+RELATIONS = frozenset(
+    {"self", "parent", "children"}
+)  # a product adds more with register_relation
 
 Discover = Callable[[str], Iterable[EntryPoint]]
 
@@ -84,7 +96,9 @@ class AddPlan:
     name: str
     table: dict[str, Any]
     how: Literal["enable", "instance", "reload"]
-    base: tuple[str, dict[str, Any]] | None = None  # the template an instance comes from, written first when it is not there yet: (name, table)
+    base: tuple[
+        str, dict[str, Any]
+    ] | None = None  # the template an instance comes from, written first when it is not there yet: (name, table)
 
 
 def discover_entry_points(group: str) -> Iterable[EntryPoint]:
@@ -103,14 +117,26 @@ class _Record:
     detail: str = ""
     announced: bool | None = None  # the last health state published
     ctx: PluginContext | None = None
-    factory: Any = None  # what the entry point loaded: a class or function that makes instances
-    disabled: bool = False  # turned off at runtime, or broken; ``enabled = false`` also counts
-    forced_on: bool = False  # ``enable`` was asked for: beats the plugin's own off-by-default
-    auto_disabled: bool = False  # switched off for want of configuration: retried, not forced off
-    faulted: bool = False  # switched off for a fault (label error, needs cycle): ``enable`` retries
+    factory: Any = (
+        None  # what the entry point loaded: a class or function that makes instances
+    )
+    disabled: bool = (
+        False  # turned off at runtime, or broken; ``enabled = false`` also counts
+    )
+    forced_on: bool = (
+        False  # ``enable`` was asked for: beats the plugin's own off-by-default
+    )
+    auto_disabled: bool = (
+        False  # switched off for want of configuration: retried, not forced off
+    )
+    faulted: bool = (
+        False  # switched off for a fault (label error, needs cycle): ``enable`` retries
+    )
     inactive: bool = False  # an exclusive kind with another plugin active
     loadpath: str = ""
-    missing: bool = False  # config.toml has a table for it and no plugin by that name is installed
+    missing: bool = (
+        False  # config.toml has a table for it and no plugin by that name is installed
+    )
 
 
 @dataclass(frozen=True)
@@ -146,7 +172,9 @@ class PluginStatus:
     template: bool = False  # a plugin whose contextual settings are not set: it waits for an instance that sets them
     warning: str = ""  # what it needs from another plugin that is not running: "needs a model backend". It waits; it does not fail
     hint: str = ""  # what to do about the warning
-    multitenant: bool = False  # several workers may run it at once (``BaseMultitenant``)
+    multitenant: bool = (
+        False  # several workers may run it at once (``BaseMultitenant``)
+    )
     api: int = 0  # the plugin API version it speaks (0: it did not load)
     provider: str = ""  # where it comes from: core, plugins (installed from a package index) or local (code on this disk)
 
@@ -204,17 +232,25 @@ class PluginHost:
         self.bus = bus
         self.kinds = kinds or KindRegistry.shipped()
         self.tracer: Tracer | None = None  # set by core: the opt-in trace
-        self.router: Any = None  # set by core: the model router, handed to plugins as ``ctx.router``
+        self.router: Any = (
+            None  # set by core: the model router, handed to plugins as ``ctx.router``
+        )
         self.intake: Any = None  # set by core: ``Intake``, behind ``ctx.submit``
         self.secrets: Any = None  # set by core: a ``SecretStore``, handed to each plugin as its own ``ctx.secrets``
         self._discover = discover
-        self.extensions_dirs = tuple(extensions_dirs)  # directories of plugin directories (``[extensions] dirs``)
+        self.extensions_dirs = tuple(
+            extensions_dirs
+        )  # directories of plugin directories (``[extensions] dirs``)
         extensions.prepare(self.extensions_dirs)
         self.health_interval = health_interval
         self.call_timeout = call_timeout
         self.core_version = core_version
-        self.db: Database | None = None  # opened by the store plugin, in ``start_store``
-        self.maker: LabelMaker | None = None  # attach with ``attach_labels`` before ``start``
+        self.db: Database | None = (
+            None  # opened by the store plugin, in ``start_store``
+        )
+        self.maker: LabelMaker | None = (
+            None  # attach with ``attach_labels`` before ``start``
+        )
         self.label_store: LabelStore | None = None
         self.relations: set[str] = set(RELATIONS)
         self._records: dict[tuple[str, str], _Record] = {}
@@ -239,24 +275,69 @@ class PluginHost:
         for spec in self.kinds.ordered():
             for ep in sorted(self._entry_points(spec.group), key=lambda e: e.name):
                 if (spec.name, ep.name) in self._records:
-                    log.error("duplicate plugin name ignored", kind=spec.name, name=ep.name)
+                    log.error(
+                        "duplicate plugin name ignored", kind=spec.name, name=ep.name
+                    )
                     continue
                 self._records[(spec.name, ep.name)] = self._load_one(spec, ep)
-        for spec in self.kinds:  # a table with ``class = "module:Class"`` is a plugin with no entry point
+        for (
+            spec
+        ) in (
+            self.kinds
+        ):  # a table with ``class = "module:Class"`` is a plugin with no entry point
             for name, table in self.tables.tables.get(spec.name, {}).items():
                 if table.get("class") and (spec.name, name) not in self._records:
-                    self._records[(spec.name, name)] = self._load_one(spec, EntryPoint(name=name, value=str(table["class"]), group=spec.group))
+                    self._records[(spec.name, name)] = self._load_one(
+                        spec,
+                        EntryPoint(
+                            name=name, value=str(table["class"]), group=spec.group
+                        ),
+                    )
         for spec in self.kinds:
             for name, base in self.tables.instances(spec.name).items():
                 if (spec.name, name) not in self._records:
-                    self._records[(spec.name, name)] = self._instance_of(spec, name, base)
-        offered = {(e.kind, e.name.replace("-", "_")): e for e in catalog.entries(k.name for k in self.kinds)}
-        for spec in self.kinds:  # settings for a plugin oaken-plugins offers: it loads from there, no `plugin add` needed
+                    self._records[(spec.name, name)] = self._instance_of(
+                        spec, name, base
+                    )
+        offered = {
+            (e.kind, e.name.replace("-", "_")): e
+            for e in catalog.entries(k.name for k in self.kinds)
+        }
+        for (
+            spec
+        ) in (
+            self.kinds
+        ):  # settings for a plugin oaken-plugins offers: it loads from there, no `plugin add` needed
             for name, table in self.tables.tables.get(spec.name, {}).items():
                 entry = offered.get((spec.name, name.replace("-", "_")))
-                if entry and (spec.name, name) not in self._records and "plugin" not in table:
-                    self._records[(spec.name, name)] = self._load_one(spec, EntryPoint(name=name, value=catalog.class_path(entry), group=spec.group))
-        for spec in self.kinds:  # a table with nothing behind it is not silently ignored: it is listed, inactive, with the reason
+                if (
+                    entry
+                    and (spec.name, name) not in self._records
+                    and "plugin" not in table
+                ):
+                    try:
+                        value = catalog.class_path(
+                            entry
+                        )  # imports the module: a broken one must not stop startup
+                    except Exception as exc:
+                        log.error(
+                            "plugin failed to load",
+                            kind=spec.name,
+                            name=name,
+                            error=str(exc),
+                        )
+                        rec = _Record(spec.name, name, name, missing=True)
+                        rec.disabled, rec.detail = True, f"failed to load: {exc}"
+                        self._records[(spec.name, name)] = rec
+                        continue
+                    self._records[(spec.name, name)] = self._load_one(
+                        spec, EntryPoint(name=name, value=value, group=spec.group)
+                    )
+        for (
+            spec
+        ) in (
+            self.kinds
+        ):  # a table with nothing behind it is not silently ignored: it is listed, inactive, with the reason
             for name in self.tables.tables.get(spec.name, {}):
                 if (spec.name, name) not in self._records:
                     rec = _Record(spec.name, name, name, missing=True)
@@ -267,107 +348,218 @@ class PluginHost:
 
     def _missing(self, kind: str, name: str) -> str:
         """Why a configured plugin is not there, and how to get it."""
-        return (f"[plugins.{kind}.{name}] is in config.toml, but no {kind} plugin called {name!r} is installed. "
-                f"`oaken plugins` lists what can be added; your settings are kept.")
+        return (
+            f"[plugins.{kind}.{name}] is in config.toml, but no {kind} plugin called {name!r} is installed. "
+            f"`oaken plugins` lists what can be added; your settings are kept."
+        )
 
     def _entry_points(self, group: str) -> list[EntryPoint]:
         """What is installed, then what the extension directories offer."""
-        return [*self._discover(group), *extensions.entry_points(self.extensions_dirs, group)]
+        return [
+            *self._discover(group),
+            *extensions.entry_points(self.extensions_dirs, group),
+        ]
 
-    def plan_add(self, target: str, *, kind: str | None = None, name: str | None = None, config: dict[str, Any] | None = None) -> AddPlan:
+    def plan_add(
+        self,
+        target: str,
+        *,
+        kind: str | None = None,
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+    ) -> AddPlan:
         """Work out how to add ``target``: a plugin's name (installed, or a directory in ``[extensions] dirs``), or a class
         path (``pkg.module.Class`` or ``pkg.module:Class``). Raises ``PluginError`` saying why not. Writes nothing."""
         config = dict(config or {})
         head, dot, rest = target.partition(".")
-        if dot and ":" not in target and "." not in rest and head in self.kinds:  # embedder.ollama says the kind and the name at once
+        if (
+            dot and ":" not in target and "." not in rest and head in self.kinds
+        ):  # embedder.ollama says the kind and the name at once
             if kind not in (None, head):
-                raise PluginError(f"{target!r} says kind {head!r} but --kind says {kind!r}: use one")
+                raise PluginError(
+                    f"{target!r} says kind {head!r} but --kind says {kind!r}: use one"
+                )
             kind, target = head, rest
         if kind is not None and kind not in self.kinds:
-            raise PluginError(f"no plugin kind {kind!r} (known: {', '.join(k.name for k in self.kinds)})")
+            raise PluginError(
+                f"no plugin kind {kind!r} (known: {', '.join(k.name for k in self.kinds)})"
+            )
         if "." in target or ":" in target:
             return self._plan_class(target, kind, name, config)
-        eps = {(spec.name, ep.name): ep for spec in self.kinds if kind in (None, spec.name) for ep in self._entry_points(spec.group) if ep.name == target}
-        for ep in extensions.in_directory(self.extensions_dirs, target):  # a directory's name stands for what it offers
+        eps = {
+            (spec.name, ep.name): ep
+            for spec in self.kinds
+            if kind in (None, spec.name)
+            for ep in self._entry_points(spec.group)
+            if ep.name == target
+        }
+        for ep in extensions.in_directory(
+            self.extensions_dirs, target
+        ):  # a directory's name stands for what it offers
             for spec in self.kinds:
                 if spec.group == ep.group and kind in (None, spec.name):
                     eps[(spec.name, ep.name)] = ep
         if not eps:
             names = [k.name for k in self.kinds]
-            want = target.replace("_", "-")  # ollama_remote and ollama-remote are the same plugin
-            hit = [e for e in catalog.entries(names) if want in (e.name, f"{e.kind}-{e.name}".replace("_", "-")) and kind in (None, e.kind)]
+            want = target.replace(
+                "_", "-"
+            )  # ollama_remote and ollama-remote are the same plugin
+            hit = [
+                e
+                for e in catalog.entries(names)
+                if want in (e.name, f"{e.kind}-{e.name}".replace("_", "-"))
+                and kind in (None, e.kind)
+            ]
             if len(hit) > 1:
-                raise PluginError(f"{target!r} is {len(hit)} plugins in {catalog.DIST} ({', '.join(e.kind for e in hit)}): add one with --kind")
+                raise PluginError(
+                    f"{target!r} is {len(hit)} plugins in {catalog.DIST} ({', '.join(e.kind for e in hit)}): add one with --kind"
+                )
             if hit:  # in oaken-plugins: imported only now, and added as a class path
                 try:
                     path = catalog.class_path(hit[0])
-                    plan = self._plan_class(path, hit[0].kind, name or hit[0].name, config)
+                    plan = self._plan_class(
+                        path, hit[0].kind, name or hit[0].name, config
+                    )
                     base = hit[0].name.replace("-", "_")
-                    if name and name != base and self._is_template_class(path):  # an instance of a template: the template is written too, so there is always one to make more from
+                    if (
+                        name and name != base and self._is_template_class(path)
+                    ):  # an instance of a template: the template is written too, so there is always one to make more from
                         if base in self.tables.tables.get(hit[0].kind, {}):
-                            raise PluginError(f"{hit[0].kind} {base!r} is already configured: add the instance with --name and plugin = {base!r}")
-                        return AddPlan(hit[0].kind, name, {"plugin": base, **config}, "reload", base=(base, {"class": plan.table["class"]}))
+                            raise PluginError(
+                                f"{hit[0].kind} {base!r} is already configured: add the instance with --name and plugin = {base!r}"
+                            )
+                        return AddPlan(
+                            hit[0].kind,
+                            name,
+                            {"plugin": base, **config},
+                            "reload",
+                            base=(base, {"class": plan.table["class"]}),
+                        )
                     return plan
                 except ValueError as exc:
                     raise PluginError(str(exc)) from None
             where = ", ".join(self.extensions_dirs) or "none set"
-            raise PluginError(f"no plugin named {target!r}: it is not installed, not a directory in [extensions] dirs ({where}), and not {catalog.hint(names)}."
-                              + ("" if self.extensions_dirs else ' Writing your own? Put its folder in a directory and set [extensions] dirs = ["~/path"]: it never has to be on PyPI.'))
+            raise PluginError(
+                f"no plugin named {target!r}: it is not installed, not a directory in [extensions] dirs ({where}), and not {catalog.hint(names)}."
+                + (
+                    ""
+                    if self.extensions_dirs
+                    else ' Writing your own? Put its folder in a directory and set [extensions] dirs = ["~/path"]: it never has to be on PyPI.'
+                )
+            )
         if len(eps) > 1:
-            raise PluginError(f"{target!r} offers {len(eps)} plugins ({', '.join(f'{k}/{n}' for k, n in sorted(eps))}): add one by its name, with --kind if the name is shared")
+            raise PluginError(
+                f"{target!r} offers {len(eps)} plugins ({', '.join(f'{k}/{n}' for k, n in sorted(eps))}): add one by its name, with --kind if the name is shared"
+            )
         (k, ename), _ep = next(iter(eps.items()))
         name = name or ename
         loaded = (k, ename) in self._records
         base = self._records.get((k, ename))
-        if base is not None and base.instance is not None:  # a loaded plugin can say now whether these settings fit
-            self._validate_config(base.instance, {c: v for c, v in config.items() if c not in HOST_KEYS})
+        if (
+            base is not None and base.instance is not None
+        ):  # a loaded plugin can say now whether these settings fit
+            self._validate_config(
+                base.instance, {c: v for c, v in config.items() if c not in HOST_KEYS}
+            )
         if name == ename:
-            return AddPlan(k, name, {"enabled": True, **config}, "enable" if loaded else "reload")
+            return AddPlan(
+                k, name, {"enabled": True, **config}, "enable" if loaded else "reload"
+            )
         if not _INSTANCE_NAME.match(name):
-            raise PluginError(f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)")
+            raise PluginError(
+                f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)"
+            )
         if (k, name) in self._records or name in self.tables.tables.get(k, {}):
             raise PluginError(f"{k} {name!r} already exists")
         if base is not None and self.contextual(k, ename):
             if base.disabled or not self._enabled_by_table(base):
-                raise PluginError(f"{ename} is switched off: turn it on to deploy instances of it")
-            if (missing := missing_contextual(self.contextual(k, ename), config)):
-                raise PluginError(f"an instance of {ename} needs {', '.join(missing)}: that is what makes it one")
-        return AddPlan(k, name, {"plugin": ename, **config}, "instance" if loaded else "reload")
+                raise PluginError(
+                    f"{ename} is switched off: turn it on to deploy instances of it"
+                )
+            if missing := missing_contextual(self.contextual(k, ename), config):
+                raise PluginError(
+                    f"an instance of {ename} needs {', '.join(missing)}: that is what makes it one"
+                )
+        return AddPlan(
+            k, name, {"plugin": ename, **config}, "instance" if loaded else "reload"
+        )
 
     @staticmethod
     def _is_template_class(path: str) -> bool:
         module, _, attr = path.partition(":")
-        return bool(getattr(getattr(importlib.import_module(module), attr, None), "contextual", ()))
+        return bool(
+            getattr(
+                getattr(importlib.import_module(module), attr, None), "contextual", ()
+            )
+        )
 
-    def _plan_class(self, target: str, kind: str | None, name: str | None, config: dict[str, Any]) -> AddPlan:
-        value = target if ":" in target else ".".join(target.split(".")[:-1]) + ":" + target.split(".")[-1]
+    def _plan_class(
+        self, target: str, kind: str | None, name: str | None, config: dict[str, Any]
+    ) -> AddPlan:
+        value = (
+            target
+            if ":" in target
+            else ".".join(target.split(".")[:-1]) + ":" + target.split(".")[-1]
+        )
         module, _, attr = value.partition(":")
         try:
             cls = getattr(importlib.import_module(module), attr)
         except Exception as exc:  # noqa: BLE001 - whatever the import raises is the answer
-            raise PluginError(f"cannot import {value}: {type(exc).__name__}: {exc}") from None
+            raise PluginError(
+                f"cannot import {value}: {type(exc).__name__}: {exc}"
+            ) from None
         kind = kind or getattr(cls, "kind", "")
         if not kind:
-            raise PluginError(f"{value} does not say what kind of plugin it is: pass --kind")
+            raise PluginError(
+                f"{value} does not say what kind of plugin it is: pass --kind"
+            )
         if kind not in self.kinds:
-            raise PluginError(f"{kind!r} is not a plugin kind (known: {', '.join(k.name for k in self.kinds)})")
+            raise PluginError(
+                f"{kind!r} is not a plugin kind (known: {', '.join(k.name for k in self.kinds)})"
+            )
         if name is None:  # CrmTriager as a triager is "crm"
-            words = re.sub(r"(?<!^)(?=[A-Z])", "_", getattr(cls, "__name__", attr)).lower()
-            name = re.sub(r"[^a-z0-9_-]", "", words.removesuffix("_" + kind.replace("_backend", "").replace("_store", ""))) or attr.lower()
+            words = re.sub(
+                r"(?<!^)(?=[A-Z])", "_", getattr(cls, "__name__", attr)
+            ).lower()
+            name = (
+                re.sub(
+                    r"[^a-z0-9_-]",
+                    "",
+                    words.removesuffix(
+                        "_" + kind.replace("_backend", "").replace("_store", "")
+                    ),
+                )
+                or attr.lower()
+            )
         if not _INSTANCE_NAME.match(name):
-            raise PluginError(f"{name!r} is not a valid instance name (lowercase letters, digits, - and _): pass --name")
+            raise PluginError(
+                f"{name!r} is not a valid instance name (lowercase letters, digits, - and _): pass --name"
+            )
         have = self._records.get((kind, name))
         table = self.tables.tables.get(kind, {}).get(name) or {}
-        if (have is not None and not have.missing) or "class" in table or "plugin" in table:
+        if (
+            (have is not None and not have.missing)
+            or "class" in table
+            or "plugin" in table
+        ):
             raise PluginError(f"{kind} {name!r} already exists")
-        return AddPlan(kind, name, {"class": value, **config}, "reload")  # a settings-only table for it is adopted: the class is added, the settings kept
+        return AddPlan(
+            kind, name, {"class": value, **config}, "reload"
+        )  # a settings-only table for it is adopted: the class is added, the settings kept
 
     async def apply_add(self, plan: AddPlan) -> None:
         """Do a plan that does not need a reload, now. The file is written by the caller."""
         if plan.how == "instance":
-            await self.add_instance(plan.kind, plan.name, plan.table["plugin"], {k: v for k, v in plan.table.items() if k != "plugin"})
+            await self.add_instance(
+                plan.kind,
+                plan.name,
+                plan.table["plugin"],
+                {k: v for k, v in plan.table.items() if k != "plugin"},
+            )
         elif plan.how == "enable":
-            self.tables.tables.setdefault(plan.kind, {}).setdefault(plan.name, {}).update(plan.table)
+            self.tables.tables.setdefault(plan.kind, {}).setdefault(
+                plan.name, {}
+            ).update(plan.table)
             await self.enable(plan.name, kind=plan.kind)
 
     def _load_one(self, spec: KindSpec, ep: EntryPoint) -> _Record:
@@ -376,7 +568,9 @@ class PluginHost:
             obj = ep.load()
             rec.factory = obj
             rec.instance = self._instantiate(obj)
-            info, problems = check_plugin(spec, ep.name, rec.instance, self.core_version, defer_started=True)
+            info, problems = check_plugin(
+                spec, ep.name, rec.instance, self.core_version, defer_started=True
+            )
             if info is not None and not info.version and ep.dist is not None:
                 info = replace(info, version=ep.dist.version)
             if problems:
@@ -385,7 +579,9 @@ class PluginHost:
         except Exception as exc:  # a broken plugin must never take core down
             rec.instance, rec.healthy, rec.disabled = None, False, True
             rec.detail = f"failed to load: {exc}"
-            log.error("plugin failed to load", kind=spec.name, name=ep.name, error=str(exc))
+            log.error(
+                "plugin failed to load", kind=spec.name, name=ep.name, error=str(exc)
+            )
         return rec
 
     def _instance_of(self, spec: KindSpec, name: str, base: str) -> _Record:
@@ -393,12 +589,20 @@ class PluginHost:
         found = self._records.get((spec.name, base))
         rec = _Record(spec.name, name, base, loadpath=found.loadpath if found else "")
         if found is None or found.factory is None:
-            rec.disabled, rec.detail = True, f"failed to load: no {spec.name} plugin named {base!r}"
+            rec.disabled, rec.detail = (
+                True,
+                f"failed to load: no {spec.name} plugin named {base!r}",
+            )
         elif not (isinstance(found.factory, type) or inspect.isfunction(found.factory)):
-            rec.disabled, rec.detail = True, f"{base} is a single object: it has no named instances"
+            rec.disabled, rec.detail = (
+                True,
+                f"{base} is a single object: it has no named instances",
+            )
         else:
             try:
-                rec.factory, rec.instance = found.factory, self._instantiate(found.factory)
+                rec.factory, rec.instance = found.factory, self._instantiate(
+                    found.factory
+                )
                 rec.info = replace(found.info, name=name) if found.info else None
                 rec.detail = "" if found.instance is not None else found.detail
                 if found.instance is None:
@@ -407,24 +611,35 @@ class PluginHost:
                 rec.disabled, rec.detail = True, f"failed to load: {exc}"
         return rec
 
-    def check_new_instance(self, kind: str, name: str, plugin: str, config: dict[str, Any]) -> list[str]:
+    def check_new_instance(
+        self, kind: str, name: str, plugin: str, config: dict[str, Any]
+    ) -> list[str]:
         """Why ``add_instance`` would refuse these, in plain words; empty when it would not. Nothing
         is changed or started."""
         spec = self.kinds.get(kind)
         if not _INSTANCE_NAME.match(name):
-            return [f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)"]
+            return [
+                f"{name!r} is not a valid instance name (lowercase letters, digits, - and _)"
+            ]
         if (kind, name) in self._records:
             return [f"{kind} {name!r} already exists"]
         base = self._records.get((spec.name, plugin))
         if base is None or base.instance is None:
-            return [f"no usable {kind} plugin named {plugin!r}" + (f" ({base.detail})" if base else "")]
+            return [
+                f"no usable {kind} plugin named {plugin!r}"
+                + (f" ({base.detail})" if base else "")
+            ]
         try:
-            self._validate_config(base.instance, {k: v for k, v in config.items() if k not in HOST_KEYS})
+            self._validate_config(
+                base.instance, {k: v for k, v in config.items() if k not in HOST_KEYS}
+            )
         except PluginError as exc:
             return [str(exc)]
         return []
 
-    async def add_instance(self, kind: str, name: str, plugin: str, config: dict[str, Any]) -> None:
+    async def add_instance(
+        self, kind: str, name: str, plugin: str, config: dict[str, Any]
+    ) -> None:
         """Start another named instance of ``plugin`` now, on ``config`` (a console form's "add a
         backend"). The settings are kept for the host's life; write them to the config file to
         keep them longer."""
@@ -445,11 +660,21 @@ class PluginHost:
         if rec is None:
             raise NotFound(f"no {kind} named {name!r}")
         if rec.plugin == rec.name:
-            if not self.tables.tables.get(kind, {}).get(name, {}).get("class"):  # shortcut: only a plugin added by class line can go; entry-point ones have no table to delete
-                raise PluginError(f"{name} is a plugin, not an instance of one: switch it off instead")
-            users = sorted(r.name for r in self._records.values() if r.kind == kind and r.plugin == name and r.name != name)
+            if (
+                not self.tables.tables.get(kind, {}).get(name, {}).get("class")
+            ):  # shortcut: only a plugin added by class line can go; entry-point ones have no table to delete
+                raise PluginError(
+                    f"{name} is a plugin, not an instance of one: switch it off instead"
+                )
+            users = sorted(
+                r.name
+                for r in self._records.values()
+                if r.kind == kind and r.plugin == name and r.name != name
+            )
             if users:
-                raise PluginError(f"{kind} {name} is the template of {', '.join(users)}: remove those first")
+                raise PluginError(
+                    f"{kind} {name} is the template of {', '.join(users)}: remove those first"
+                )
         await self._stop_one(rec)
         del self._records[(kind, name)]
         self.tables.tables.get(kind, {}).pop(name, None)
@@ -474,10 +699,16 @@ class PluginHost:
             if src == dst:
                 return True
             seen.add(src)
-            return any(n not in seen and reaches(n, dst, seen) for n in graph.get(src, ()))
+            return any(
+                n not in seen and reaches(n, dst, seen) for n in graph.get(src, ())
+            )
 
         for rec in sorted(self._records.values(), key=lambda r: (r.kind, r.name)):
-            if rec.instance is None or rec.disabled or not self.kinds.get(rec.kind).analyzer:
+            if (
+                rec.instance is None
+                or rec.disabled
+                or not self.kinds.get(rec.kind).analyzer
+            ):
                 continue
             edges: set[str] = set()
             for need in getattr(rec.instance, "needs", ()):
@@ -517,10 +748,18 @@ class PluginHost:
             return name
         names = sorted(n for k, n in self._records if k == kind)
         if len(names) > 1:  # a fallback steps aside for a plugin the product installed
-            names = [n for n in names if not getattr(self._records[(kind, n)].factory, "fallback", False)] or names
+            names = [
+                n
+                for n in names
+                if not getattr(self._records[(kind, n)].factory, "fallback", False)
+            ] or names
         if len(names) == 1:
             return names[0]
-        return "sqlite" if kind == "store" and ("store", "sqlite") in self._records else None
+        return (
+            "sqlite"
+            if kind == "store" and ("store", "sqlite") in self._records
+            else None
+        )
 
     async def start_store(self) -> Database:
         """Start the active store plugin, open its database and apply core's migrations. The store
@@ -530,7 +769,9 @@ class PluginHost:
         name = self._active_name("store")
         rec = self._records.get(("store", name)) if name else None
         if rec is None or rec.instance is None:
-            raise PluginError("no store plugin is available" + (f" ({rec.detail})" if rec else ""))
+            raise PluginError(
+                "no store plugin is available" + (f" ({rec.detail})" if rec else "")
+            )
         await self._start_one(rec)
         if not (rec.started and rec.healthy):
             raise PluginError(f"the store {rec.name!r} did not start: {rec.detail}")
@@ -547,7 +788,10 @@ class PluginHost:
         """Start the store (if not yet), then every other valid plugin, and begin health checks."""
         if self.db is None:
             await self.start_store()
-        for rec in sorted(self._records.values(), key=lambda r: (self.kinds.get(r.kind).first is False, r.kind, r.name)):
+        for rec in sorted(
+            self._records.values(),
+            key=lambda r: (self.kinds.get(r.kind).first is False, r.kind, r.name),
+        ):
             if self.kinds.get(rec.kind).first and rec.started:
                 continue
             if rec.instance is not None:
@@ -561,7 +805,11 @@ class PluginHost:
         """Turn a plugin off because it lacks configuration it needs. It is tried again on the next
         health pass and on ``reload``, so it comes back by itself once the settings exist."""
         if rec.detail != detail:
-            log.info("plugin switched off: it needs configuration", kind=rec.kind, name=rec.name)
+            log.info(
+                "plugin switched off: it needs configuration",
+                kind=rec.kind,
+                name=rec.name,
+            )
         rec.disabled = rec.auto_disabled = True
         rec.started = rec.healthy = False
         rec.detail = detail
@@ -569,13 +817,33 @@ class PluginHost:
 
     def _trace_hooks(self) -> dict[str, Any]:
         tracer = self.tracer
-        return {} if tracer is None else {"trace": tracer.emit, "tracing": lambda: tracer.enabled}
+        return (
+            {}
+            if tracer is None
+            else {"trace": tracer.emit, "tracing": lambda: tracer.enabled}
+        )
 
     def _submitter(self, rec: _Record) -> Any:
-        async def submit(source: str, body: Any, *, labels: dict[str, str] | None = None, key: str | None = None, format: str | None = None) -> str:
+        async def submit(
+            source: str,
+            body: Any,
+            *,
+            labels: dict[str, str] | None = None,
+            key: str | None = None,
+            format: str | None = None,
+        ) -> str:
             if self.intake is None:
                 raise Unavailable("intake is not running")
-            return str(await self.intake.submit(source, body, labels=labels, key=key, format=format, actor=Actor("system", rec.name)))
+            return str(
+                await self.intake.submit(
+                    source,
+                    body,
+                    labels=labels,
+                    key=key,
+                    format=format,
+                    actor=Actor("system", rec.name),
+                )
+            )
 
         return submit
 
@@ -585,15 +853,25 @@ class PluginHost:
         rec = self._records.get((kind, name))
         if rec is None or rec.plugin == rec.name:
             return {}
-        own = {n for e in getattr(rec.instance, "contextual", ()) for n in e.split("|")}  # what an instance must be given is each instance's own: never a default
-        return {k: v for k, v in self.tables.table(kind, rec.plugin).items() if k not in ("enabled", "plugin", "class", "stage") and k not in own}
+        own = {
+            n for e in getattr(rec.instance, "contextual", ()) for n in e.split("|")
+        }  # what an instance must be given is each instance's own: never a default
+        return {
+            k: v
+            for k, v in self.tables.table(kind, rec.plugin).items()
+            if k not in ("enabled", "plugin", "class", "stage") and k not in own
+        }
 
     def effective(self, kind: str, name: str) -> dict[str, Any]:
         """A plugin's settings as it runs on them: an instance's own over what it inherits."""
         return {**self.inherited(kind, name), **self.tables.table(kind, name)}
 
     def _config(self, rec: _Record) -> dict[str, Any]:
-        return {k: v for k, v in self.effective(rec.kind, rec.name).items() if k not in HOST_KEYS}
+        return {
+            k: v
+            for k, v in self.effective(rec.kind, rec.name).items()
+            if k not in HOST_KEYS
+        }
 
     def _enabled_by_table(self, rec: _Record) -> bool:
         """The table's ``enabled`` wins. With none, a plugin runs unless it ships switched off
@@ -614,26 +892,39 @@ class PluginHost:
             rec.detail = f"not the active {rec.kind}"
             return
         config = self._config(rec)
-        if rec.auto_disabled:  # it was off for want of configuration: some may have arrived
+        if (
+            rec.auto_disabled
+        ):  # it was off for want of configuration: some may have arrived
             rec.disabled = rec.auto_disabled = False
-        needs = [k for k in getattr(rec.instance, "requires_config", ()) if not config.get(k)]
+        needs = [
+            k for k in getattr(rec.instance, "requires_config", ()) if not config.get(k)
+        ]
         if needs:
             await self._switch_off(
-                rec, f"needs configuration: set {', '.join(needs)} in [plugins.{rec.kind}.{rec.name}]"
+                rec,
+                f"needs configuration: set {', '.join(needs)} in [plugins.{rec.kind}.{rec.name}]",
             )
             return
         if not self._enabled_by_table(rec) or rec.disabled:
-            if rec.detail != "disabled" and not rec.faulted and "failed to load" not in rec.detail:
+            if (
+                rec.detail != "disabled"
+                and not rec.faulted
+                and "failed to load" not in rec.detail
+            ):
                 log.info("plugin disabled", kind=rec.kind, name=rec.name)
                 rec.detail = "disabled"
             rec.started = rec.healthy = False
             await self._announce(rec)
             return
         declared = tuple(getattr(rec.instance, "contextual", ()))
-        if declared and (rec.plugin == rec.name or (missing := missing_contextual(declared, config))):
+        if declared and (
+            rec.plugin == rec.name or (missing := missing_contextual(declared, config))
+        ):
             # Enabled, a template deploys instances; it does not run as itself, and that is not a failure. A plugin that declares what an
             # instance must be given is a template in its own table whatever that table holds: settings there are never an instance's.
-            missing = missing_contextual(declared, config) or [c.replace("|", " or ") for c in declared]
+            missing = missing_contextual(declared, config) or [
+                c.replace("|", " or ") for c in declared
+            ]
             rec.started = rec.healthy = False
             rec.detail = f"add an instance that sets {', '.join(missing)}: the + on a stage's page"
             await self._announce(rec)
@@ -644,11 +935,22 @@ class PluginHost:
             await self._fault(rec, exc)
             return
         except Exception as exc:  # a bad migration or key table is the plugin's, not core's
-            rec.started, rec.healthy, rec.detail = False, False, f"tables or labels failed: {exc}"
-            log.error("plugin provisioning failed", kind=rec.kind, name=rec.name, error=str(exc))
+            rec.started, rec.healthy, rec.detail = (
+                False,
+                False,
+                f"tables or labels failed: {exc}",
+            )
+            log.error(
+                "plugin provisioning failed",
+                kind=rec.kind,
+                name=rec.name,
+                error=str(exc),
+            )
             await self._announce(rec)
             return
-        labels = _PluginLabels(self, rec, self.label_store) if self.label_store else None
+        labels = (
+            _PluginLabels(self, rec, self.label_store) if self.label_store else None
+        )
         ctx = PluginContext(
             name=rec.name, kind=rec.kind, plugin=rec.plugin, clock=self.clock,
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
@@ -674,10 +976,20 @@ class PluginHost:
                 # it is switched off until it is configured.
                 rec.disabled = rec.auto_disabled = True
                 rec.detail = f"not configured ({exc})"
-                log.info("plugin not configured", kind=rec.kind, name=rec.name, detail=str(exc))
+                log.info(
+                    "plugin not configured",
+                    kind=rec.kind,
+                    name=rec.name,
+                    detail=str(exc),
+                )
             else:
                 rec.detail = f"start() failed: {exc}"
-                log.error("plugin failed to start", kind=rec.kind, name=rec.name, error=str(exc))
+                log.error(
+                    "plugin failed to start",
+                    kind=rec.kind,
+                    name=rec.name,
+                    error=str(exc),
+                )
         await self._announce(rec)
 
     async def _provision(self, rec: _Record) -> None:
@@ -694,11 +1006,17 @@ class PluginHost:
             for label in labels():
                 self.maker.register(label)
 
-    async def probe(self, name: str, config: dict[str, Any], kind: str | None = None) -> list[Probe]:
+    async def probe(
+        self, name: str, config: dict[str, Any], kind: str | None = None
+    ) -> list[Probe]:
         """Start a throwaway instance of plugin ``name`` on a candidate ``config`` and ask its
         health, so a form can say "this works" before anything is saved. The running plugin is not
         touched, nothing is announced, and the instance is stopped again."""
-        recs = [r for (k, n), r in sorted(self._records.items()) if n == name and (kind is None or k == kind)]
+        recs = [
+            r
+            for (k, n), r in sorted(self._records.items())
+            if n == name and (kind is None or k == kind)
+        ]
         if not recs:
             raise NotFound(f"no plugin named {name!r}")
         return [await self._probe_one(r, config) for r in recs]
@@ -707,7 +1025,11 @@ class PluginHost:
         if rec.instance is None or rec.factory is None:
             return Probe(rec.kind, False, rec.detail or "it did not load")
         if not (isinstance(rec.factory, type) or inspect.isfunction(rec.factory)):
-            return Probe(rec.kind, False, "a single object: it cannot be tried apart from the live one")
+            return Probe(
+                rec.kind,
+                False,
+                "a single object: it cannot be tried apart from the live one",
+            )
         config = {k: v for k, v in candidate.items() if k not in HOST_KEYS}
         instance = self._instantiate(rec.factory)
         ctx = PluginContext(
@@ -733,7 +1055,9 @@ class PluginHost:
                 try:
                     await self._call(instance, "stop")
                 except Exception as exc:  # noqa: BLE001
-                    log.error("probe instance failed to stop", name=rec.name, error=str(exc))
+                    log.error(
+                        "probe instance failed to stop", name=rec.name, error=str(exc)
+                    )
             ctx.release()
 
     def check_config(self, name: str, config: dict[str, Any]) -> list[str]:
@@ -757,8 +1081,12 @@ class PluginHost:
         task, self._task = self._task, None
         if task:
             await task
-        for rec in sorted(self._records.values(), key=lambda r: self.kinds.get(r.kind).first):
-            await self._stop_one(rec)  # the store last: the others may still write on the way out
+        for rec in sorted(
+            self._records.values(), key=lambda r: self.kinds.get(r.kind).first
+        ):
+            await self._stop_one(
+                rec
+            )  # the store last: the others may still write on the way out
         if self.db is not None:
             await self.db.close()
             self.db = None
@@ -768,7 +1096,12 @@ class PluginHost:
             try:
                 await self._call(rec.instance, "stop")
             except Exception as exc:
-                log.error("plugin failed to stop", kind=rec.kind, name=rec.name, error=str(exc))
+                log.error(
+                    "plugin failed to stop",
+                    kind=rec.kind,
+                    name=rec.name,
+                    error=str(exc),
+                )
             rec.started = False
         if rec.ctx is not None:
             rec.ctx.release()
@@ -777,9 +1110,16 @@ class PluginHost:
     # -- control of one plugin, while core keeps running -------------------------------------
     def _family(self, name: str, kind: str | None = None) -> list[_Record]:
         """The plugin called ``name`` (of ``kind``, else any kind) and every named instance of it."""
-        found = [r for r in self._records.values() if (r.name == name or r.plugin == name) and (kind is None or r.kind == kind)]
+        found = [
+            r
+            for r in self._records.values()
+            if (r.name == name or r.plugin == name) and (kind is None or r.kind == kind)
+        ]
         if not found:
-            known = ", ".join(sorted({r.name for r in self._records.values()})) or "none installed"
+            known = (
+                ", ".join(sorted({r.name for r in self._records.values()}))
+                or "none installed"
+            )
             raise NotFound(f"no plugin named {name!r} (found: {known})")
         return found
 
@@ -807,26 +1147,44 @@ class PluginHost:
                 await self._start_one(rec)
         return [r.name for r in recs]
 
-    async def reload(self, name: str, tables: PluginTables | None = None, kind: str | None = None) -> list[str]:
+    async def reload(
+        self, name: str, tables: PluginTables | None = None, kind: str | None = None
+    ) -> list[str]:
         """Stop a plugin, take a fresh instance of it (re-discovering its entry point, so a plugin
         installed or upgraded since boot is found) and start it on ``tables``. Only that plugin is
         touched; core keeps running."""
         recs = self._family(name, kind)
         if tables is not None:
             self.tables = tables
-        found = {(s.name, ep.name): ep for s in self.kinds for ep in self._discover(s.group)}
+        found = {
+            (s.name, ep.name): ep for s in self.kinds for ep in self._discover(s.group)
+        }
         for rec in recs:
             await self._stop_one(rec)
             ep = found.get((rec.kind, rec.plugin))
             base = self._records.get((rec.kind, rec.plugin)) or rec
-            if ep is None and base.loadpath:  # loaded from a class line, a directory or oaken-plugins: no entry point to find again
-                ep = EntryPoint(name=rec.plugin, value=base.loadpath, group=self.kinds.get(rec.kind).group)
+            if (
+                ep is None and base.loadpath
+            ):  # loaded from a class line, a directory or oaken-plugins: no entry point to find again
+                ep = EntryPoint(
+                    name=rec.plugin,
+                    value=base.loadpath,
+                    group=self.kinds.get(rec.kind).group,
+                )
             if ep is None:
-                rec.instance, rec.healthy, rec.detail = None, False, "no longer installed"
+                rec.instance, rec.healthy, rec.detail = (
+                    None,
+                    False,
+                    "no longer installed",
+                )
                 await self._announce(rec)
                 continue
             spec = self.kinds.get(rec.kind)
-            fresh = self._load_one(spec, ep) if rec.name == rec.plugin else self._instance_of(spec, rec.name, rec.plugin)
+            fresh = (
+                self._load_one(spec, ep)
+                if rec.name == rec.plugin
+                else self._instance_of(spec, rec.name, rec.plugin)
+            )
             fresh.forced_on = rec.forced_on
             self._records[(rec.kind, rec.name)] = fresh
             self._check_needs()
@@ -851,7 +1209,12 @@ class PluginHost:
                 rec.healthy, rec.detail = health.ok, health.detail
             except Exception as exc:
                 rec.healthy, rec.detail = False, f"health check failed: {exc}"
-                log.error("plugin health check failed", kind=rec.kind, name=rec.name, error=str(exc))
+                log.error(
+                    "plugin health check failed",
+                    kind=rec.kind,
+                    name=rec.name,
+                    error=str(exc),
+                )
             await self._announce(rec)
 
     async def _health_loop(self) -> None:
@@ -922,12 +1285,20 @@ class PluginHost:
             try:
                 decls = declared_operations(rec.instance)
             except Exception as exc:
-                log.error("plugin operations failed", name=rec.name, error=type(exc).__name__)
+                log.error(
+                    "plugin operations failed", name=rec.name, error=type(exc).__name__
+                )
                 continue
-            out.extend(OfferedOperation(rec.name, d) for d in decls if isinstance(d, PluginOperation))
+            out.extend(
+                OfferedOperation(rec.name, d)
+                for d in decls
+                if isinstance(d, PluginOperation)
+            )
         return out
 
-    def operation_context(self, plugin: str, client: str, actor: str) -> PluginOpContext:
+    def operation_context(
+        self, plugin: str, client: str, actor: str
+    ) -> PluginOpContext:
         for rec in self._shared():
             if rec.name == plugin and rec.ctx is not None:
                 return self._opctx(rec, client, actor)
@@ -939,9 +1310,17 @@ class PluginHost:
             try:
                 decls = declared_job_handlers(rec.instance)
             except Exception as exc:
-                log.error("plugin job_handlers failed", name=rec.name, error=type(exc).__name__)
+                log.error(
+                    "plugin job_handlers failed",
+                    name=rec.name,
+                    error=type(exc).__name__,
+                )
                 continue
-            out.extend(OfferedJobHandler(rec.name, d) for d in decls if isinstance(d, PluginJobHandler))
+            out.extend(
+                OfferedJobHandler(rec.name, d)
+                for d in decls
+                if isinstance(d, PluginJobHandler)
+            )
         return out
 
     def job_context(self, plugin: str, kind: str) -> PluginJobContext:
@@ -958,9 +1337,17 @@ class PluginHost:
             try:
                 decls = declared_scheduled_tasks(rec.instance)
             except Exception as exc:
-                log.error("plugin scheduled_tasks failed", name=rec.name, error=type(exc).__name__)
+                log.error(
+                    "plugin scheduled_tasks failed",
+                    name=rec.name,
+                    error=type(exc).__name__,
+                )
                 continue
-            out.extend(OfferedScheduledTask(rec.name, d) for d in decls if isinstance(d, PluginScheduledTask))
+            out.extend(
+                OfferedScheduledTask(rec.name, d)
+                for d in decls
+                if isinstance(d, PluginScheduledTask)
+            )
         return out
 
     def row(self, kind: str, name: str) -> UiRow:
@@ -968,14 +1355,28 @@ class PluginHost:
         neither). A plugin with no ``row()``, or one that raises or answers wrongly, gets the plain row."""
         plain = UiRow(actions=(UiAction("settings"), UiAction("reload")))
         rec = self._records.get((kind, name))
-        fn = getattr(rec.instance, "row", None) if rec is not None and rec.instance is not None else None
+        fn = (
+            getattr(rec.instance, "row", None)
+            if rec is not None and rec.instance is not None
+            else None
+        )
         if rec is None or not callable(fn):
             return plain
-        role = "template" if self._is_template(rec) else ("instance" if getattr(rec.instance, "contextual", ()) and rec.plugin != rec.name else "plain")
+        role = (
+            "template"
+            if self._is_template(rec)
+            else (
+                "instance"
+                if getattr(rec.instance, "contextual", ()) and rec.plugin != rec.name
+                else "plain"
+            )
+        )
         try:
             got = fn(role)
         except Exception as exc:  # noqa: BLE001 - plugin code
-            log.error("plugin row failed", kind=kind, name=name, error=type(exc).__name__)
+            log.error(
+                "plugin row failed", kind=kind, name=name, error=type(exc).__name__
+            )
             return plain
         return got if isinstance(got, UiRow) else plain
 
@@ -983,20 +1384,28 @@ class PluginHost:
         """The plugin's declared UI, or None. A ``ui()`` that raises or is malformed is logged and
         ignored, so the settings modal falls back to the schema and the plugin stays healthy."""
         rec = self._records.get((kind, name))
-        fn = getattr(rec.instance, "ui", None) if rec and rec.instance is not None else None
+        fn = (
+            getattr(rec.instance, "ui", None)
+            if rec and rec.instance is not None
+            else None
+        )
         if not callable(fn):
             return None
         try:
             spec = fn()
             problems = check_ui(spec)
         except Exception as exc:  # noqa: BLE001 - plugin code
-            log.error("plugin ui failed", kind=kind, name=name, error=type(exc).__name__)
+            log.error(
+                "plugin ui failed", kind=kind, name=name, error=type(exc).__name__
+            )
             return None
         if problems:
             log.error("plugin ui refused", kind=kind, name=name, problems=problems)
             return None
         inst = rec.instance if rec else None
-        if isinstance(inst, BaseTemplatePlugin) and (spec is None or spec.template is None):  # a ui() that forgot the template part still is one
+        if isinstance(inst, BaseTemplatePlugin) and (
+            spec is None or spec.template is None
+        ):  # a ui() that forgot the template part still is one
             spec = replace(spec or UiSpec(), template=inst.template_ui())
         return cast("UiSpec | None", spec)
 
@@ -1007,7 +1416,10 @@ class PluginHost:
         inst = rec.instance if rec else None
         if inst is None or not getattr(inst, "needs_llm", False):
             return None
-        return {"prompt": str(getattr(inst, "prompt", "")), "guard": str(getattr(inst, "guard", ""))}
+        return {
+            "prompt": str(getattr(inst, "prompt", "")),
+            "guard": str(getattr(inst, "guard", "")),
+        }
 
     def config_schema(self, kind: str, name: str) -> dict[str, Any] | None:
         """JSON Schema of a plugin's settings, if it declares ``config_model`` (pydantic)."""
@@ -1035,30 +1447,60 @@ class PluginHost:
 
     # -- lookup ------------------------------------------------------------------------------
     def _running(self, kind: str) -> bool:
-        return any(r.kind == kind and r.started and r.healthy for r in self._records.values())
+        return any(
+            r.kind == kind and r.started and r.healthy for r in self._records.values()
+        )
 
     def _warning(self, rec: _Record) -> tuple[str, str]:
         """What a plugin that asks a model, or uses the vector index, is missing: a backend, an embedder or a store that is not
         running. Such a plugin waits for one (its jobs defer), so without this it looks fine and does nothing. A plugin that is
         off, or that says it is dormant (``nearjunk`` while its index is off), is not asked."""
         inst = rec.instance
-        if inst is None or rec.disabled or not self._enabled_by_table(rec) or (callable(getattr(inst, "dormant", None)) and inst.dormant()):
+        if (
+            inst is None
+            or rec.disabled
+            or not self._enabled_by_table(rec)
+            or (callable(getattr(inst, "dormant", None)) and inst.dormant())
+        ):
             return "", ""
         need = []
         if getattr(inst, "needs_llm", False) and not self._running("llm_backend"):
             need.append(("a model backend", "llm_backend"))
         if getattr(inst, "needs_vec", False):
-            need += [(label, kind) for label, kind in (("an embedder", "embedder"), ("a vector store", "vector_store")) if not self._running(kind)]
+            need += [
+                (label, kind)
+                for label, kind in (
+                    ("an embedder", "embedder"),
+                    ("a vector store", "vector_store"),
+                )
+                if not self._running(kind)
+            ]
         if not need:
             return "", ""
-        offered = [e for e in catalog.entries(k.name for k in self.kinds) if e.kind in {kind for _, kind in need}]
-        how = (f"Add one: oaken plugin add {offered[0].name} --kind {offered[0].kind} (in oaken-plugins: {', '.join(sorted({e.name for e in offered}))})." if offered
-               else f"Install oaken-plugins (pip install {catalog.DIST}) to find some." if not catalog.installed() else "")
+        offered = [
+            e
+            for e in catalog.entries(k.name for k in self.kinds)
+            if e.kind in {kind for _, kind in need}
+        ]
+        how = (
+            f"Add one: oaken plugin add {offered[0].name} --kind {offered[0].kind} (in oaken-plugins: {', '.join(sorted({e.name for e in offered}))})."
+            if offered
+            else f"Install oaken-plugins (pip install {catalog.DIST}) to find some."
+            if not catalog.installed()
+            else ""
+        )
         return f"needs {' and '.join(label for label, _ in need)}", how
 
     def _is_template(self, rec: _Record) -> bool:
-        declared = tuple(getattr(rec.instance, "contextual", ())) if rec.instance is not None else ()
-        return bool(declared) and (rec.plugin == rec.name or bool(missing_contextual(declared, self._config(rec))))  # its own table is always the template
+        declared = (
+            tuple(getattr(rec.instance, "contextual", ()))
+            if rec.instance is not None
+            else ()
+        )
+        return bool(declared) and (
+            rec.plugin == rec.name
+            or bool(missing_contextual(declared, self._config(rec)))
+        )  # its own table is always the template
 
     def describe(self, kind: str, name: str) -> dict[str, Any]:
         """What the plugin says about itself, for its page: its docstring, ``setup_help``, ``config_example`` and the settings
@@ -1067,31 +1509,58 @@ class PluginHost:
         inst = rec.instance if rec is not None else None
         cls = type(inst) if inst is not None else None
         doc = ""
-        if cls is not None:  # the plugin's own docstring (not one inherited from a base class), else its module's
-            doc = inspect.cleandoc(cls.__dict__.get("__doc__") or "") or inspect.getdoc(inspect.getmodule(cls)) or ""
+        if (
+            cls is not None
+        ):  # the plugin's own docstring (not one inherited from a base class), else its module's
+            doc = (
+                inspect.cleandoc(cls.__dict__.get("__doc__") or "")
+                or inspect.getdoc(inspect.getmodule(cls))
+                or ""
+            )
         from oaken_core.plugins.base import BaseTemplatePlugin
 
-        template = str(inst.template_help) if isinstance(inst, BaseTemplatePlugin) else ""  # core's own account of what a template is, for the person running it
-        return {"doc": doc, "setup_help": getattr(inst, "setup_help", ""), "config_example": getattr(inst, "config_example", ""),
-                "contextual": self.contextual(kind, name), "template_note": template, "tags": list(getattr(inst, "tags", ()))}
+        template = (
+            str(inst.template_help) if isinstance(inst, BaseTemplatePlugin) else ""
+        )  # core's own account of what a template is, for the person running it
+        return {
+            "doc": doc,
+            "setup_help": getattr(inst, "setup_help", ""),
+            "config_example": getattr(inst, "config_example", ""),
+            "contextual": self.contextual(kind, name),
+            "template_note": template,
+            "tags": list(getattr(inst, "tags", ())),
+        }
 
     def contextual(self, kind: str, name: str) -> tuple[str, ...]:
         """The settings an instance of this plugin must set (empty for most plugins)."""
         rec = self._records.get((kind, name))
-        return tuple(getattr(rec.instance, "contextual", ())) if rec is not None and rec.instance is not None else ()
+        return (
+            tuple(getattr(rec.instance, "contextual", ()))
+            if rec is not None and rec.instance is not None
+            else ()
+        )
 
     def statuses(self) -> list[PluginStatus]:
         return [
             PluginStatus(
-                kind=r.kind, name=r.name, plugin=r.plugin, version=r.info.version if r.info else "", api=r.info.api_version if r.info else 0,
-                started=r.started, healthy=r.healthy, detail=r.detail,
+                kind=r.kind,
+                name=r.name,
+                plugin=r.plugin,
+                version=r.info.version if r.info else "",
+                api=r.info.api_version if r.info else 0,
+                started=r.started,
+                healthy=r.healthy,
+                detail=r.detail,
                 enabled=not r.disabled and self._enabled_by_table(r),
-                enabled_default=self._enabled_default(r.instance), loadpath=r.loadpath,
-                template=self._is_template(r), warning=self._warning(r)[0], hint=self._warning(r)[1],
+                enabled_default=self._enabled_default(r.instance),
+                loadpath=r.loadpath,
+                template=self._is_template(r),
+                warning=self._warning(r)[0],
+                hint=self._warning(r)[1],
                 multitenant=bool(getattr(r.instance, "multitenant", False)),
                 provider=extensions.origin(r.loadpath),
-            )  # fmt: skip
-            for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))
+            )
+            for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))  # fmt: skip
         ]
 
     async def setting_choices(self, kind: str, name: str) -> dict[str, list[str]]:
@@ -1102,14 +1571,22 @@ class PluginHost:
         if rec is None:
             return {}
         try:
-            instance = rec.instance if rec.instance is not None else self._instantiate(rec.factory)
+            instance = (
+                rec.instance
+                if rec.instance is not None
+                else self._instantiate(rec.factory)
+            )
             ask = getattr(instance, "setting_choices", None)
             if ask is None:
                 return {}
-            found = await asyncio.wait_for(ask(self._config(rec)), min(self.call_timeout, 3.0))
+            found = await asyncio.wait_for(
+                ask(self._config(rec)), min(self.call_timeout, 3.0)
+            )
             return {str(k): [str(v) for v in vs] for k, vs in found.items() if vs}
         except Exception as exc:  # noqa: BLE001 - a dropdown that cannot be filled is a text box, never an error page
-            log.info("no setting choices", kind=kind, name=name, error=type(exc).__name__)
+            log.info(
+                "no setting choices", kind=kind, name=name, error=type(exc).__name__
+            )
             return {}
 
     def provider_of(self, name: str) -> str:
@@ -1136,10 +1613,15 @@ class PluginHost:
             raise PluginError(f"give the name of the {kind} to use")
         rec = self._records.get((kind, name))
         if rec is None:
-            known = ", ".join(sorted(n for k, n in self._records if k == kind)) or "none installed"
+            known = (
+                ", ".join(sorted(n for k, n in self._records if k == kind))
+                or "none installed"
+            )
             raise NotFound(f"no {kind} named {name!r} (found: {known})")
         if not (rec.started and rec.healthy):
-            raise PluginError(f"{kind} {name!r} is unhealthy: {rec.detail or 'not started'}")
+            raise PluginError(
+                f"{kind} {name!r} is unhealthy: {rec.detail or 'not started'}"
+            )
         return rec.instance
 
     def named_triagers(self) -> dict[str, Any]:
@@ -1166,5 +1648,6 @@ class PluginHost:
         return [
             f"{r.kind}.{r.name}"
             for r in self._shared()
-            if self.kinds.get(r.kind).analyzer and getattr(r.instance, "needs_vec", False)
+            if self.kinds.get(r.kind).analyzer
+            and getattr(r.instance, "needs_vec", False)
         ]
