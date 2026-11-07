@@ -156,7 +156,7 @@ def _human(output: Any) -> None:
     if isinstance(output, dict) and len(output) == 1:
         (only,) = output.values()
         if isinstance(only, list) and only and all(isinstance(r, dict) for r in only):
-            cols = [k for k, v in only[0].items() if not isinstance(v, dict | list)][:8]
+            cols = [k for k, v in only[0].items() if not isinstance(v, dict | list)][:10]
             print_table(only, cols)
             return
     print_json(output)
@@ -254,13 +254,22 @@ def _wants_help(argv: list[str]) -> bool:
 
 
 def _catalog(args: list[str]) -> int:
-    """``oaken plugins``: what you can add by name, the way ``operations`` lists operations. The directories in
+    """``oaken plugins [--tag A[,B]]``: what you can add by name, the way ``operations`` lists operations. The directories in
     ``[extensions] dirs`` first (read from config.toml), then the ``oaken-plugins`` package: the order ``plugin add`` looks in."""
     import tomllib
 
     from oaken_core.errors import OakenError
     from oaken_core.plugins import catalog, extensions
     from oaken_core.plugins.kinds import KindRegistry
+
+    want: set[str] | None = None  # --tag mail or --tag mail,signal (or --tag=mail): only plugins with any of them
+    for i, a in enumerate(args):
+        if a == "--tag" or a.startswith("--tag="):
+            value = a.partition("=")[2] if "=" in a else (args[i + 1] if i + 1 < len(args) else "")
+            want = {t.strip().lower() for t in value.split(",") if t.strip()}
+            if not want:
+                print_text("--tag takes a tag, or several separated by commas: --tag mail,signal")
+                return int(ExitCode.USAGE)
     from oaken_core.settings import Settings
 
     kinds = KindRegistry.shipped()
@@ -277,13 +286,19 @@ def _catalog(args: list[str]) -> int:
             summary = tomllib.loads((d / "pyproject.toml").read_text(encoding="utf-8")).get("project", {}).get("description", "")
         except (OSError, ValueError):
             summary = ""
-        rows += [{"name": ep.name, "kind": by_group[ep.group], "summary": summary, "from": str(d)} for ep in extensions._declared(d) if ep.group in by_group]
-    rows += [{"name": e.name, "kind": e.kind, "summary": e.summary, "from": catalog.DIST} for e in catalog.entries(k.name for k in kinds)]
+        decl = catalog.declared(d / "src") if (d / "src").is_dir() else {}
+        rows += [{"name": ep.name, "kind": by_group[ep.group], "summary": summary, "from": str(d), "api": decl.get("api_version", ""), "requires": decl.get("requires_core", ""), "tags": decl.get("tags", "").replace(",", " ")}
+                 for ep in extensions._declared(d) if ep.group in by_group]  # fmt: skip
+    rows += [{"name": e.name, "kind": e.kind, "summary": e.summary, "from": catalog.DIST, "api": e.api, "requires": e.requires, "tags": " ".join(e.tags)} for e in catalog.entries(k.name for k in kinds)]
+    if want is not None:  # a plugin matches if it has any of the tags asked for
+        rows = [r for r in rows if want & {t.lower() for t in r["tags"].split()}]
     if "--json" in args:
         print_json(rows)
     elif rows:
-        print_table([{"plugin": f"{r['kind']}.{r['name']}", **r} for r in rows], ["plugin", "from", "summary"], title="plugins")  # what `plugin add` takes
+        print_table([{"plugin": f"{r['kind']}.{r['name']}", **r} for r in rows], ["plugin", "tags", "from", "api", "requires", "summary"], title="plugins")  # what `plugin add` takes
         print_text(f"Add one: {identity.prog} plugin add KIND.NAME")
+    elif want:
+        print_text(f"No plugins tagged {', '.join(sorted(want))}.")
     elif catalog.installed() or dirs:
         print_text("No plugins found in [extensions] dirs or in " + catalog.DIST + ".")
     else:

@@ -58,6 +58,8 @@ def key_of(item: IntakeItem, field: str | None) -> str:
 
 
 class DedupeTriager(BaseTriager):
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"
     rank: ClassVar[int] = 1
     migrations_dir: ClassVar[Path] = Path(__file__).parent / "migrations"

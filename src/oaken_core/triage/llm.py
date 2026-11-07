@@ -25,8 +25,8 @@ import hashlib
 from typing import Any, ClassVar, Literal
 
 from oaken_core.intake import IntakeItem, Verdict, item_text
-from oaken_core.plugins.base import BaseLLMAnalyzer, BaseTemplatePlugin, BaseTriager, command
-from oaken_core.plugins.contracts import LLMRequest, PluginOpContext
+from oaken_core.plugins.base import BaseLLMAnalyzer, BaseMultitenant, BaseTemplatePlugin, BaseTriager, command
+from oaken_core.plugins.contracts import LLMRequest, PluginOpContext, UiField, UiSpec
 from oaken_core.untrusted import UntrustedText
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -72,7 +72,9 @@ class TryOut(BaseModel):
     confidence: float
 
 
-class LlmTriager(BaseTemplatePlugin, BaseLLMAnalyzer, BaseTriager):
+class LlmTriager(BaseMultitenant, BaseTemplatePlugin, BaseLLMAnalyzer, BaseTriager):
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"
     contextual: ClassVar[tuple[str, ...]] = ("criteria",)  # an agent is made with its instructions; bare `llm` is a template
     setup_help = ("A template: each instance asks a model whether an item meets its own `criteria`, in your own words, on its own model. Make one with the + "
@@ -85,6 +87,9 @@ class LlmTriager(BaseTemplatePlugin, BaseLLMAnalyzer, BaseTriager):
     guard: ClassVar[str] = GUARD
     route: ClassVar[dict[str, Any]] = {"backend": "ollama"}
     config_model = LlmConfig
+
+    def ui(self) -> UiSpec:
+        return UiSpec(template=self.template_ui(), fields=(UiField("criteria", kind="textarea"),))  # your own words, at length: a box, not a line
     config: LlmConfig
 
     def _request(self, text: str, source: str) -> LLMRequest:

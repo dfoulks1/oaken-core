@@ -173,3 +173,35 @@ async def test_garbage_is_refused_without_stopping_later_values_and_a_cut_off_va
         assert await talk(p, b'{"n": 3,\n', eof=True) == ["ERR not JSON"]  # the sender closed mid-value
     finally:
         await p.stop()
+
+
+async def test_several_sockets_run_at_once_each_with_its_own_path_source_and_format(tmp_path: Path) -> None:
+    class Seen(Intake):
+        def __init__(self) -> None:
+            super().__init__()
+            self.formats: list[tuple[str, str | None]] = []
+
+        async def submit(self, source: str, body: object, *, labels: dict[str, str], key: str | None = None, format: str | None = None) -> str:
+            self.formats.append((source, format))
+            return await super().submit(source, body, labels=labels, key=key, format=format)
+
+    seen = Seen()
+    door = await start(seen, unix_path=str(tmp_path / "a"), source="socket-a")
+    typed = await start(seen, unix_path=str(tmp_path / "b"), source="socket-ini", format="ini")  # a typed door beside the general one
+    try:
+        assert (await talk(door, b'{"x": 1}\n'))[0].startswith("OK")
+        assert (await talk(typed, b'{"x": 2}\n'))[0].startswith("OK")
+    finally:
+        await door.stop()
+        await typed.stop()
+    assert seen.formats == [("socket-a", None), ("socket-ini", "ini")]
+
+
+def test_a_socket_is_a_template_that_needs_a_path_or_a_port_and_a_port_of_zero_counts() -> None:
+    from oaken_core.plugins.base import BaseTemplatePlugin, missing_contextual
+
+    need = SocketProvider.contextual
+    assert issubclass(SocketProvider, BaseTemplatePlugin)
+    assert missing_contextual(need, {}) == ["unix_path or port"]  # bare: a template, waiting for an instance
+    assert missing_contextual(need, {"unix_path": "/tmp/s"}) == [] and missing_contextual(need, {"port": 7777}) == []
+    assert missing_contextual(need, {"port": 0}) == []  # 0 asks for any free port: that is a door

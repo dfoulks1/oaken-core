@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import re
 import tomllib
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -737,7 +738,7 @@ async def test_the_plugins_tab_lumps_every_disabled_plugin_at_the_bottom_with_wh
     core = await make_core(tmp_path, {}, {"enrich": {"kind": "enricher"}})
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
-        await core.client.call("plugin_disable", {"name": "sqlite"}, CallerContext.cli(), confirm=True)
+        await core.client.call("plugin_disable", {"plugin": "store.sqlite"}, CallerContext.cli(), confirm=True)
         page = (await client.get("/pipeline/machinery")).text
         head = page.index(">Inactive plugins <span")
         assert "Stores" not in re.findall(r'<summary class="card-head">([A-Za-z ]+) <span', page)  # a kind with nothing live has no section
@@ -892,12 +893,12 @@ async def test_only_a_template_gets_the_plus_and_its_instances_must_set_what_mak
     try:
         (watcher,) = [p for p in core.host.statuses() if p.name == "watcher"]
         assert watcher.template and not watcher.started and "add an instance" in watcher.detail and "topic" in watcher.detail  # not a failure
-        assert 'popovertarget="new-instance"' not in (await client.get("/plugins/enricher/watcher")).text  # the plugin's own page is its global settings: no +
+        assert "Add instance</button>" not in (await client.get("/plugins/enricher/watcher")).text  # the plugin's own page lists no table of plugins: no button
         general = (await client.get("/")).text
-        assert 'popovertarget="new-instance"' not in general  # nor is General
+        assert "Add instance</button>" in general and 'action="/ui/plugins/enricher/watcher/instance"' in general  # a table that holds a template gets the button in its header, on General too
         assert '<span class="badge badge-muted">template</span>' in general and "health-detail small bad\">add an instance" not in general and "health-detail small muted\">add an instance" not in general  # a template row says "template" and nothing more in its health cell
         stage = (await client.get("/stage/enrich")).text
-        assert 'popovertarget="new-instance"' in stage  # the + is on a stage's page...
+        assert "Add instance</button>" in stage  # the button is on a stage's page...
         assert 'action="/ui/plugins/enricher/watcher/instance"' in stage and 'action="/ui/plugins/enricher/notes/instance"' not in stage  # ...for a template only
         docs = (await client.get("/plugins/enricher/watcher")).text
         assert "Watches for one topic" in docs and "Give each instance its own topic." in docs and "hiring" in docs  # it documents itself
@@ -909,7 +910,7 @@ async def test_only_a_template_gets_the_plus_and_its_instances_must_set_what_mak
         assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["plugins"]["enricher"]["jobs"]["topic"] == "hiring"
         assert any(p.name == "jobs" and p.started and not p.template for p in core.host.statuses())
         stage = (await client.get("/stage/enrich")).text
-        assert "Workers" in stage and 'action="/ui/plugins/enricher/jobs/remove"' in stage and "/ui/plugins/enricher/jobs/reload" not in stage  # a worker row: settings and a red X, no reload
+        assert "Workers" in stage and 'action="/ui/plugins/enricher/jobs/remove"' in stage and "/ui/plugins/enricher/jobs/reload" in stage  # a worker row: settings, reload, and a red X
         assert (await client.post("/ui/plugins/enricher/watcher/remove", data={"csrf": token, "confirm": "1"})).status_code == 422  # the template is switched off, never removed
         gone = await client.post("/ui/plugins/enricher/jobs/remove", data={"csrf": token, "confirm": "1"})
         assert gone.status_code == 200 and not any(p.name == "jobs" for p in core.host.statuses())
@@ -940,11 +941,11 @@ async def test_a_template_can_be_switched_on_and_off_and_enabled_it_deploys_inst
     state = lambda name: next(p for p in core.host.statuses() if p.name == name)  # noqa: E731
     try:
         assert state("watcher").enabled and state("watcher").template and "add an instance" in state("watcher").detail  # enabled, and not a failure
-        await call("plugin_disable", {"name": "watcher"})
+        await call("plugin_disable", {"plugin": "enricher.watcher"})
         assert not state("watcher").enabled
         with pytest.raises(Exception, match="switched off"):
             await call("plugin_add", {"plugin": "watcher", "kind": "enricher", "name": "jobs", "config": {"topic": "hiring"}})  # a template that is off deploys nothing
-        await call("plugin_enable", {"name": "watcher"})  # and it comes back on, which it could not after a restart before
+        await call("plugin_enable", {"plugin": "enricher.watcher"})  # and it comes back on, which it could not after a restart before
         assert state("watcher").enabled and "add an instance" in state("watcher").detail
         await call("plugin_add", {"plugin": "watcher", "kind": "enricher", "name": "jobs", "config": {"topic": "hiring"}})
         assert state("jobs").started and not state("jobs").template
@@ -998,7 +999,7 @@ async def test_a_plugin_that_needs_a_model_or_the_vector_index_says_so_until_one
         assert warn("finder") == "needs an embedder and a vector store"
         assert warn("notes") == ""  # a plugin that needs neither is not warned
         listed = (await core.client.call("plugin_list", {}, CallerContext.cli())).output.plugins
-        assert any(p.name == "asker" and "model backend" in p.warning and "plugin add ollama" in p.hint for p in listed)
+        assert any(p.id == "enricher.asker" and "model backend" in p.warning and "plugin add ollama" in p.hint for p in listed)
         page = (await httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE).get("/plugins/enricher/asker")).text
         assert "needs a model backend" in page and "oaken plugin add ollama" in page
         assert '<span class="badge badge-danger">needs a model backend</span>' in page  # a red badge, with the how-to beneath in plain text
@@ -1025,3 +1026,207 @@ def test_nearjunk_is_dormant_while_its_junk_index_is_off() -> None:
     assert near.dormant()
     near.ctx.router.settings.junk_index = True  # type: ignore[union-attr]
     assert not near.dormant()
+
+
+class Parallel(Notes):  # type: ignore[misc]
+    multitenant = True  # what BaseMultitenant says: several workers may run it at once
+
+
+async def test_a_stage_offers_a_worker_count_only_when_a_multitenant_plugin_is_loaded_on_it(tmp_path: Path) -> None:
+    queues = {"enrich": {"kind": "enricher", "label": "Enrichment", "workers": 2}}
+    for extra, shows in (([], False), ([EP("parallel", Parallel)], True)):
+        core = await make_core(tmp_path / str(shows), {}, queues, extra)
+        client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+        try:
+            page = (await client.get("/stage/enrich")).text
+            assert ('id="qs-workers"' in page) == shows and (" workers." in page) == shows and ("2 workers" in page) == shows, shows
+            assert 'id="q-workers"' not in (await client.get("/queues")).text  # never in the add-a-stage form: nothing is loaded there yet
+        finally:
+            await client.aclose()
+            await core.host.stop()
+
+
+async def test_schedules_is_a_tab_of_the_pipeline_page_and_its_forms_add_edit_run_and_remove(rig: Rig) -> None:
+    from oaken_core.scheduler import Scheduler
+
+    svc = rig.core.console.svc
+    svc.scheduler = Scheduler(svc.db, svc.jobs, svc.clock)
+    for tab in ("/pipeline", "/pipeline/labels", "/pipeline/schedules"):
+        assert 'href="/pipeline/schedules"' in (await rig.c.get(tab)).text, tab  # a tab beside Providers, Labels, Analyzers and Machinery
+    new = {"name": "tidy", "kind": "k", "cron": "0 6 * * *", "queue": "default", "payload": '{"a": 1}'}
+    assert "Add schedule tidy" in (await rig.post("/ui/schedules/new", **new)).text  # asks first
+    assert (await rig.post("/ui/schedules/new", confirm="1", **new)).status_code == 200
+    page = (await rig.c.get("/pipeline/schedules")).text
+    assert "tidy" in page and "cron 0 6 * * *" in page
+    assert (await rig.post("/ui/schedules/tidy/edit", confirm="1", kind="k2", cron="", every_seconds="90", queue="default", payload="{}", priority="50")).status_code == 200
+    assert "every 90s" in (await rig.c.get("/pipeline/schedules")).text
+    assert (await rig.post("/ui/schedules/tidy/run", confirm="1")).status_code == 200
+    assert (await rig.post("/ui/schedules/tidy/delete", confirm="1")).status_code == 200
+    assert "tidy" not in (await rig.c.get("/pipeline/schedules")).text.split("<tbody")[-1] and (await rig.post("/ui/schedules/tidy/explode")).status_code == 404
+
+
+async def test_scheduling_an_executable_asks_the_host_for_an_exec_plugin_and_says_so_when_there_is_none(rig: Rig) -> None:
+    asked = await rig.post("/ui/schedules/exec", command="/opt/tools/apache-cves-nvd.py --days 7", cron="0 5 * * *", key_fields="cve")
+    assert asked.status_code == 422 and "exec" in asked.text  # the rig has no exec plugin: a clear refusal, nothing written
+
+
+async def test_a_plugins_own_schedule_shows_that_plugins_settings_in_its_dialog(rig: Rig) -> None:
+    from pydantic import BaseModel
+
+    from oaken_core.scheduler import Scheduler
+
+    class P(BaseModel):
+        pass
+
+    svc = rig.core.console.svc
+    svc.scheduler = Scheduler(svc.db, svc.jobs, svc.clock)
+    await svc.scheduler.add("plugin.notes.run", "plugin.notes.run", P(), cron="0 6 * * *")  # the rig's `notes` plugin owns it
+    await svc.scheduler.add("tidy", "k", P(), cron="0 6 * * *")
+    page = (await rig.c.get("/pipeline/schedules")).text
+    assert "Settings of enricher.notes" in page and page.count("Settings of ") == 1  # only the schedule a plugin owns, and the plain one has none
+    assert 'action="/ui/plugins/enricher/notes/settings"' in page
+
+
+async def test_the_providers_tab_offers_a_plus_for_the_socket_template_with_its_path_and_port(tmp_path: Path) -> None:
+    from oaken_core.providers.socket import SocketProvider
+
+    core = await make_core(tmp_path, {}, None, [], {"oaken_core.providers": [EP("socket", SocketProvider)]})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        page = (await client.get("/pipeline/providers")).text
+        assert "Add instance</button>" in page  # the header button that makes a door
+        assert 'name="f_unix_path"' in page and 'name="f_port"' in page  # both ways to listen, from the template's either-or setting
+        made = await client.post("/ui/plugins/provider/socket/instance", data={"csrf": core.console.token, "instance_name": "ini", "f_unix_path": str(tmp_path / "ini.sock")})
+        assert made.status_code == 200 and "unix_path" in made.text  # the proposal shows the setting that makes the door
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+async def test_a_template_row_has_the_pill_and_an_instantiate_button_and_its_instances_do_not(tmp_path: Path, oaken_home: Path) -> None:
+    from oaken_core.plugins.base import BaseTemplatePlugin
+
+    class Watcher(BaseTemplatePlugin, stub("enricher")):  # type: ignore[misc]
+        contextual = ("topic",)
+        config_model = WatchCfg
+
+    (oaken_home / "config").mkdir(parents=True, exist_ok=True)
+    (oaken_home / "config" / "config.toml").write_text('[queues.enrich]\nkind = "enricher"\n')
+    core = await make_core(tmp_path, {"jobs": {"plugin": "watcher", "topic": "hiring"}}, {"enrich": {"kind": "enricher"}}, extra=[EP("watcher", Watcher)])
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        page = (await client.get("/stage/enrich")).text
+        row = lambda name: re.search(rf'<tr>\s*<td class="mono nowrap"><a href="/plugins/enricher/{name}">.*?</tr>', page, re.S).group(0)  # type: ignore[union-attr] # noqa: E731
+        assert 'badge-muted">template' in row("watcher") and "New instance of" not in page  # the bare template has its pill; the header button adds workers
+        assert "Add instance</button>" in page
+        assert "template" not in row("jobs") and "New instance" not in row("jobs")  # an instance is neither
+        assert (await client.get("/")).text.count("New instance of") == 0  # and a page with no dialog has no dead button
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+async def test_a_plugins_row_and_field_overrides_come_from_its_spec(tmp_path: Path) -> None:
+    from oaken_core.plugins.base import BaseTemplatePlugin
+    from oaken_core.plugins.contracts import UiAction, UiField, UiPill, UiRow, UiSpec
+
+    class Odd(Notes):  # type: ignore[misc]
+        def row(self, role: str) -> UiRow:
+            return UiRow(status=(UiPill("beta", "warn"),), actions=(UiAction("settings"),))  # its own pill, and no reload button
+
+        def ui(self) -> UiSpec:
+            return UiSpec(fields=(UiField("greeting", "Say this", "textarea", help="A longer greeting."),))  # a field the schema would have drawn as a box
+
+    class Shell(BaseTemplatePlugin, stub("enricher")):  # type: ignore[misc]
+        contextual = ("topic",)
+        config_model = WatchCfg
+
+    core = await make_core(tmp_path, {"jobs": {"plugin": "shell", "topic": "x"}}, {"enrich": {"kind": "enricher"}}, extra=[EP("odd", Odd), EP("shell", Shell)])
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        host = core.host
+        by = {f.name: f for f in core.console._modal("enricher", "odd")["fields"]}
+        assert by["limit"].kind == "number" and by["limit"].label == "Limit"  # a field the spec leaves alone is what the schema made
+        assert [(p.text, p.tone) for p in host.row("enricher", "odd").status] == [("beta", "warn")] and [a.kind for a in host.row("enricher", "odd").actions] == ["settings"]
+        assert [a.kind for a in host.row("enricher", "notes").actions] == ["settings", "reload"]  # the default row
+        assert [a.kind for a in host.row("enricher", "shell").actions] == ["settings", "reload"] and host.row("enricher", "shell").status[0].text == "template"
+        assert [a.kind for a in host.row("enricher", "jobs").actions] == ["settings", "reload", "remove"] and not host.row("enricher", "jobs").status  # an instance
+        page = (await client.get("/plugins/enricher/odd")).text
+        assert ">Say this</label>" in page and "A longer greeting." in page and 'rows="8" id="f_greeting"' in page  # the override replaced the schema's label, help and kind
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+async def test_the_providers_header_adds_a_provider_through_a_template_picker(tmp_path: Path) -> None:
+    from oaken_core.plugins.base import BaseProvider, BaseTemplatePlugin
+    from oaken_core.providers.socket import SocketProvider
+
+    class Door(BaseTemplatePlugin, BaseProvider):
+        contextual = ("command",)
+        config_model = WatchCfg
+
+    core = await make_core(tmp_path, {}, None, [], {"oaken_core.providers": [EP("socket", SocketProvider), EP("door", Door)]})
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        page = (await client.get("/pipeline/providers")).text
+        assert "Add instance</button>" in page  # a labelled header button, like Add queue
+        assert 'class="select tpl-pick"' in page and "provider.socket</option>" in page and "provider.door</option>" in page  # one select, a panel per template
+        assert 'class="tpl-p tpl-p1"' in page and 'class="tpl-p tpl-p2"' in page
+        assert "New instance of" not in page  # no per-row + on this tab
+    finally:
+        await client.aclose()
+        await core.host.stop()
+
+
+async def test_a_socket_instance_runs_while_the_bare_socket_template_waits(tmp_path: Path) -> None:
+    from oaken_core.providers.socket import SocketProvider
+
+    sock = tmp_path / "inbox.sock"
+    found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.providers": [EP("socket", SocketProvider)]}
+    tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}, "provider": {"inbox": {"plugin": "socket", "unix_path": str(sock), "source": "socket"}}}
+    core = Core(Settings(console={"port": 0}, plugins=PluginTables(tables=tables)), clock=FakeClock(), discover=lambda g: found.get(g, []))
+    await core.open()
+    await core.host.start()
+    try:
+        by = {p.name: p for p in core.host.statuses() if p.kind == "provider"}
+        assert by["socket"].template and not by["socket"].started  # the bare template waits: the pill, and the one the header offers
+        assert by["inbox"].started and by["inbox"].healthy and not by["inbox"].template  # the door runs
+        assert sock.exists() and [a.kind for a in core.host.row("provider", "inbox").actions] == ["settings", "reload", "remove"]
+    finally:
+        await core.host.stop()
+
+
+def test_a_field_override_keeps_what_the_schema_said_and_the_llm_criteria_is_a_box() -> None:
+    from oaken_core.triage.llm import LlmTriager
+
+    spec = LlmTriager().ui()
+    assert [(f.name, f.kind) for f in spec.fields] == [("criteria", "textarea")]  # at least the textarea's rows, never a one-line box
+    assert spec.template is not None and spec.template.contextual == ("criteria",)
+
+
+async def test_the_schedules_table_says_what_each_one_runs(tmp_path: Path) -> None:
+    from pydantic import BaseModel
+
+    from oaken_core.plugins.base import BaseTemplatePlugin
+    from oaken_core.scheduler import Scheduler
+
+    class Shell(BaseTemplatePlugin, stub("enricher")):  # type: ignore[misc]
+        contextual = ("topic",)
+        config_model = WatchCfg
+
+    class P(BaseModel):
+        pass
+
+    core = await make_core(tmp_path, {"jobs": {"plugin": "shell", "topic": "hiring"}}, {"enrich": {"kind": "enricher"}}, extra=[EP("shell", Shell)])
+    client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
+    try:
+        svc = core.console.svc
+        svc.scheduler = Scheduler(svc.db, svc.jobs, svc.clock)
+        await svc.scheduler.add("plugin.jobs.run", "plugin.jobs.run", P(), cron="0 6 * * *")  # an instance's task: what it runs is what makes it that instance
+        await svc.scheduler.add("tidy", "k", P(), cron="0 6 * * *")  # nobody's: the job kind is all there is
+        page = (await client.get("/pipeline/schedules")).text
+        assert "<th>Runs</th>" in page and 'title="enricher.jobs">hiring</a>' in page and '<td class="mono">k</td>' in page
+    finally:
+        await client.aclose()
+        await core.host.stop()

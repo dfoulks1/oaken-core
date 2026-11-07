@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from oaken_core import paths
 from oaken_core.config_edit import get_table, refuse_secrets, remove_table, save_table
+from oaken_core.plugins.contracts import PLUGIN_API_VERSION
 from oaken_core.errors import InvalidInput, NotFound, PluginError
 from oaken_core.operations.builtin.queue import Empty, QueueRow, reload_core
 from oaken_core.operations.context import OpContext
@@ -20,6 +21,7 @@ from oaken_core.plugins.host import AddPlan
 
 class StatusOut(BaseModel):
     version: str
+    plugin_api: int  # the plugin API version this core speaks: a plugin that speaks another is refused
     queues: list[QueueRow]
     plugins_total: int
     plugins_healthy: int
@@ -31,7 +33,7 @@ async def status(ctx: OpContext, inp: Empty) -> StatusOut:
     host = ctx.svc.host
     statuses = host.statuses() if host else []
     stats = await ctx.svc.jobs.stats()
-    return StatusOut(version=ctx.svc.version, queues=[QueueRow(**s.__dict__) for s in stats],
+    return StatusOut(version=ctx.svc.version, plugin_api=PLUGIN_API_VERSION, queues=[QueueRow(**s.__dict__) for s in stats],
                      plugins_total=len(statuses), plugins_healthy=sum(1 for s in statuses if s.healthy))  # fmt: skip
 
 
@@ -65,10 +67,10 @@ async def log_list(ctx: OpContext, inp: LogListIn) -> LogListOut:
 
 
 class PluginRow(BaseModel):
-    kind: str
-    name: str
-    plugin: str
+    id: str  # KIND.NAME: what every plugin operation takes
+    provider: str  # where it comes from: core, plugins (installed from a package index) or local (code on this disk)
     version: str
+    api: int  # the plugin API version it speaks; core speaks ``plugin_api`` (see ``status``)
     started: bool
     healthy: bool
     enabled: bool
@@ -85,7 +87,7 @@ class PluginListOut(BaseModel):
            permission="read", input=Empty, output=PluginListOut, mcp="on", group="plugin")  # fmt: skip
 async def plugin_list(ctx: OpContext, inp: Empty) -> PluginListOut:
     host = need(ctx.svc.host, "the plugin host")
-    return PluginListOut(plugins=[PluginRow(**{k: getattr(s, k) for k in PluginRow.model_fields}) for s in host.statuses()])
+    return PluginListOut(plugins=[PluginRow(**{k: getattr(s, k) for k in PluginRow.model_fields if k != "id"}, id=f"{s.kind}.{s.name}") for s in host.statuses()])
 
 
 class SettingDoc(BaseModel):
@@ -113,6 +115,7 @@ class PluginDocs(BaseModel):
     setup_help: str
     config_example: str
     contextual: list[str]  # what an instance must be given (a template)
+    tags: list[str]  # what it says it is for: the domain, beyond its kind
     template_note: str  # core's own account of what a template is, for a plugin that is one
     settings: list[SettingDoc]
     commands: list[CommandDoc]
@@ -124,10 +127,20 @@ class PluginDocs(BaseModel):
     hint: str
 
 
+KIND_NAME = "as KIND.NAME, such as provider.cves (`plugin list` shows them)"
+
+
+def plugin_ref(text: str) -> tuple[str, str]:
+    """``kind.name`` as ``(kind, name)``. The kind has no dot; the name is everything after the first one."""
+    kind, dot, name = text.strip().partition(".")
+    if not (kind and dot and name):
+        raise InvalidInput(f"{text!r}: name a plugin {KIND_NAME}")
+    return kind, name
+
+
 class PluginDescribeIn(BaseModel):
-    name: str | None = Field(default=None, json_schema_extra={"positional": True},
-                             description="A plugin or an instance name. Empty: an overview of every plugin in this stack.")  # fmt: skip
-    kind: str | None = Field(default=None, description="Only the plugin of this kind, when a name is shared (ollama is a backend and an embedder).")
+    plugin: str | None = Field(default=None, json_schema_extra={"positional": True},
+                               description=f"One plugin or instance, {KIND_NAME}. Empty: an overview of every plugin in this stack.")  # fmt: skip
 
 
 class PluginDescribeOut(BaseModel):
@@ -151,18 +164,18 @@ def _docs(ctx: OpContext, host: Any, s: Any) -> PluginDocs:
     rest = "\n".join(d["doc"].strip().splitlines()[1:]).strip()
     more = bool(rest or d["setup_help"] or d["config_example"] or settings or commands or d["contextual"])
     return PluginDocs(kind=s.kind, name=s.name, plugin=s.plugin, version=s.version, summary=(d["doc"].strip().splitlines() or [""])[0].replace("``", ""), more=more, doc=d["doc"].replace("``", "`"),
-                      setup_help=d["setup_help"], config_example=d["config_example"], contextual=list(d["contextual"]), template_note=d["template_note"], settings=settings, commands=commands,
+                      setup_help=d["setup_help"], config_example=d["config_example"], contextual=list(d["contextual"]), tags=list(d["tags"]), template_note=d["template_note"], settings=settings, commands=commands,
                       template=s.template, enabled=s.enabled, started=s.started, healthy=s.healthy, warning=s.warning, hint=s.hint)  # fmt: skip
 
 
 def _render(plugins: list[PluginDocs], overview: bool) -> str:
     if overview:
         rows = [f"{p.kind:<13}{p.name:<16}{p.summary or '(no description)'}" + (f"  [{p.warning}]" if p.warning else "") for p in plugins]
-        return "\n".join([f"{len(plugins)} plugins in this stack. `plugin describe NAME` for one's documentation.", "", *rows])
+        return "\n".join([f"{len(plugins)} plugins in this stack. `plugin describe KIND.NAME` for one's documentation.", "", *rows])
     out: list[str] = []
     for p in plugins:
         state = "a template" if p.template else "running" if p.healthy else "enabled" if p.enabled else "off"
-        out += [f"{p.name} ({p.kind}) v{p.version}  [{state}]", ""]
+        out += [f"{p.name} ({p.kind}) v{p.version}  [{state}]" + (f"  tags: {', '.join(p.tags)}" if p.tags else ""), ""]
         if p.doc:
             out += [p.doc.strip(), ""]
         if p.contextual:
@@ -184,24 +197,31 @@ def _render(plugins: list[PluginDocs], overview: bool) -> str:
            permission="read", input=PluginDescribeIn, output=PluginDescribeOut, mcp="on", group="plugin")  # fmt: skip
 async def plugin_describe(ctx: OpContext, inp: PluginDescribeIn) -> PluginDescribeOut:
     host = need(ctx.svc.host, "the plugin host")
-    found = [s for s in host.statuses() if (inp.name is None or inp.name in (s.name, s.plugin)) and (inp.kind is None or s.kind == inp.kind)]
-    if inp.name is not None and not found:
-        raise NotFound(f"no plugin named {inp.name!r} in this stack: `plugin list` shows what is installed, `plugins` what could be added")
+    want = plugin_ref(inp.plugin) if inp.plugin else None
+    found = [s for s in host.statuses() if want is None or (s.kind, s.name) == want or (s.kind == want[0] and s.plugin == want[1])]
+    if want is not None and not found:
+        raise NotFound(f"no plugin {inp.plugin!r} in this stack: `plugin list` shows what is installed, `plugins` what could be added")
     plugins = [_docs(ctx, host, s) for s in found]
-    return PluginDescribeOut(text=_render(plugins, overview=inp.name is None), plugins=plugins)
+    return PluginDescribeOut(text=_render(plugins, overview=want is None), plugins=plugins)
 
 
 class PluginRef(BaseModel):
-    name: str = Field(description="A plugin or an instance name.")
+    plugin: str = Field(json_schema_extra={"positional": True}, description=f"A plugin or an instance, {KIND_NAME}.")
 
 
 class PluginAffected(BaseModel):
     affected: list[str]
 
 
+def _split(text: str) -> tuple[str, str]:
+    """``(name, kind)`` for the host's enable, disable and reload."""
+    kind, name = plugin_ref(text)
+    return name, kind
+
+
 def _plugin_preview(verb: str):  # type: ignore[no-untyped-def]
     async def preview(ctx: OpContext, inp: PluginRef) -> Preview:
-        return Preview(summary=f"{verb} plugin {inp.name}", changes=[Change(target=inp.name, field="plugin", after=verb.lower())], total_changes=1)  # fmt: skip
+        return Preview(summary=f"{verb} plugin {inp.plugin}", changes=[Change(target=inp.plugin, field="plugin", after=verb.lower())], total_changes=1)  # fmt: skip
 
     return preview
 
@@ -210,21 +230,24 @@ def _plugin_preview(verb: str):  # type: ignore[no-untyped-def]
            permission="mutate", input=PluginRef, output=PluginAffected, mcp="never", group="plugin",
            preview=_plugin_preview("Enable"))  # fmt: skip
 async def plugin_enable(ctx: OpContext, inp: PluginRef) -> PluginAffected:
-    return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").enable(inp.name))
+    name, kind = _split(inp.plugin)
+    return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").enable(name, kind=kind))
 
 
 @operation("plugin_disable", "Stop a plugin and keep it stopped.", permission="mutate",
            input=PluginRef, output=PluginAffected, mcp="never", group="plugin",
            preview=_plugin_preview("Disable"))  # fmt: skip
 async def plugin_disable(ctx: OpContext, inp: PluginRef) -> PluginAffected:
-    return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").disable(inp.name))
+    name, kind = _split(inp.plugin)
+    return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").disable(name, kind=kind))
 
 
 @operation("plugin_reload", "Re-read a plugin and start it again.", permission="mutate",
            input=PluginRef, output=PluginAffected, mcp="never", group="plugin",
            preview=_plugin_preview("Reload"))  # fmt: skip
 async def plugin_reload(ctx: OpContext, inp: PluginRef) -> PluginAffected:
-    return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").reload(inp.name))
+    name, kind = _split(inp.plugin)
+    return PluginAffected(affected=await need(ctx.svc.host, "the plugin host").reload(name, kind=kind))
 
 
 class PluginAddIn(BaseModel):
@@ -266,18 +289,22 @@ async def plugin_add(ctx: OpContext, inp: PluginAddIn) -> PluginAddOut:
     plan = _plan(ctx, inp)
     path = paths.config_dir() / "config.toml"
     have = get_table(path.read_text(encoding="utf-8") if path.exists() else "", ["plugins", plan.kind, plan.name])
+    if plan.base is not None:  # the template an instance comes from: written once, bare
+        save_table(path, ["plugins", plan.kind, plan.base[0]], plan.base[1])
     save_table(path, ["plugins", plan.kind, plan.name], {**have, **plan.table})  # refuses a secret first
     if plan.how == "reload":
         reloading, note = reload_core(ctx, "the plugin starts in a moment")
         return PluginAddOut(kind=plan.kind, name=plan.name, started=False, detail=note, reloading=reloading)
     await host.apply_add(plan)
     status = next(s for s in host.statuses() if (s.kind, s.name) == (plan.kind, plan.name))
+    if any(o.plugin == plan.name for o in (*host.offered_job_handlers(), *host.offered_scheduled_tasks())):  # its jobs and schedules are registered at core's start
+        reloading, note = reload_core(ctx, "its jobs and schedules appear in a moment")
+        return PluginAddOut(kind=plan.kind, name=plan.name, started=status.started, detail=note, reloading=reloading)
     return PluginAddOut(kind=plan.kind, name=plan.name, started=status.started, detail=status.detail)
 
 
 class PluginRemoveIn(BaseModel):
-    kind: str
-    name: str = Field(description="The instance's name, as listed by `plugin list`.")
+    plugin: str = Field(json_schema_extra={"positional": True}, description=f"The instance to remove, {KIND_NAME}.")
 
 
 class PluginRemoveOut(BaseModel):
@@ -286,7 +313,8 @@ class PluginRemoveOut(BaseModel):
 
 
 async def _plugin_remove_preview(ctx: OpContext, inp: PluginRemoveIn) -> Preview:
-    return Preview(summary=f"Remove {inp.kind} {inp.name}: stop it and delete its table from config.toml", changes=[Change(target=f"{inp.kind}.{inp.name}", field="table")], total_changes=1)
+    kind, name = plugin_ref(inp.plugin)
+    return Preview(summary=f"Remove {kind} {name}: stop it and delete its table from config.toml", changes=[Change(target=inp.plugin, field="table")], total_changes=1)
 
 
 @operation("plugin_remove", "Remove a named instance of a plugin: stopped, and its table deleted from config.toml. The plugin it was made from stays.",
@@ -294,17 +322,18 @@ async def _plugin_remove_preview(ctx: OpContext, inp: PluginRemoveIn) -> Preview
            preview=_plugin_remove_preview)  # fmt: skip
 async def plugin_remove(ctx: OpContext, inp: PluginRemoveIn) -> PluginRemoveOut:
     host = need(ctx.svc.host, "the plugin host")
+    kind, name = plugin_ref(inp.plugin)
     try:
-        await host.remove_instance(inp.kind, inp.name)
+        await host.remove_instance(kind, name)
     except PluginError as exc:
         raise InvalidInput(exc.message) from None
     path = paths.config_dir() / "config.toml"
     if path.exists():
         text = path.read_text(encoding="utf-8")
         tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
-        tmp.write_text(remove_table(text, ["plugins", inp.kind, inp.name]), encoding="utf-8")
+        tmp.write_text(remove_table(text, ["plugins", kind, name]), encoding="utf-8")
         os.replace(tmp, path)
-    return PluginRemoveOut(kind=inp.kind, name=inp.name)
+    return PluginRemoveOut(kind=kind, name=name)
 
 
 class ReloadOut(BaseModel):
@@ -325,8 +354,7 @@ async def core_reload(ctx: OpContext, inp: Empty) -> ReloadOut:
 
 
 class PluginTestIn(BaseModel):
-    kind: str
-    name: str = Field(description="The instance name, as listed by `plugin list`.")
+    plugin: str = Field(json_schema_extra={"positional": True}, description=f"The instance to try, {KIND_NAME}.")
     config: dict[str, Any] = Field(default_factory=dict, description="The settings to try. Nothing is saved.")
 
 
@@ -340,10 +368,11 @@ class PluginTestOut(BaseModel):
 async def plugin_test(ctx: OpContext, inp: PluginTestIn) -> PluginTestOut:
     host = need(ctx.svc.host, "the plugin host")
     refuse_secrets(inp.config)
-    row = next((s for s in host.statuses() if (s.kind, s.name) == (inp.kind, inp.name)), None)
+    kind, name = plugin_ref(inp.plugin)
+    row = next((s for s in host.statuses() if (s.kind, s.name) == (kind, name)), None)
     if row is None:
-        raise NotFound(f"no {inp.kind} named {inp.name!r}")
-    probe = (await host.probe(row.plugin, inp.config, kind=inp.kind))[0]
+        raise NotFound(f"no {kind} named {name!r}")
+    probe = (await host.probe(row.plugin, inp.config, kind=kind))[0]
     return PluginTestOut(ok=probe.ok, detail=probe.detail)
 
 

@@ -30,7 +30,7 @@ import stat
 from typing import Any, ClassVar, Literal
 
 from oaken_core.errors import PluginError
-from oaken_core.plugins.base import BaseProvider
+from oaken_core.plugins.base import BaseProvider, BaseTemplatePlugin
 from oaken_core.plugins.contracts import Health
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -74,8 +74,17 @@ def _records(text: str, *, whole: bool) -> list[Any] | None:
     return value if isinstance(value, list) else [value]
 
 
-class SocketProvider(BaseProvider):
+class SocketProvider(BaseTemplatePlugin, BaseProvider):
+    """A door for the machine: whatever is written to its Unix socket (or loopback port) is submitted to intake. A template: make an
+    instance per door, each with its own path or port, source and format."""
+
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "0.1.0"
+    contextual: ClassVar[tuple[str, ...]] = ("unix_path|port",)  # an instance is a door: it needs somewhere to listen
+    setup_help = ("Make an instance per door (the + on a stage's page) and set a unix_path or a port. Give a door its own `source` and, if everything on it "
+                  "is one kind of thing, a `format` (ini, rfc822...): the format's formatter then splits what arrives. A door with neither path nor port does not listen.")
+    config_example = '[plugins.provider.socket_ini]\nplugin = "socket"\nunix_path = "~/oaken-home/oaken-socket-ini"\nsource = "socket-ini"\nformat = "ini"\n'
     config_model = SocketConfig
     config: SocketConfig
 

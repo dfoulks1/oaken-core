@@ -26,10 +26,11 @@ class Field:
     required: bool = False
     integer: bool = False
     default: Any = None  # what applies when the box is left empty; shown as the placeholder
+    titled: bool = False  # the plugin named this setting's label itself: show it in place of the config key
 
 
 def from_ui(f: UiField) -> Field:
-    return Field(f.name, f.label or f.name, f.kind, f.choices, f.help, f.required)
+    return Field(f.name, f.label or f.name, f.kind, f.choices, f.help, f.required, titled=bool(f.label))
 
 
 def from_schema(schema: Mapping[str, Any]) -> list[Field]:

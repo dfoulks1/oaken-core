@@ -8,6 +8,7 @@ reads the tomls, so the host loads them like any plugin. A plugin's own dependen
 business: one that is missing shows as a load failure, with the reason, and the rest keep running.
 """
 
+import importlib.util
 import stat
 import sys
 import tomllib
@@ -67,6 +68,20 @@ def _declared(d: Path) -> Iterable[EntryPoint]:
 def entry_points(roots: Sequence[str], group: str) -> list[EntryPoint]:
     """What the plugin directories offer in ``group``."""
     return [ep for d in plugin_dirs(roots) for ep in _declared(d) if ep.group == group]
+
+
+def origin(loadpath: str) -> str:
+    """Where a plugin comes from, for a person: ``core`` (this package), ``plugins`` (installed from a package index) or ``local``
+    (code on this disk: an extension directory, a checkout, a class path). ``loadpath`` is the entry point's ``module:attr``."""
+    top = loadpath.partition(":")[0].partition(".")[0]
+    if not top or top == "oaken_core":
+        return "core"
+    spec = importlib.util.find_spec(top) if top not in sys.modules else sys.modules[top].__spec__
+    where = spec and (spec.origin if spec.origin not in (None, "namespace") else (list(spec.submodule_search_locations or [""])[0]))
+    if not where:
+        return "local"
+    parts = Path(where).resolve().parts
+    return "plugins" if ("site-packages" in parts or "dist-packages" in parts) else "local"
 
 
 def in_directory(roots: Sequence[str], dirname: str) -> list[EntryPoint]:

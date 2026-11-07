@@ -2,13 +2,13 @@
 {% block body %}
 <h1>{{ stage.title }}</h1>
 {{ flow(stages, stage.name) }}
-<p class="muted">{{ stage.description or ("Work in the " ~ stage.name ~ " queue is done by " ~ stage.kind ~ " plugins.") }} {{ stage.workers }} worker{{ "s" if stage.workers != 1 }}.</p>
+<p class="muted">{{ stage.description or ("Work in the " ~ stage.name ~ " queue is done by " ~ stage.kind ~ " plugins.") }} {% if parallel %}{{ stage.workers }} worker{{ "s" if stage.workers != 1 }}.{% endif %}</p>
 <div class="card">
 <div class="card-head"><span>Queue{% if row.paused %} <span class="muted">(stopped)</span>{% endif %}</span><div class="row">
 <form class="inline" method="post" action="/ui/queues/{{ stage.name }}/{{ 'resume' if row.paused else 'pause' }}">{{ csrf(token) }}<input type="hidden" name="back" value="/stage/{{ stage.name }}"><button class="btn btn-primary btn-sm" title="{{ 'Let it hand out jobs again' if row.paused else 'Stop handing out jobs (running ones finish)' }}">{{ m.icon("play" if row.paused else "pause") }} {{ "Start" if row.paused else "Stop" }}</button></form>
 {{ log_button("stage=" ~ stage.name, False) }}
 <button type="button" class="btn btn-sm btn-icon" popovertarget="queue-settings" popovertargetaction="show" title="Queue settings" aria-label="Settings for the {{ stage.name }} queue">{{ m.icon("gear") }}</button>
-<span class="muted small">{{ stage.workers }} worker{{ "s" if stage.workers != 1 }}</span></div></div>
+{% if parallel %}<span class="muted small">{{ stage.workers }} worker{{ "s" if stage.workers != 1 }}</span>{% endif %}</div></div>
 <div class="table-wrap"><table class="table"><tr><th>Queued</th><th>Running</th><th>Done (1h)</th><th>Failed</th><th>Oldest wait</th><th>Last error</th></tr>
 <tr><td>{{ row.queued }}{% if row.paused %} <span class="muted">(paused)</span>{% endif %}</td><td>{{ row.running }}</td><td>{{ (stages|selectattr("name", "equalto", stage.name)|first).done }}</td><td class="{{ 'bad' if row.failed }}">{{ row.failed }}</td>
 <td>{{ "%.0fs"|format(row.oldest_queued_seconds) if row.oldest_queued_seconds is not none else "" }}</td><td>{{ row.last_error or "" }}</td></tr></table></div>
@@ -20,7 +20,7 @@
     <div class="dialog-body"><div class="form-grid">
       <label for="qs-label">Title</label><input class="input" id="qs-label" name="label" maxlength="60" value="{{ stage.label }}" autocomplete="off">
       <label for="qs-desc">Description</label><input class="input" id="qs-desc" name="description" value="{{ stage.description }}" autocomplete="off">
-      <label for="qs-workers">Workers</label><input class="input" id="qs-workers" name="workers" type="number" min="1" max="64" value="{{ stage.workers }}">
+      {% if parallel %}<label for="qs-workers">Workers</label><input class="input" id="qs-workers" name="workers" type="number" min="1" max="64" value="{{ stage.workers }}">{% endif %}
     </div></div>
     <div class="dialog-foot"><button class="btn btn-ghost">Save</button><span class="muted">It shows what it will do before it does it.</span></div>
   </form>
@@ -34,9 +34,8 @@
     <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Delete queue</button><span class="muted">Refused while jobs are queued or running.</span></div>
   </form>{% endif %}
 </div>
-{% if bases %}{{ plugin_table(workers, "/stage/" ~ stage.name, "No instance yet: the + makes one.", "Workers", False, "w-", True, False, false, stage.name, "new-instance", True) }}{% endif %}
+{% if bases %}{{ plugin_table(workers, "/stage/" ~ stage.name, "No instance yet: the + makes one.", "Workers", False, "w-", True, False, false, stage.name) }}{% endif %}
 {{ plugin_table(active, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is active in this stage.", "Active plugins", False, "", False, True, false, stage.name) }}
-{% if bases %}{{ new_instance_dialog("new-instance", bases, "/stage/" ~ stage.name, stage.name) }}{% endif %}
 {{ inactive_table(available, "/stage/" ~ stage.name, "avail-", stage.name, why) }}
 <details class="card fold" id="fold-failed">
 <summary class="card-head">Failed jobs <span class="muted small{{ ' bad' if failed }}">{{ failed|length }}</span></summary>

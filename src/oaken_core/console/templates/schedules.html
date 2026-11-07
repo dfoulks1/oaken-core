@@ -1,0 +1,47 @@
+{% extends "base.html" %}{% from "_plugin_table.html" import flow, pipeline_tabs with context %}{% from "_fields.html" import csrf %}{% from "_plugin_settings.html" import settings_form with context %}{% import "_macros.html" as m with context %}{% block title %}Schedules{% endblock %}
+{% block body %}
+<h1>Pipeline</h1>
+{{ flow(stages) }}
+{{ pipeline_tabs("schedules") }}
+<p class="muted">A schedule queues a job on its own, every so often or by cron (in UTC). A plugin seeds its own once, as <span class="mono">plugin.NAME.TASK</span>; after that it is yours to change. A plugin's schedule you delete comes back at the next start.</p>
+<div class="card"><div class="card-head"><span>Schedules</span><button type="button" class="btn btn-primary btn-sm" popovertarget="sched-new" popovertargetaction="show" title="Schedule an executable">{{ m.icon("plus") }} Schedule an executable</button></div>
+<div class="table-wrap"><table class="table"><tr><th>Name</th><th>Runs</th><th>When</th><th>Next run (UTC)</th><th>Queue</th><th></th></tr>
+{% for s in schedules %}<tr><td class="mono">{{ s.name }}</td><td class="mono">{% set r = runs[s.name] %}{% if r[1] %}<a href="/plugins/{{ r[1].replace('.', '/') }}" title="{{ r[1] }}">{{ r[0] }}</a>{% else %}{{ r[0] }}{% endif %}</td><td class="mono">{{ ("every " ~ s.every_seconds|int ~ "s") if s.every_seconds else ("cron " ~ s.cron) }}</td><td>{{ s.next_run }}</td><td>{{ s.queue }}</td>
+<td class="right nowrap"><form class="inline" method="post" action="/ui/schedules/{{ s.name }}/run">{{ csrf(token) }}<button class="btn btn-sm btn-icon" title="Run it now" aria-label="Run {{ s.name }} now">{{ m.icon("play") }}</button></form>
+<button type="button" class="btn btn-sm btn-icon" popovertarget="sched-{{ loop.index }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ s.name }}">{{ m.icon("gear") }}</button></td></tr>
+{% else %}<tr><td colspan="6" class="muted">No schedule yet: the + makes one, and a plugin that offers a task seeds its own at start.</td></tr>{% endfor %}</table></div></div>
+<div class="dialog" id="sched-new" popover role="dialog" aria-labelledby="sched-new-t">
+  <div class="dialog-head"><h2 id="sched-new-t">Schedule an executable</h2>
+    <button class="btn btn-bare btn-sm btn-icon" type="button" popovertarget="sched-new" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+  <form method="post" action="/ui/schedules/exec">{{ csrf(token) }}
+    <div class="dialog-body"><div class="form-grid">
+      <label for="sn-command">Executable</label><div><input class="input mono" id="sn-command" name="command" required placeholder="/home/me/tools/apache-cves-nvd.py --days 7" autocomplete="off"><div class="hint">A path and its arguments. It must print a JSON array (or JSON Lines) on stdout. It runs as you, with no shell.</div></div>
+      <label for="sn-name">Name</label><div><input class="input mono" id="sn-name" name="name" maxlength="60" placeholder="from the file name" autocomplete="off"><div class="hint">Names its provider instance and its schedule (plugin.NAME.run).</div></div>
+      <label for="sn-cron">Cron</label><div><input class="input mono" id="sn-cron" name="cron" placeholder="17 6 * * *" autocomplete="off"><div class="hint">Five fields, UTC. Empty: daily at 06:17.</div></div>
+      <label for="sn-source">Source</label><div><input class="input" id="sn-source" name="source" placeholder="the name" autocomplete="off"><div class="hint">What its items say they came from.</div></div>
+      <label for="sn-keys">Key fields</label><div><input class="input mono" id="sn-keys" name="key_fields" placeholder="cve" autocomplete="off"><div class="hint">Row fields that name a row, separated by commas, so one sent again tomorrow is dropped. Empty: the row is hashed.</div></div>
+    </div></div>
+    <div class="dialog-foot"><button class="btn btn-ghost">Add</button><span class="muted">It shows what it will do first. Timeout and the rest are on the plugin's page.</span></div>
+  </form>
+</div>
+{% for s in schedules %}<div class="dialog" id="sched-{{ loop.index }}" popover role="dialog" aria-labelledby="sched-{{ loop.index }}-t">
+  <div class="dialog-head"><h2 id="sched-{{ loop.index }}-t" class="mono">{{ s.name }}</h2>
+    <button class="btn btn-bare btn-sm btn-icon" type="button" popovertarget="sched-{{ loop.index }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
+  {% set own = mine.get(s.name) %}{% if own and own[1] and own[1].sections %}<div class="dialog-body"><h3 class="eyebrow">Settings of {{ own[0].kind }}.{{ own[0].name }}</h3></div>{{ settings_form(own[0], own[1], "/pipeline/schedules", "sc" ~ loop.index ~ "-", "sched-" ~ loop.index, "") }}{% endif %}
+  <form method="post" action="/ui/schedules/{{ s.name }}/edit">{{ csrf(token) }}
+    {% if own %}<div class="dialog-body"><h3 class="eyebrow">When it runs</h3></div>{% endif %}
+    <div class="dialog-body"><div class="form-grid">
+      <label for="se-kind-{{ loop.index }}">Job kind</label><input class="input mono" id="se-kind-{{ loop.index }}" name="kind" value="{{ s.kind }}" autocomplete="off">
+      <label for="se-cron-{{ loop.index }}">Cron</label><div><input class="input mono" id="se-cron-{{ loop.index }}" name="cron" value="{{ s.cron or '' }}" autocomplete="off"><div class="hint">Five fields, UTC. Fill this or the seconds, not both; a new timing recomputes the next run.</div></div>
+      <label for="se-every-{{ loop.index }}">Every (seconds)</label><input class="input" id="se-every-{{ loop.index }}" name="every_seconds" type="number" min="1" step="any" value="{{ s.every_seconds|int if s.every_seconds else '' }}" autocomplete="off">
+      <label for="se-queue-{{ loop.index }}">Queue</label><select class="select" id="se-queue-{{ loop.index }}" name="queue">{% for q in queues %}<option value="{{ q }}"{{ " selected" if q == s.queue }}>{{ q }}</option>{% endfor %}</select>
+      <label for="se-payload-{{ loop.index }}">Payload</label><textarea class="input mono" id="se-payload-{{ loop.index }}" name="payload" rows="3">{{ s.payload }}</textarea>
+      <label for="se-pri-{{ loop.index }}">Priority</label><input class="input" id="se-pri-{{ loop.index }}" name="priority" type="number" min="0" max="100" value="{{ s.priority }}">
+    </div></div>
+    <div class="dialog-foot"><button class="btn btn-ghost">Save</button><span class="muted">It shows what it will do first.</span></div>
+  </form>
+  <form method="post" action="/ui/schedules/{{ s.name }}/delete">{{ csrf(token) }}
+    <div class="dialog-foot"><button class="btn btn-danger">{{ m.icon("trash") }} Remove schedule</button><span class="muted">{{ "A plugin seeds this one again at the next start." if s.name.startswith("plugin.") else "It stops running." }}</span></div>
+  </form>
+</div>{% endfor %}
+{% endblock %}

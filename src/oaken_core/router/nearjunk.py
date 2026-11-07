@@ -11,6 +11,8 @@ from oaken_core.plugins.base import BaseTriager, BaseVecAnalyzer
 
 
 class NearJunk(BaseVecAnalyzer, BaseTriager):
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     rank: ClassVar[int] = 40
     version: ClassVar[str] = "1"
 

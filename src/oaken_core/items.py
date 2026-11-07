@@ -22,6 +22,10 @@ from oaken_core.plugins.contracts import PluginContext, PluginOpContext
 
 class ListIn(BaseModel):
     limit: int = Field(default=20, ge=1, le=200)
+    label: list[str] = Field(default_factory=list, description="Only items with this label, as KEY or KEY=VALUE. Repeat for more; all must hold.")
+    part: list[str] = Field(default_factory=list, description="Only items that have this part (body, headers...). Repeat for more; all must hold.")
+    since: str | None = Field(default=None, description="Only items stored at or after this date or time (2026-11-06, or 2026-11-06T12:00).")
+    until: str | None = Field(default=None, description="Only items stored before this date or time.")
 
 
 class ItemRow(BaseModel):
@@ -33,11 +37,33 @@ class ItemRow(BaseModel):
 
 
 class ListOut(BaseModel):
-    total: int
+    total: int  # the items that match, not the limit
     items: list[ItemRow]
 
 
+def where(inp: ListIn) -> tuple[str, list[Any]]:
+    """The SQL conditions for a filter (empty when it has none) and their parameters. Values only ever travel as parameters."""
+    cond: list[str] = []
+    args: list[Any] = []
+    for lab in inp.label:
+        key, eq, value = lab.partition("=")
+        cond.append("EXISTS (SELECT 1 FROM labels l WHERE l.subject_id = items_rows.subject_id AND l.key = ?" + (" AND l.value = ?" if eq else "") + ")")  # either layer: human or machine
+        args += [key, value] if eq else [key]
+    for name in inp.part:
+        cond.append("(EXISTS (SELECT 1 FROM json_each(parts_json) WHERE key = ?) OR (? = 'body' AND parts_json = '{}'))")  # an item stored before parts: its body is its one part
+        args += [name, name]
+    if inp.since:
+        cond.append("created_at >= ?")
+        args.append(inp.since)
+    if inp.until:
+        cond.append("created_at < ?")
+        args.append(inp.until)
+    return (" WHERE " + " AND ".join(cond)) if cond else "", args
+
+
 class ItemsIngestor(BaseIngestor):
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"
     fallback: ClassVar[bool] = True
     migrations_dir: ClassVar[Path | None] = Path(__file__).parent / "items_migrations"
@@ -68,12 +94,13 @@ class ItemsIngestor(BaseIngestor):
             return {part: parts[part]}
         return parts
 
-    @command("list", "The newest items this ingestor stored.", input=ListIn, output=ListOut)
+    @command("list", "The newest items this ingestor stored, optionally only those with a label, a part, or stored in a date range.", input=ListIn, output=ListOut)
     async def list(self, ctx: PluginOpContext, inp: ListIn) -> ListOut:
         db = self.ctx.db
         assert db is not None
-        total = await db.fetchone("SELECT COUNT(*) AS n FROM items_rows")
-        rows = await db.fetchall("SELECT subject_id, source, body_json, parts_json, created_at FROM items_rows ORDER BY created_at DESC, subject_id DESC LIMIT ?", (inp.limit,))
+        cond, args = where(inp)
+        total = await db.fetchone("SELECT COUNT(*) AS n FROM items_rows" + cond, tuple(args))
+        rows = await db.fetchall("SELECT subject_id, source, body_json, parts_json, created_at FROM items_rows" + cond + " ORDER BY created_at DESC, subject_id DESC LIMIT ?", (*args, inp.limit))
         return ListOut(total=int(total["n"]) if total else 0,
                        items=[ItemRow(subject_id=r["subject_id"], source=r["source"], created_at=r["created_at"],
                                       preview=str(json.loads(r["body_json"]))[:80], parts=list(json.loads(r["parts_json"]))) for r in rows])  # fmt: skip

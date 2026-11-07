@@ -94,6 +94,8 @@ class Console:
             loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True, undefined=jinja2.StrictUndefined
         )
         self.env.globals["display"] = forms.display  # macros do not see the page's context
+        self.env.globals["bases_of"] = lambda plugins: [b for p in plugins if p.plugin == p.name and (b := self._base_of(p))]  # the templates in a table: its header gets the button
+        self.env.globals["row_of"] = lambda p: self._host().row(p.kind, p.name)  # a plugin's row, as the plugin declares it
         self.env.filters["docs"] = docs_html  # a plugin's own text as paragraphs and code, escaped
         self.config_path = paths.config_dir() / "config.toml"
         routes = [
@@ -104,6 +106,10 @@ class Console:
             Route("/pipeline", self.page(self.providers)),
             Route("/pipeline/providers", self.page(self.providers)),
             Route("/pipeline/labels", self.page(self.labels_page)),
+            Route("/pipeline/schedules", self.page(self.schedules_page)),
+            Route("/ui/schedules/new", self.post(self.schedule_verb), methods=["POST"]),
+            Route("/ui/schedules/exec", self.post(self.schedule_exec), methods=["POST"]),
+            Route("/ui/schedules/{name}/{verb}", self.post(self.schedule_verb), methods=["POST"]),
             Route("/pipeline/analyzers", self.page(self.analyzers)),
             Route("/pipeline/machinery", self.page(self.pipeline)),
             Route("/ui/labels/new", self.post(self.label_verb), methods=["POST"]),
@@ -233,6 +239,11 @@ class Console:
         schema = host.config_schema(kind, name)
         fields = forms.from_schema(schema) if schema else []
         spec: UiSpec | None = host.plugin_ui(kind, name)
+        if spec is not None and spec.fields:  # what the plugin says about a setting replaces what the schema guessed
+            over = {f.name: f for f in spec.fields}
+            fields = [dataclasses.replace(f, kind=over[f.name].kind, label=over[f.name].label or f.label, titled=bool(over[f.name].label) or f.titled,
+                                          choices=over[f.name].choices or f.choices, help=over[f.name].help or f.help, required=over[f.name].required or f.required)
+                      if f.name in over else f for f in fields]  # the plugin's word wins, and what it leaves unsaid stays what the schema made
         by_name = {f.name: f for f in fields}
         sections: list[tuple[str, list[Field]]] = []
         if spec is not None and spec.sections:
@@ -312,24 +323,24 @@ class Console:
 
     async def _plugin_docs(self, kind: str, name: str) -> dict[str, Any]:
         """The plugin's own account of itself, and the commands it offers (from the registry, with their summaries)."""
-        found = (await self._op("plugin_describe", {"name": name, "kind": kind}))["plugins"]
+        found = (await self._op("plugin_describe", {"plugin": f"{kind}.{name}"}))["plugins"]
         return next((p for p in found if p["name"] == name), {"more": False, "doc": "", "setup_help": "", "config_example": "", "contextual": [], "commands": []})
 
+    def _base_of(self, p: Any) -> dict[str, Any] | None:
+        """What the New instance dialog needs of a bare, enabled template: its kind, name and the settings an instance must be given."""
+        tpl = (self._host().plugin_ui(p.kind, p.name) or UiSpec()).template  # the template part of its spec: BaseTemplatePlugin owns it
+        if tpl is None or not p.template or not p.enabled:  # a configured one is an instance, not a template
+            return None
+        asked = {n: "|" not in e for e in tpl.contextual for n in e.split("|")}  # an either-or entry (unix_path|port) offers both fields, neither forced
+        try:
+            fields = [dataclasses.replace(f, required=asked[f.name]) for f in self._modal(p.kind, p.name)["fields"] if f.name in asked]
+        except OakenError:
+            fields = []
+        return {"kind": p.kind, "name": p.name, "plugin": p.plugin, "template": p.template, "fields": fields}
+
     def _bases(self, kind: str, only: str = "") -> list[dict[str, Any]]:
-        """The plugins of ``kind`` a new instance can be made of, each with the contextual settings it must be given (required)."""
-        out = []
-        for p in self._host().statuses():
-            if p.kind != kind or p.plugin != p.name or (only and p.name != only):
-                continue
-            must = set(self._host().contextual(kind, p.name))
-            if not must or not p.enabled:  # only an enabled template (a plugin that needs something to be one) gets the +
-                continue
-            try:
-                fields = [dataclasses.replace(f, required=True) for f in self._modal(kind, p.name)["fields"] if f.name in must]
-            except OakenError:
-                fields = []
-            out.append({"kind": kind, "name": p.name, "plugin": p.plugin, "template": p.template, "fields": fields})
-        return out
+        """The bare templates of ``kind`` a new instance can be made of."""
+        return [b for p in self._host().statuses() if p.kind == kind and p.plugin == p.name and (not only or p.name == only) and (b := self._base_of(p))]
 
     async def _route_choice(self, kind: str, name: str) -> dict[str, Any]:
         """For a plugin that asks a model: the models the running backends report (``backend:model``), so the dialog offers what
@@ -384,7 +395,8 @@ class Console:
         workers = [p for p in active if p.plugin != p.name] if bases else []  # the instances of a template: the Workers table
         active = [p for p in active if p not in workers]
         why = {p.name: ("a template: add an instance" if p.template else "off everywhere" if not p.enabled else f"runs in {home[p.name]}" if home[p.name] != name else "switched off in this stage") for p in available}
-        return self.render("stage.html", stage=spec, bases=bases, workers=workers, active=active, available=available, why=why, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
+        parallel = any(p.multitenant for p in every if p.enabled and home[p.name] == name and p.name not in spec.disabled)  # a worker count means something only to these
+        return self.render("stage.html", stage=spec, parallel=parallel, bases=bases, workers=workers, active=active, available=available, why=why, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
                            plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
@@ -475,6 +487,61 @@ class Console:
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=f"{verb.capitalize()}: {out.key}", back="/pipeline/labels", result={"note": out.note})
+
+    async def schedules_page(self, request: Request) -> Response:
+        """Pipeline, the Schedules tab: what runs on its own and when, with the owner's controls. Settings and flow only."""
+        stages, _ = await self._flow()
+        rows = (await self._op("schedule_list"))["schedules"]
+        owner = {r["name"]: next((p for p in self._host().statuses() if r["name"].startswith(f"plugin.{p.name}.")), None) for r in rows}  # a plugin's own schedule, by its name
+        modals = await self._modals([p for p in owner.values() if p is not None])
+        mine = {n: (p, modals.get(f"{p.kind}/{p.name}")) for n, p in owner.items() if p is not None}  # name -> (the plugin, its settings form)
+        return self.render("schedules.html", stages=stages, schedules=rows, queues=[q.name for q in self.svc.queues.all()], mine=mine,
+                           runs={r["name"]: self._runs(r, owner[r["name"]]) for r in rows})
+
+    def _runs(self, row: dict[str, Any], owner: Any) -> tuple[str, str]:
+        """What a schedule runs, for a person: the setting that makes its plugin what it is (an exec instance's command, a socket's path), else
+        the plugin, else the job kind. Returns (text, plugin id or "")."""
+        if owner is None:
+            return row["kind"], ""
+        tpl = (self._host().plugin_ui(owner.kind, owner.name) or UiSpec()).template
+        table = self._host().tables.table(owner.kind, owner.name)
+        for entry in (tpl.contextual if tpl else ()):
+            for key in entry.split("|"):
+                if table.get(key) not in (None, ""):
+                    return str(table[key]), f"{owner.kind}.{owner.name}"
+        return row["kind"], f"{owner.kind}.{owner.name}"
+
+    async def schedule_exec(self, request: Request, form: dict[str, str]) -> Response:
+        """Schedule an executable: make an ``exec`` provider instance for it (its own command, cron, source and keys), then reload core so its
+        job and its schedule appear. The schedule is that instance's task; change its command on the plugin's page."""
+        name = re.sub(r"[^a-z0-9_-]+", "_", (form.get("name", "").strip() or Path(form.get("command", "").split()[0] if form.get("command", "").split() else "").stem).lower()).strip("_")
+        keys = [k.strip() for k in form.get("key_fields", "").split(",") if k.strip()]
+        config = {"command": form.get("command", "").strip(), **{k: v for k, v in (("cron", form.get("cron", "").strip()), ("source", form.get("source", "").strip())) if v}, **({"key_fields": keys} if keys else {})}
+        out = await self._gated("plugin_add", {"plugin": "exec", "kind": "provider", "name": name, "config": config}, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        if not out.reloading and self.svc.reload is not None:
+            self.svc.reload()  # a live-started instance has its job and schedule only after core reloads
+        return self.render("result.html", title=f"Scheduled: {name}", back="/pipeline/schedules", result={"note": "added as provider." + name + "; core is reloading, its schedule appears in a moment"})
+
+    async def schedule_verb(self, request: Request, form: dict[str, str]) -> Response:
+        """Add, change, remove or run one schedule. Each shows what it will do first."""
+        verb = request.path_params.get("verb", "new")
+        name = request.path_params.get("name", form.get("name", "").strip())
+        if verb not in ("new", "edit", "delete", "run"):
+            raise NotFound("no such action")
+        every, cron = form.get("every_seconds", "").strip(), form.get("cron", "").strip()
+        when = {**({"every_seconds": float(every)} if every else {}), **({"cron": cron} if cron else {})}  # blank on an edit: keep the timing
+        common = {"kind": form.get("kind", "").strip(), "payload": form.get("payload", "").strip() or "{}", "queue": form.get("queue", "default"),
+                  "priority": int(form.get("priority") or 50)}  # fmt: skip
+        payload = {"new": {"name": name, **common, **when}, "edit": {"name": name, **common, **when}, "delete": {"name": name}, "run": {"name": name}}[verb]
+        if verb == "edit":
+            payload = {k: v for k, v in payload.items() if v not in ("", None)}
+        out = await self._gated(f"schedule_{verb}", payload, form, request.url.path)
+        if isinstance(out, Response):
+            return out
+        note = {"new": "added", "edit": "saved", "delete": "removed", "run": "queued now"}[verb]
+        return self.render("result.html", title=f"{verb.capitalize()}: {name}", back="/pipeline/schedules", result={"note": note, **({"next_run": out.next_run} if hasattr(out, "next_run") else {})})
 
     async def overview(self, request: Request) -> Response:
         stages, _ = await self._flow()
@@ -608,7 +675,7 @@ class Console:
         if verb not in ("enable", "disable", "reload"):
             raise NotFound("no such action")
         self._status(kind, name)
-        await self.client.call(f"plugin_{verb}", {"name": name}, UI, confirm=True)  # the click is the confirmation
+        await self.client.call(f"plugin_{verb}", {"plugin": f"{kind}.{name}"}, UI, confirm=True)  # the click is the confirmation
         return RedirectResponse(self._back("/plugins"), 303)
 
     async def press(self, request: Request, form: dict[str, str]) -> Response:
@@ -665,7 +732,7 @@ class Console:
         if state == "on":  # whatever keeps it out of this stage, undone: off everywhere, run in another stage, off here
             kind = stage.kind
             if not self._status(kind, name).enabled:
-                await self.client.call("plugin_enable", {"name": name}, UI, confirm=True)
+                await self.client.call("plugin_enable", {"plugin": f"{kind}.{name}"}, UI, confirm=True)
             first = next((q.name for q in self.svc.queues.all() if q.kind == kind), None)
             if (self._host().tables.table(kind, name).get("stage") or first) != queue:
                 have = get_table(self.config_path.read_text(encoding="utf-8") if self.config_path.exists() else "", ["plugins", kind, name])
@@ -691,7 +758,7 @@ class Console:
             await self.client.call(f"queue_{verb}", {"queue": name}, UI, confirm=True)  # the click is the confirmation
             return RedirectResponse(self._back(f"/stage/{name}"), 303)
         payload = {"edit": {"queue": name, "label": form.get("label", "").strip(), "description": form.get("description", "").strip(),
-                            "workers": int(form.get("workers") or 1)},
+                            **({"workers": int(form["workers"])} if form.get("workers") else {})},  # no box, no change: a stage with nothing parallel has none
                    "rename": {"queue": name, "to": form.get("to", "")}, "delete": {"queue": name}}[verb]  # fmt: skip
         out = await self._gated(f"queue_{verb}", payload, form, request.url.path)
         if isinstance(out, Response):
@@ -748,7 +815,7 @@ class Console:
         self._status(kind, name)
         modal = self._modal(kind, name)
         table = self._host_part(kind, name, form) | forms.parse(modal["fields"], form)
-        out = await self._op("plugin_test", {"kind": kind, "name": name, "config": table})
+        out = await self._op("plugin_test", {"plugin": f"{kind}.{name}", "config": table})
         result = {"works": out["ok"], "detail": out["detail"] or ("started and reported healthy" if out["ok"] else "")}
         own = {k: form[k] for k in ("prompt", "guard") if form.get("unlock") and k in form}
         token = secrets.token_urlsafe(8)
@@ -764,7 +831,7 @@ class Console:
         kind, name = request.path_params["kind"], request.path_params["name"]
         status = self._status(kind, name)
         config = {"stage": form["stage"]} if form.get("stage") in [n for n, _ in self._stage_choice(kind, name)["stages"]] else {}
-        must = set(self._host().contextual(kind, status.plugin if status.plugin == name else name))
+        must = {n for e in self._host().contextual(kind, status.plugin if status.plugin == name else name) for n in e.split("|")}  # unix_path|port: both are read
         config |= forms.parse([f for f in self._modal(kind, name)["fields"] if f.name in must], form)  # what makes it an instance
         out = await self._gated("plugin_add", {"plugin": status.plugin, "kind": kind, "name": form.get("instance_name", "").strip(), "config": config}, form, request.url.path)
         if isinstance(out, Response):
@@ -775,7 +842,7 @@ class Console:
         """Delete a named instance: the same ``plugin_remove`` the API has, which shows what it will do first."""
         kind, name = request.path_params["kind"], request.path_params["name"]
         self._status(kind, name)
-        out = await self._gated("plugin_remove", {"kind": kind, "name": name}, form, request.url.path)
+        out = await self._gated("plugin_remove", {"plugin": f"{kind}.{name}"}, form, request.url.path)
         if isinstance(out, Response):
             return out
         return self.render("result.html", title=f"Removed {out.name}", back=self._back("/"), result={"note": "stopped and deleted from config.toml"})
@@ -809,6 +876,6 @@ class Console:
         tmp.write_text(updated, encoding="utf-8")
         os.replace(tmp, self.config_path)
         host.tables.tables.setdefault(kind, {})[name] = table
-        await host.reload(name)
+        await host.reload(name, kind=kind)
         log.info("plugin settings saved from the console", kind=kind, name=name, keys=sorted(values))
         return RedirectResponse(self._back(f"/plugins/{kind}/{name}"), 303)

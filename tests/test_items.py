@@ -146,3 +146,22 @@ async def test_item_show_says_so_when_the_active_ingestor_cannot_read_items_back
             await core.client.call("item_show", {"id": "x"}, CLI)
     finally:
         await core.host.stop()
+
+
+async def test_list_filters_by_label_part_and_date(tmp_path: Path) -> None:
+    from oaken_core.formatters.structured import JsonFormatter
+
+    core = await make(tmp_path, {"oaken_core.formatters": [EP("json", JsonFormatter)]})
+    call = core.client.call
+    for body, labels in (('{"a": 1}', {"priority": "high"}), ('{"a": 2}', {"priority": "low"}), ("plain text", {})):
+        await call("intake_submit", {"source": "s", "body": body, "labels": labels, **({"format": "json"} if body.startswith("{") else {})}, CLI, confirm=True)
+        await core.runner.drain()
+        core.client.svc.clock.advance(seconds=86400)  # one stored item per day
+    async def n(**f: Any) -> int:
+        return (await call("items.list", f, CLI)).output.total  # type: ignore[union-attr]
+    assert await n() == 3
+    assert await n(label=["priority"]) == 2 and await n(label=["priority=high"]) == 1 and await n(label=["priority=high", "priority=low"]) == 0
+    assert await n(part=["a"]) == 2 and await n(part=["body"]) == 1 and await n(part=["a", "body"]) == 0  # json items split by key; plain text is one body part
+    day = (await call("items.list", {}, CLI)).output.items[-1].created_at[:10]  # type: ignore[union-attr]  # the oldest
+    assert await n(since=day) == 3 and await n(until=day) == 0 and await n(since=day, until=day + "T23:59") == 1
+    await core.host.stop()

@@ -22,7 +22,7 @@ class Empty(BaseModel):
 
 
 class ScheduleRef(BaseModel):
-    name: str = Field(description="The schedule's name, such as plugin.voltpop.kev.")
+    name: str = Field(json_schema_extra={"positional": True}, description="The schedule's name, such as plugin.cves.run.")
 
 
 class ScheduleRow(BaseModel):
@@ -73,7 +73,7 @@ async def schedule_get(ctx: OpContext, inp: ScheduleRef) -> ScheduleRow:
 
 
 class ScheduleNewIn(BaseModel):
-    name: str = Field(min_length=1, max_length=120, description="The schedule's name.")
+    name: str = Field(min_length=1, max_length=120, json_schema_extra={"positional": True}, description="The schedule's name.")
     kind: str = Field(min_length=1, max_length=120, description="The job kind it enqueues (plugin.voltpop.run).")
     payload: str = Field(default="{}", description="The job's payload: a JSON object, as text.")
     every_seconds: float | None = Field(default=None, gt=0, description="Run every this many seconds. Give this or cron.")

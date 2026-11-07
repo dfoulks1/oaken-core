@@ -38,6 +38,8 @@ class SqliteConfig(BaseModel):
 class SqliteStore(BaseStore):
     """The default store: one local SQLite file, one writer, a pool of readers."""
 
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"
     config_model = SqliteConfig
 

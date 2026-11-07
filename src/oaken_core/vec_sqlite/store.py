@@ -49,6 +49,8 @@ class SqliteVecStore(BaseVectorStore):
     """The default vector store: embeddings kept in a local SQLite file (the sqlite-vec extension), searched by distance. ``path`` defaults to
     ``vectors.db`` in the data folder (or the instance's ``path`` setting)."""
 
+    api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
+    requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"
     config_model = SqliteVecConfig
 

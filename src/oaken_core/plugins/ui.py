@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping, Sequence
 
 from oaken_core.errors import InvalidInput
-from oaken_core.plugins.contracts import UiPage, UiSpec
+from oaken_core.plugins.contracts import UI_ACTIONS, UiPage, UiRow, UiSpec, UiTemplate
 
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
 _OP = re.compile(r"^[a-z][a-z0-9_]{0,60}$")
@@ -41,6 +41,16 @@ def check_ui(spec: object) -> list[str]:
         for f in page.fields:
             if f.kind == "enum" and not f.choices:
                 problems.append(f"page {page.name}: enum field {f.name} has no choices")
+    if spec.template is not None and (not isinstance(spec.template, UiTemplate) or not spec.template.contextual):
+        problems.append("a template must name the settings an instance is given")
+    if spec.row is not None:
+        if not isinstance(spec.row, UiRow):
+            problems.append("row must be a UiRow")
+        else:
+            problems += [f"row action {a.kind!r} is not one of {', '.join(UI_ACTIONS)}" for a in spec.row.actions if getattr(a, "kind", None) not in UI_ACTIONS]
+    names = [f.name for f in spec.fields]
+    if len(set(names)) != len(names):
+        problems.append("two field overrides share a name")
     for b in spec.buttons:
         if not _OP.match(b.operation or ""):
             problems.append(f"button {b.label!r} must name one of the plugin's operations")

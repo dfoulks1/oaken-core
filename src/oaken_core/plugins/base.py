@@ -42,7 +42,11 @@ from oaken_core.plugins.contracts import (
     PluginJobHandler,
     PluginOperation,
     PluginScheduledTask,
+    UiAction,
+    UiPill,
+    UiRow,
     UiSpec,
+    UiTemplate,
     VectorItem,
 )
 
@@ -183,6 +187,9 @@ class BasePlugin:
     migrations_dir: ClassVar[Path | None] = None
     # For an analyzer: the stored results it reads, ``"<analyzer>@<relation>"``. Must be acyclic.
     needs: ClassVar[tuple[str, ...]] = ()
+    # What the plugin is for, beyond its kind: the domain (``("mail",)``, ``("signal",)``). ``kind`` says the role. A product that wraps core
+    # decides what it allows by kind and tag. Written in the class body so ``oaken plugins`` can read it without importing.
+    tags: ClassVar[tuple[str, ...]] = ()
 
     ctx: PluginContext  # set by start()
     config: Any = None  # the parsed config_model instance, set by start() when config_model is set
@@ -196,6 +203,11 @@ class BasePlugin:
         """The plugin's UI as data: settings sections, buttons and pages. None: the settings
         modal is built from the config schema alone."""
         return None
+
+    def row(self, role: Literal["plain", "template", "instance"]) -> UiRow:
+        """This plugin's row in every table of plugins: the pills it adds beside core's health pills, and its action buttons. ``role`` is
+        what the plugin is right now: a ``template`` (bare, waiting for instances), an ``instance`` of one, or ``plain``."""
+        return UiRow(actions=(UiAction("settings"), UiAction("reload")))
 
     def job_handlers(self) -> list[PluginJobHandler]:
         return []
@@ -283,6 +295,23 @@ class BaseStore(BasePlugin):
         raise NotImplementedError("a store must implement open()")
 
 
+class BaseMultitenant:
+    """Add to a plugin's bases when several workers may run it at once (it keeps no per-call state a second call would trample):
+    ``class Mine(BaseMultitenant, BaseTriager)``. Only a stage with a loaded plugin like this offers a worker count in the console;
+    without one, a stage has no workers setting to change."""
+
+    multitenant: ClassVar[bool] = True
+
+
+def missing_contextual(contextual: tuple[str, ...], config: dict[str, Any]) -> list[str]:
+    """The ``contextual`` settings ``config`` leaves unset. An entry may name alternatives with ``|`` (``unix_path|port``): one of them
+    is enough, and it is reported as ``unix_path or port``. A setting counts as set unless it is missing, empty or None (a port of 0 is set)."""
+    def given(name: str) -> bool:
+        return config.get(name) not in (None, "", [], {})
+
+    return [c.replace("|", " or ") for c in contextual if not any(given(n) for n in c.split("|"))]
+
+
 class BaseTemplatePlugin(BasePlugin):
     """Add to a plugin's bases when it only runs as a named instance that is given what makes it what it is: an agent's
     instructions, an account, a mailbox. ``class Mine(BaseTemplatePlugin, BaseTriager)`` with ``contextual = ("criteria",)``.
@@ -298,6 +327,23 @@ class BaseTemplatePlugin(BasePlugin):
         "This is a template: it does not run as itself. Each instance you make from it (the + on a stage's page) is given what makes it "
         "what it is, starts from this template's settings, and may override any of them. Switched off, it makes no new instances."
     )
+
+    def row(self, role: Literal["plain", "template", "instance"]) -> UiRow:
+        """The defaults (settings, reload), plus a ``template`` pill for a bare template or a way to remove an instance. Reloading a template
+        reloads its instances too. Making an instance is the table header's button, not the row's."""
+        base = super().row(role)
+        if role == "template":
+            return UiRow(base.status + (UiPill("template"),), base.actions)
+        if role == "instance":
+            return UiRow(base.status, base.actions + (UiAction("remove"),))
+        return base
+
+    def template_ui(self) -> UiTemplate:
+        """The template part of this plugin's UI spec: what an instance must be given, and the note shown to whoever makes one."""
+        return UiTemplate(tuple(self.contextual), self.template_help)
+
+    def ui(self) -> UiSpec | None:
+        return UiSpec(template=self.template_ui())
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)

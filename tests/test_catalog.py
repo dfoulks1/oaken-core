@@ -27,7 +27,7 @@ def fake(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     (root / "__init__.py").write_text("")
     (root / "formatter_demo" / "__init__.py").write_text(
         '"""Splits demo text into lines.\n\nMore."""\nimport sys\nsys.modules["demo_imported"] = True\n'
-        "from oaken_core.plugins.base import BaseFormatter\n\n\nclass DemoFormatter(BaseFormatter):\n    version = '1'\n    formats = ('demo',)\n\n    async def split(self, raw):\n        return {}\n")
+        "from oaken_core.plugins.base import BaseFormatter\n\n\nclass DemoFormatter(BaseFormatter):\n    version = '1'\n    tags = ('mail', 'text')\n    formats = ('demo',)\n\n    async def split(self, raw):\n        return {}\n")
     (root / "triager_big_one" / "__init__.py").write_text('"""A big one."""\nraise RuntimeError("never imported to list")\n')
     monkeypatch.syspath_prepend(str(tmp_path))
     for m in [m for m in sys.modules if m.startswith("oaken_plugins")]:
@@ -157,3 +157,36 @@ async def test_reloading_a_plugin_loaded_from_a_class_line_or_the_catalog_keeps_
         await host.reload(name)
         rec = host._records[("formatter", name)]
         assert rec.instance is not None and rec.detail != "no longer installed", name
+
+
+def test_declared_reads_the_api_version_and_core_a_plugin_says_without_importing_it(tmp_path: Path) -> None:
+    pkg = tmp_path / "mine"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text("from .impl import Thing\n")
+    (pkg / "impl.py").write_text('class Thing:\n    api_version = 2\n    requires_core: str = ">=0.3"\n\nraise SystemExit("importing this would end the test")\n')
+    assert catalog.declared(pkg) == {"api_version": "2", "requires_core": ">=0.3"}  # found in a submodule, and nothing ran
+    (pkg / "impl.py").write_text("class Thing:\n    api_version = 1\n    requires_core = ''\n")
+    assert catalog.declared(pkg) == {"api_version": "1"}  # empty means unset
+    assert catalog.declared(tmp_path / "missing") == {}
+
+
+def test_declared_reads_the_tags_a_plugin_says_and_a_plugin_with_none_has_none(tmp_path: Path) -> None:
+    from oaken_core.plugins.base import BasePlugin
+
+    assert BasePlugin.tags == ()  # a plugin that says nothing is for nothing in particular
+    pkg = tmp_path / "mine"
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text('class Thing:\n    tags: "ClassVar[tuple[str, ...]]" = ("mail", "imap")\n\nraise SystemExit("importing this would end the test")\n')
+    assert catalog.declared(pkg) == {"tags": "mail,imap"}  # read from source, in order, nothing ran
+    (pkg / "__init__.py").write_text("class Thing:\n    tags = ()\n")
+    assert catalog.declared(pkg) == {}  # empty means unset
+
+
+def test_oaken_plugins_tag_keeps_the_plugins_with_any_of_the_tags(fake: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    for arg in (["--tag", "mail"], ["--tag=text,nothing"], ["--tag", " Mail , x "]):  # one tag, a list, spaces and case
+        assert main(["plugins", *arg]) == 0
+        out = capsys.readouterr().out
+        assert "demo" in out and "big-one" not in out, arg
+    assert main(["plugins", "--tag", "nothing"]) == 0
+    assert "No plugins tagged nothing." in capsys.readouterr().out
+    assert main(["plugins", "--tag"]) == 2 and main(["plugins", "--tag", ","]) == 2  # no tag given is a usage error

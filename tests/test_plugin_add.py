@@ -62,7 +62,7 @@ class NotAPlugin:
 
 
 async def test_plugin_add_by_name_switches_a_loaded_plugin_on_and_it_persists(rig: Rig, oaken_home: Path) -> None:  # noqa: F811
-    await rig.core.client.call("plugin_disable", {"name": "notes"}, CLI, confirm=True)
+    await rig.core.client.call("plugin_disable", {"plugin": "enricher.notes"}, CLI, confirm=True)
     done = await rig.core.client.call("plugin_add", {"plugin": "notes"}, CLI, confirm=True)  # no kind, no name: the plugin itself
     assert done.output.started and done.output.name == "notes" and not done.output.reloading  # type: ignore[union-attr]
     assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["plugins"]["enricher"]["notes"] == {"enabled": True}
@@ -110,6 +110,58 @@ async def test_the_host_finds_plugins_in_extensions_directories_and_skips_a_worl
         (root / "oaken-enricher-x" / "pyproject.toml").write_text('[project.entry-points."oaken_core.enrichers"]\nx = "m:X"\n')
         root.chmod(0o777 if wide else 0o755)
     assert [e.name for e in extensions.entry_points([str(good), str(bad), str(tmp_path / "missing")], "oaken_core.enrichers")] == ["x"]
+
+
+async def test_every_plugin_operation_names_its_target_as_kind_dot_name(rig: Rig, oaken_home: Path) -> None:  # noqa: F811
+    call = rig.core.client.call
+    await add(rig)
+    assert (await call("plugin_disable", {"plugin": "enricher.desk"}, CLI, confirm=True)).output.affected == ["desk"]
+    assert (await call("plugin_enable", {"plugin": "enricher.desk"}, CLI, confirm=True)).output.affected == ["desk"]
+    assert (await call("plugin_reload", {"plugin": "enricher.desk"}, CLI, confirm=True)).output.affected == ["desk"]
+    assert (await call("plugin_test", {"plugin": "enricher.desk"}, CLI)).output.ok
+    assert [p.name for p in (await call("plugin_describe", {"plugin": "enricher.desk"}, CLI)).output.plugins] == ["desk"]
+    for op in ("plugin_enable", "plugin_remove", "plugin_test", "plugin_describe"):
+        with pytest.raises(InvalidInput, match="KIND.NAME"):
+            await call(op, {"plugin": "desk"}, CLI, confirm=True)  # a bare name is refused: it could be two kinds
+    assert (await call("plugin_remove", {"plugin": "enricher.desk"}, CLI, confirm=True)).output.name == "desk"
+    assert "desk" not in {s.name for s in rig.core.host.statuses()}
+    assert "desk" not in tomllib.loads((oaken_home / "config" / "config.toml").read_text()).get("plugins", {}).get("enricher", {})
+
+
+def test_a_plugin_comes_from_core_plugins_or_local(tmp_path: Path) -> None:
+    src = tmp_path / "oaken-x" / "src" / "mine_pkg"
+    src.mkdir(parents=True)
+    (src / "__init__.py").write_text("")
+    (tmp_path / "oaken-x" / "pyproject.toml").write_text("")
+    import sys
+
+    sys.path.append(str(tmp_path / "oaken-x" / "src"))
+    try:
+        assert extensions.origin("oaken_core.triage.rules:RulesTriager") == "core"
+        assert extensions.origin("mine_pkg:Thing") == "local"  # on this disk, outside site-packages
+        assert extensions.origin("pydantic:BaseModel") == "plugins"  # something installed from an index
+    finally:
+        sys.path.remove(str(tmp_path / "oaken-x" / "src"))
+
+
+async def test_plugin_list_shows_the_api_each_plugin_speaks_and_status_the_one_core_speaks(rig: Rig) -> None:
+    from oaken_core.plugins.contracts import PLUGIN_API_VERSION
+
+    rows = (await rig.core.client.call("plugin_list", {}, CLI)).output.plugins
+    assert rows and {r.api for r in rows if r.id == "enricher.notes"} == {PLUGIN_API_VERSION}
+    assert (await rig.core.client.call("status", {}, CLI)).output.plugin_api == PLUGIN_API_VERSION
+
+
+def test_every_core_plugin_says_its_api_and_the_core_it_needs() -> None:
+    from importlib.metadata import entry_points
+
+    from oaken_core.plugins.contracts import PLUGIN_API_VERSION
+
+    eps = [e for g in ("stores", "vector_stores", "ingestors", "providers", "triagers", "formatters") for e in entry_points(group=f"oaken_core.{g}") if e.value.startswith("oaken_core.")]
+    assert len(eps) >= 9
+    for ep in eps:
+        cls = ep.load()
+        assert cls.__dict__.get("api_version") == PLUGIN_API_VERSION and cls.__dict__.get("requires_core"), ep.value  # written in the class, so `oaken plugins` can read it without importing
 
 
 async def test_plugin_remove_refuses_a_plugin_with_no_class_table(rig: Rig, oaken_home: Path) -> None:  # noqa: F811

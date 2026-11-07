@@ -1,33 +1,32 @@
 {% from "_fields.html" import csrf, field %}{% from "_plugin_settings.html" import settings_form with context %}{% import "_macros.html" as m with context %}
 {# The plugins in ``plugins`` as a table with an enable switch and a reload button; ``back`` is the page a button returns to. #}
-{% macro plugin_row(p, i, back, show_kind, pre="", scope="", remove=False) %}
-<tr>
+{% macro plugin_row(p, i, back, show_kind, pre="", scope="") %}
+{% set r = row_of(p) %}<tr>
 <td class="mono nowrap"><a href="/plugins/{{ p.kind }}/{{ p.name }}">{{ p.name }}</a>{% if p.plugin != p.name %} <span class="muted small">· {{ p.plugin }}</span>{% endif %}{% if show_kind %} <span class="muted small">{{ p.kind }}</span>{% endif %}</td>
-<td>{% if p.template %}{% if p.enabled %}<span class="badge badge-ok">healthy</span>{% else %}<span class="badge badge-warn">off</span>{% endif %} <span class="badge badge-muted">template</span>{% elif p.healthy %}<span class="badge badge-ok">healthy</span>{% elif p.enabled %}<span class="badge badge-danger">down</span>{% else %}<span class="badge badge-warn">off</span>{% endif %}{% if p.warning %} <span class="badge badge-danger">{{ p.warning }}</span>{% endif %}{% if not p.healthy and p.detail and not p.template %}<div class="health-detail small {{ 'bad' if p.enabled else 'muted' }}">{{ p.detail }}</div>{% endif %}{% if p.warning and p.hint %}<div class="health-detail small muted">{{ p.hint }}</div>{% endif %}</td>
+<td>{% if p.healthy %}<span class="badge badge-ok">healthy</span>{% elif p.enabled %}<span class="badge badge-{{ 'ok' if p.template else 'danger' }}">{{ 'healthy' if p.template else 'down' }}</span>{% else %}<span class="badge badge-warn">off</span>{% endif %}{% for pill in r.status %} <span class="badge badge-{{ {'ok': 'ok', 'warn': 'warn', 'bad': 'danger', 'muted': 'muted'}[pill.tone] }}">{{ pill.text }}</span>{% endfor %}{% if p.warning %} <span class="badge badge-danger">{{ p.warning }}</span>{% endif %}{% if not p.healthy and p.detail and not p.template %}<div class="health-detail small {{ 'bad' if p.enabled else 'muted' }}">{{ p.detail }}</div>{% endif %}{% if p.warning and p.hint %}<div class="health-detail small muted">{{ p.hint }}</div>{% endif %}</td>
 <td class="nowrap">{% if scope %}{{ m.switch("queues/" ~ scope ~ "/plugins/" ~ p.name ~ "/off", back, True, "In this stage: " ~ p.name, {}, value_name="state", text=False) }}{% else %}{{ m.switch("plugins/" ~ p.kind ~ "/" ~ p.name ~ ("/disable" if p.enabled else "/enable"), back, p.enabled, "Enabled: " ~ p.name, {}, value_name="enabled", text=False) }}{% endif %}</td>
-<td class="right nowrap"><div class="row actions-cell"><button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ pre }}{{ i }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button>
-{% if remove %}<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/remove">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon btn-danger" title="Delete this instance" aria-label="Delete {{ p.name }}">{{ m.icon("x") }}</button></form>{% else %}<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/reload">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon" title="Reload" aria-label="Reload {{ p.name }}">{{ m.icon("recycle") }}</button></form>{% endif %}</div></td>
+<td class="right nowrap"><div class="row actions-cell">{% if r.actions|selectattr("kind", "equalto", "remove")|list %}<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/remove">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon btn-danger" title="Delete this instance" aria-label="Delete {{ p.name }}">{{ m.icon("x") }}</button></form>{% else %}<button type="button" class="btn btn-sm btn-icon btn-slot" disabled aria-hidden="true" tabindex="-1">{{ m.icon("x") }}</button>{% endif %}{% for a in r.actions if a.kind != "remove" %}{% if a.kind == "settings" %}<button type="button" class="btn btn-sm btn-icon" popovertarget="set-{{ pre }}{{ i }}" popovertargetaction="show" title="Settings" aria-label="Settings for {{ p.name }}">{{ m.icon("gear") }}</button>{% elif a.kind == "reload" %}<form class="inline" method="post" action="/ui/plugins/{{ p.kind }}/{{ p.name }}/reload">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}"><button class="btn btn-sm btn-icon" title="Reload" aria-label="Reload {{ p.name }}">{{ m.icon("recycle") }}</button></form>{% endif %}{% endfor %}</div></td>
 </tr>
 {% endmacro %}
 
 {# The live plugins in ``plugins`` as a card (a disabled one is ignored: ``inactive_table`` lists those). ``back`` is the page a
    button returns to; ``show_kind`` adds the kind beside a name, for a page that mixes kinds; ``fold`` makes the card a section
    that opens when it has something in it. #}
-{% macro plugin_table(plugins, back, empty="None active.", title="Plugins", show_kind=False, pre="", fold=False, hint=True, stage=false, scope="", add="", remove=False) %}
-{% set live = plugins|selectattr("enabled")|list %}
+{% macro plugin_table(plugins, back, empty="None active.", title="Plugins", show_kind=False, pre="", fold=False, hint=True, stage=false, scope="") %}
+{% set live = plugins|selectattr("enabled")|list %}{% set tpl = bases_of(live) %}
 {% set note %}{% if stage is not false %}{% if stage %} · <a href="{{ stage[0] }}">{{ stage[1] }}</a>{% else %} · no stage{% endif %}{% endif %}{% endset %}
-{% if fold %}<details class="card fold" id="fold-{{ pre }}"{% if live %} open{% endif %}><summary class="card-head">{{ title }} <span class="muted small">{{ live|length }}{{ note }}</span>{% if add %}<button type="button" class="btn btn-sm btn-icon" popovertarget="{{ add }}" popovertargetaction="show" title="New instance" aria-label="New instance">{{ m.icon("plus") }}</button>{% endif %}</summary>
+{% if fold %}<details class="card fold" id="fold-{{ pre }}"{% if live %} open{% endif %}><summary class="card-head">{{ title }} <span class="muted small">{{ live|length }}{{ note }}</span>{% if tpl %}<button type="button" class="btn btn-sm btn-primary right" popovertarget="inst-{{ pre }}" popovertargetaction="show" title="New instance" aria-label="New instance">{{ m.icon("plus") }} Add instance</button>{% endif %}</summary>
 {% else %}<div class="card">
-<div class="card-head"><span>{{ title }}</span><span class="row"><span class="muted small">{{ live|length }}{{ note }}</span>{% if add %}<button type="button" class="btn btn-sm btn-icon" popovertarget="{{ add }}" popovertargetaction="show" title="New instance" aria-label="New instance">{{ m.icon("plus") }}</button>{% endif %}</span></div>
+<div class="card-head"><span>{{ title }}</span><span class="row"><span class="muted small">{{ live|length }}{{ note }}</span>{% if tpl %}<button type="button" class="btn btn-sm btn-primary" popovertarget="inst-{{ pre }}" popovertargetaction="show" title="New instance" aria-label="New instance">{{ m.icon("plus") }} Add instance</button>{% endif %}</span></div>
 {% endif %}
 <div class="table-wrap"><table class="table">
 <thead><tr><th>Plugin</th><th>Health</th><th>Enabled</th><th class="right">Actions</th></tr></thead>
 <tbody>
-{% for p in live %}{{ plugin_row(p, loop.index, back, show_kind, pre, scope, remove) }}{% else %}<tr><td colspan="4" class="muted">{{ empty }}</td></tr>{% endfor %}
+{% for p in live %}{{ plugin_row(p, loop.index, back, show_kind, pre, scope) }}{% else %}<tr><td colspan="4" class="muted">{{ empty }}</td></tr>{% endfor %}
 </tbody></table></div>
 {% if hint %}<div class="card-foot muted">{% if scope %}The switch turns a plugin off in this stage only; it stays on everywhere else.{% else %}Turn a plugin off to take it out of the pipeline for now; turn it on to put it back.{% endif %}</div>{% endif %}
 {% if fold %}</details>{% else %}</div>{% endif %}
-{{ plugin_dialogs(live, back, pre, scope) }}
+{{ plugin_dialogs(live, back, pre, scope) }}{% if tpl %}{{ new_instance_dialog("inst-" ~ pre, tpl, back, scope) }}{% endif %}
 {% endmacro %}
 
 {# Each plugin's settings dialog, ids ``set-<pre><n>``. #}
@@ -70,16 +69,16 @@
    set); ``stage`` fixes the stage (on a stage's page), else ``stages`` are offered. One small form for each plugin: these pages
    run no script, so nothing can swap the fields when a different plugin is picked. #}
 {% macro new_instance_dialog(id, bases, back, stage="", stages=[], stage_now="") %}
-<div class="dialog" id="{{ id }}" popover role="dialog" aria-labelledby="{{ id }}-t">
+<div class="dialog{{ ' tpl-many' if bases|length > 1 }}" id="{{ id }}" popover role="dialog" aria-labelledby="{{ id }}-t">
   <div class="dialog-head"><h2 id="{{ id }}-t">New instance</h2>
     <button class="btn btn-bare btn-sm btn-icon" type="button" popovertarget="{{ id }}" popovertargetaction="hide" aria-label="Close" title="Close">{{ m.icon("x") }}</button></div>
-  {% for b in bases %}{% set n = loop.index %}<form method="post" action="/ui/plugins/{{ b.kind }}/{{ b.name }}/instance">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}">
+  {% if bases|length > 1 %}<div class="dialog-body"><div class="form-grid"><label for="{{ id }}-pick">Template</label><select class="select tpl-pick" id="{{ id }}-pick" aria-label="Template">{% for b in bases %}<option value="{{ loop.index }}">{{ b.kind }}.{{ b.plugin }}</option>{% endfor %}</select></div></div>{% endif %}
+  {% for b in bases %}{% set n = loop.index %}<form class="tpl-p tpl-p{{ n }}" method="post" action="/ui/plugins/{{ b.kind }}/{{ b.name }}/instance">{{ csrf(token) }}<input type="hidden" name="back" value="{{ back }}">
     <div class="dialog-body"><h3 class="eyebrow">{{ b.plugin }}{% if b.template %} <span class="muted small">a template: an instance is how it runs</span>{% endif %}</h3>
-    <div class="form-grid">
-      <label for="{{ id }}-name{{ n }}">Name</label><div><input class="input mono" id="{{ id }}-name{{ n }}" name="instance_name" required maxlength="41" placeholder="{{ b.plugin }}_2" autocomplete="off"><div class="hint">Its own settings and stats. Lower case: a-z, 0-9, - and _.</div></div>
-      {% if stage %}<input type="hidden" name="stage" value="{{ stage }}">{% elif stages %}<label for="{{ id }}-stage{{ n }}">Stage</label><select class="input" id="{{ id }}-stage{{ n }}" name="stage">{% for sn, title in stages %}<option value="{{ sn }}"{{ " selected" if sn == stage_now }}>{{ title }}</option>{% endfor %}</select>{% endif %}
+    <div class="field"><label for="{{ id }}-name{{ n }}">name</label><div><input class="input mono" id="{{ id }}-name{{ n }}" name="instance_name" required maxlength="41" placeholder="{{ b.plugin }}_2" autocomplete="off"><div class="hint">Its own settings and stats. Lower case: a-z, 0-9, - and _.</div></div></div>
+      {% if stage %}<input type="hidden" name="stage" value="{{ stage }}">{% elif stages %}<div class="field"><label for="{{ id }}-stage{{ n }}">stage</label><select class="select" id="{{ id }}-stage{{ n }}" name="stage">{% for sn, title in stages %}<option value="{{ sn }}"{{ " selected" if sn == stage_now }}>{{ title }}</option>{% endfor %}</select></div>{% endif %}
       {% for f in b.fields %}{{ field(f, none, id ~ n ~ "-") }}{% endfor %}
-    </div></div>
+    </div>
     <div class="dialog-foot"><button class="btn btn-ghost">Add instance</button><span class="muted">It shows what it will write first.</span></div>
   </form>{% else %}<div class="dialog-body"><p class="muted">Nothing here can have an instance made of it.</p></div>{% endfor %}
 </div>
@@ -87,7 +86,7 @@
 
 {# The Pipeline page's tabs. ``current`` is ``labels``, ``analyzers`` or ``machinery``. #}
 {% macro pipeline_tabs(current) %}
-<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("providers", "/pipeline", "Providers"), ("labels", "/pipeline/labels", "Labels"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("providers", "/pipeline", "Providers"), ("labels", "/pipeline/labels", "Labels"), ("schedules", "/pipeline/schedules", "Schedules"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}
@@ -113,7 +112,6 @@
         <label for="q-label">Title</label><input class="input" id="q-label" name="label" required maxlength="60" placeholder="Triage" autocomplete="off">
         <label for="q-name">Name</label><div><input class="input mono" id="q-name" name="name" maxlength="41" placeholder="from the title" autocomplete="off"><div class="hint">Leave empty to use the title with capitals made lower case and spaces made underscores (My Stage becomes my_stage). The next step shows the name before anything is saved.</div></div>
         <label for="q-kind">Plugin kind</label><select class="select" id="q-kind" name="kind">{% for k in addable %}<option value="{{ k }}">{{ k }}</option>{% endfor %}</select>
-        <label for="q-workers">Workers</label><input class="input" id="q-workers" name="workers" type="number" min="1" max="64" value="1">
       </div>
     </div>
     <div class="dialog-foot"><button class="btn btn-ghost">Add stage</button><span class="muted">It shows what it will do before it does it.</span></div>

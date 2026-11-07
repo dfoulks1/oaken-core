@@ -249,10 +249,50 @@ class UiPage:
 
 
 @dataclass(frozen=True)
+class UiPill:
+    """One status pill in a plugin's row. Core draws it; the plugin only says what it reads and how serious it is."""
+
+    text: str
+    tone: Literal["ok", "warn", "bad", "muted"] = "muted"
+
+
+# What a row's button can be. Core draws each the same way on every page. Making an instance is not a row's action: a table that holds a
+# template gets one button in its header.
+UI_ACTIONS = ("settings", "reload", "remove")
+
+
+@dataclass(frozen=True)
+class UiAction:
+    kind: Literal["settings", "reload", "remove"]
+
+
+@dataclass(frozen=True)
+class UiRow:
+    """A plugin's row in any table of plugins: pills beside core's own health pills, and the buttons of its Actions cell. The plugin
+    declares data; core draws the same row on every page."""
+
+    status: tuple[UiPill, ...] = ()
+    actions: tuple[UiAction, ...] = ()
+
+
+@dataclass(frozen=True)
+class UiTemplate:
+    """The part of a spec that makes a plugin a template, owned by ``BaseTemplatePlugin``: the settings an instance must be given
+    (``contextual``; an entry ``a|b`` means one of them) and what to tell the person making one. Core draws the template's pill and its
+    **+ New instance** from this, the same on every page, so no page decides it for itself."""
+
+    contextual: tuple[str, ...]
+    help: str = ""
+
+
+@dataclass(frozen=True)
 class UiSpec:
     sections: tuple[UiSection, ...] = ()
     buttons: tuple[UiButton, ...] = ()
     pages: tuple[UiPage, ...] = ()
+    template: UiTemplate | None = None
+    row: UiRow | None = None
+    fields: tuple[UiField, ...] = ()  # overrides: each replaces what the config schema made for the setting of that name (label, kind, help, choices, required)
 
 
 # -- Job kinds a plugin offers -----------------------------------------------------------------

@@ -417,3 +417,41 @@ textarea:disabled { opacity: .55; background: var(--surface-2); cursor: not-allo
 .doc-text p { margin: 0 0 .8rem; max-width: 62rem; }
 .doc-text pre { margin: 0 0 .8rem; }
 .file-path { font-size: 1.15rem; font-weight: 600; overflow-wrap: anywhere; }
+/* New instance: with several templates a select picks one, and only its panel shows (no scripts: :has on the chosen option). A browser without :has shows them all, stacked. */
+@supports selector(:has(*)) {
+  .tpl-many .tpl-p { display: none; }
+  .tpl-many:has(.tpl-pick option[value="1"]:checked) .tpl-p1 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="2"]:checked) .tpl-p2 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="3"]:checked) .tpl-p3 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="4"]:checked) .tpl-p4 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="5"]:checked) .tpl-p5 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="6"]:checked) .tpl-p6 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="7"]:checked) .tpl-p7 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="8"]:checked) .tpl-p8 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="9"]:checked) .tpl-p9 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="10"]:checked) .tpl-p10 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="11"]:checked) .tpl-p11 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="12"]:checked) .tpl-p12 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="13"]:checked) .tpl-p13 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="14"]:checked) .tpl-p14 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="15"]:checked) .tpl-p15 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="16"]:checked) .tpl-p16 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="17"]:checked) .tpl-p17 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="18"]:checked) .tpl-p18 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="19"]:checked) .tpl-p19 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="20"]:checked) .tpl-p20 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="21"]:checked) .tpl-p21 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="22"]:checked) .tpl-p22 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="23"]:checked) .tpl-p23 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="24"]:checked) .tpl-p24 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="25"]:checked) .tpl-p25 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="26"]:checked) .tpl-p26 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="27"]:checked) .tpl-p27 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="28"]:checked) .tpl-p28 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="29"]:checked) .tpl-p29 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="30"]:checked) .tpl-p30 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="31"]:checked) .tpl-p31 { display: block; }
+  .tpl-many:has(.tpl-pick option[value="32"]:checked) .tpl-p32 { display: block; }
+}
+/* A row's Actions keep their places: remove sits leftmost, and a row without it holds the slot, so settings and reload line up down the table. */
+.btn-slot { visibility: hidden; }

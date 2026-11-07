@@ -6,8 +6,7 @@
 {% if tab == "providers" %}<p class="muted">The plugins that feed Intake: a mailbox, a socket, a file of JSON lines. Each one sets the format of what it sends, so a formatter can split it into parts.</p>
 {% elif tab == "analyzers" %}<p class="muted">The plugins that read the pipeline's content: triagers, enrichers and actions. A stage runs one kind, and its page has its own.</p>
 {% else %}<p class="muted">The machinery behind the stages, by kind: stores, models, embedders and the rest. Turn a plugin off to take it out of the pipeline for now; turn it on to put it back.</p>{% endif %}
-{% for kind, label, plugins, stage in sections %}{{ plugin_table(plugins, "/pipeline/" ~ tab, "No " ~ label|lower ~ " installed.", label, False, kind ~ "-", True, False, stage if tab == "analyzers" else false, "", "new-instance" if bases else "") }}{% endfor %}
-{% if bases %}{{ new_instance_dialog("new-instance", bases, "/pipeline/providers") }}{% endif %}
+{% for kind, label, plugins, stage in sections %}{{ plugin_table(plugins, "/pipeline/" ~ tab, "No " ~ label|lower ~ " installed.", label, False, kind ~ "-", True, False, stage if tab == "analyzers" else false, "", ) }}{% endfor %}
 {{ inactive_table(inactive, "/pipeline/" ~ tab) }}
 {% if empty %}<p class="muted small">Nothing installed for: {{ empty|join(", ") }}.</p>{% endif %}
 {% endblock %}

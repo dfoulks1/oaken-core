@@ -38,14 +38,14 @@ async def make(tmp_path: Path):  # type: ignore[no-untyped-def]
 async def test_plugin_describe_is_what_the_plugin_says_of_itself(tmp_path: Path) -> None:
     core = await make(tmp_path)
     try:
-        out = (await core.client.call("plugin_describe", {"name": "watcher"}, CLI)).output
+        out = (await core.client.call("plugin_describe", {"plugin": "enricher.watcher"}, CLI)).output
         (p,) = out.plugins
         assert p.summary == "Watches for one topic. An instance is made for each topic." and p.setup_help == "Give each instance its own topic."
         assert p.config_example.startswith("[plugins.enricher.jobs]") and p.contextual == ["topic"] and p.template
         assert {(s.name, s.required, s.description) for s in p.settings} == {("topic", True, "What this instance watches for."), ("style", False, "How it speaks.")}  # from its config schema
         assert "a template" in out.text and "Give each instance its own topic." in out.text and "What this instance watches for." in out.text
         assert p.template_note == Watcher.template_help and "does not run as itself" in p.template_note  # core's own account of what a template is, to the person running it
-        notes = (await core.client.call("plugin_describe", {"name": "notes"}, CLI)).output.plugins[0]
+        notes = (await core.client.call("plugin_describe", {"plugin": "enricher.notes"}, CLI)).output.plugins[0]
         assert notes.template_note == "" and not notes.template  # an ordinary plugin has none
     finally:
         await core.host.stop()
@@ -56,8 +56,8 @@ async def test_with_no_name_it_is_an_overview_of_this_stack_and_an_unknown_name_
     try:
         out = (await core.client.call("plugin_describe", {}, CLI)).output
         assert {"watcher", "notes", "sqlite"} <= {p.name for p in out.plugins} and "plugins in this stack" in out.text
-        with pytest.raises(NotFound, match="no plugin named 'ghost' in this stack"):
-            await core.client.call("plugin_describe", {"name": "ghost"}, CLI)
+        with pytest.raises(NotFound, match="no plugin 'enricher.ghost' in this stack"):
+            await core.client.call("plugin_describe", {"plugin": "enricher.ghost"}, CLI)
     finally:
         await core.host.stop()
 
@@ -107,10 +107,10 @@ async def test_the_providers_tab_offers_the_plus_for_a_provider_that_is_a_templa
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
         page = (await client.get("/pipeline/providers")).text
-        assert 'popovertarget="new-instance"' in page and 'action="/ui/plugins/provider/acct/instance"' in page  # a provider has no stage: the + is on the Providers tab
+        assert "Add instance</button>" in page and 'action="/ui/plugins/provider/acct/instance"' in page  # a provider has no stage: the + is on the Providers tab
         assert 'name="stage"' not in page  # and its dialog asks for no stage
         assert 'action="/ui/plugins/provider/plain/instance"' not in page and page.count('/instance"') == 1  # an ordinary provider (no template mixin) gets none: only the template does
-        assert 'popovertarget="new-instance"' not in (await client.get("/pipeline/analyzers")).text
+        assert "Add instance</button>" not in (await client.get("/pipeline/analyzers")).text
     finally:
         await core.host.stop()
 
