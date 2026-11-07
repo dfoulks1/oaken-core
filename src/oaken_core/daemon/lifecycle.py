@@ -215,7 +215,7 @@ def detach(*, timeout: float = 30.0, runtime: Path | None = None) -> dict[str, A
     if status(path) is not None:
         raise Conflict("core is already running")
     child = subprocess.Popen(  # noqa: S603 (our own interpreter, fixed arguments)
-        [sys.executable, "-m", "oaken_core.daemon"],
+        identity.daemon_command(),
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         close_fds=True, start_new_session=True,
     )  # fmt: skip

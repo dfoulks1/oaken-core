@@ -2,6 +2,7 @@
 """A product built on core: its own name, home folder and command, over the same library."""
 
 import contextlib
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,6 +22,28 @@ from .test_host import EP
 def default_identity() -> Iterator[None]:
     yield
     identity.configure()  # a test that wraps core must not rename the next one
+
+
+def test_start_runs_the_products_own_program_in_the_background_not_a_plain_core(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from oaken_core.daemon import lifecycle
+    from oaken_core.errors import Unavailable
+
+    seen: list[list[str]] = []
+
+    class Child:
+        returncode = 1
+
+        def poll(self) -> int:
+            return 1  # it "exited", which ends the wait
+
+    monkeypatch.setattr(lifecycle.subprocess, "Popen", lambda argv, **_: seen.append(argv) or Child())
+    with pytest.raises(Unavailable):
+        lifecycle.detach(timeout=1, runtime=tmp_path / "runtime.json")
+    assert seen[-1] == [sys.executable, "-m", "oaken_core.daemon"]  # plain core by default
+    identity.configure(app="oaken-grove", prog="grove", daemon=["grove-core", "--fg"])
+    with pytest.raises(Unavailable):
+        lifecycle.detach(timeout=1, runtime=tmp_path / "runtime.json")
+    assert seen[-1] == ["grove-core", "--fg"]  # the product's own program once it says so
 
 
 def test_a_product_has_its_own_home_variable_and_never_borrows_oakens(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
