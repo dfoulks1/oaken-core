@@ -254,7 +254,7 @@ def _wants_help(argv: list[str]) -> bool:
 
 
 def _catalog(args: list[str]) -> int:
-    """``oaken plugins [--tag A[,B]]``: what you can add by name, the way ``operations`` lists operations. The directories in
+    """``oaken plugins [--kind A[,B]] [--tag A[,B]]``: what you can add by name, the way ``operations`` lists operations. The directories in
     ``[extensions] dirs`` first (read from config.toml), then the ``oaken-plugins`` package: the order ``plugin add`` looks in."""
     import tomllib
 
@@ -262,14 +262,21 @@ def _catalog(args: list[str]) -> int:
     from oaken_core.plugins import catalog, extensions
     from oaken_core.plugins.kinds import KindRegistry
 
-    want: set[str] | None = None  # --tag mail or --tag mail,signal (or --tag=mail): only plugins with any of them
-    for i, a in enumerate(args):
-        if a == "--tag" or a.startswith("--tag="):
-            value = a.partition("=")[2] if "=" in a else (args[i + 1] if i + 1 < len(args) else "")
-            want = {t.strip().lower() for t in value.split(",") if t.strip()}
-            if not want:
-                print_text("--tag takes a tag, or several separated by commas: --tag mail,signal")
-                return int(ExitCode.USAGE)
+    def listed(flag: str, example: str) -> set[str] | None:  # --tag mail, --tag mail,signal or --tag=mail: one value or several, any of them
+        for i, a in enumerate(args):
+            if a == flag or a.startswith(flag + "="):
+                value = a.partition("=")[2] if "=" in a else (args[i + 1] if i + 1 < len(args) else "")
+                got = {t.strip().lower() for t in value.split(",") if t.strip()}
+                if not got:
+                    raise ValueError(f"{flag} takes a value, or several separated by commas: {flag} {example}")
+                return got
+        return None
+
+    try:
+        want, kinds_wanted = listed("--tag", "mail,signal"), listed("--kind", "provider,formatter")
+    except ValueError as exc:
+        print_text(str(exc))
+        return int(ExitCode.USAGE)
     from oaken_core.settings import Settings
 
     kinds = KindRegistry.shipped()
@@ -292,13 +299,15 @@ def _catalog(args: list[str]) -> int:
     rows += [{"name": e.name, "kind": e.kind, "summary": e.summary, "from": catalog.DIST, "api": e.api, "requires": e.requires, "tags": " ".join(e.tags)} for e in catalog.entries(k.name for k in kinds)]
     if want is not None:  # a plugin matches if it has any of the tags asked for
         rows = [r for r in rows if want & {t.lower() for t in r["tags"].split()}]
+    if kinds_wanted is not None:  # and, with both given, is also one of the kinds
+        rows = [r for r in rows if r["kind"].lower() in kinds_wanted]
     if "--json" in args:
         print_json(rows)
     elif rows:
         print_table([{"plugin": f"{r['kind']}.{r['name']}", **r} for r in rows], ["plugin", "tags", "from", "api", "requires", "summary"], title="plugins")  # what `plugin add` takes
         print_text(f"Add one: {identity.prog} plugin add KIND.NAME")
-    elif want:
-        print_text(f"No plugins tagged {', '.join(sorted(want))}.")
+    elif want or kinds_wanted:
+        print_text("No plugins " + " and ".join(x for x in (f"of kind {', '.join(sorted(kinds_wanted))}" if kinds_wanted else "", f"tagged {', '.join(sorted(want))}" if want else "") if x) + ".")
     elif catalog.installed() or dirs:
         print_text("No plugins found in [extensions] dirs or in " + catalog.DIST + ".")
     else:

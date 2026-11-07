@@ -190,3 +190,17 @@ def test_oaken_plugins_tag_keeps_the_plugins_with_any_of_the_tags(fake: Path, ca
     assert main(["plugins", "--tag", "nothing"]) == 0
     assert "No plugins tagged nothing." in capsys.readouterr().out
     assert main(["plugins", "--tag"]) == 2 and main(["plugins", "--tag", ","]) == 2  # no tag given is a usage error
+
+
+def test_oaken_plugins_kind_keeps_the_plugins_of_those_kinds_and_combines_with_tag(fake: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["plugins", "--kind", "formatter"]) == 0
+    out = capsys.readouterr().out
+    assert "demo" in out and "big-one" not in out
+    assert main(["plugins", "--kind=triager,formatter"]) == 0
+    out = capsys.readouterr().out
+    assert "demo" in out and "big-one" in out  # a list: any of the kinds
+    assert main(["plugins", "--kind", "triager", "--tag", "mail"]) == 0
+    assert "No plugins of kind triager and tagged mail." in capsys.readouterr().out  # both filters must hold
+    assert main(["plugins", "--kind", "formatter", "--tag", "mail"]) == 0
+    assert "demo" in capsys.readouterr().out
+    assert main(["plugins", "--kind"]) == 2 and main(["plugins", "--tag", ","]) == 2
