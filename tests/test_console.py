@@ -1238,3 +1238,30 @@ async def test_the_nav_has_the_logo_beside_the_wordmark_and_the_console_serves_i
     logo = await rig.c.get("/static/logo.png")
     assert logo.status_code == 200 and logo.headers["content-type"] == "image/png" and logo.content[:4] == b"\x89PNG"
     assert "mask: url(/static/logo.png)" in (await rig.c.get("/static/oaken.css")).text  # drawn in the palette's brand colour
+
+
+async def test_a_page_that_asks_for_a_tab_joins_the_pipeline_tabs_after_the_one_it_names(rig: Rig) -> None:  # noqa: F811
+    import re
+
+    notes = rig.core.host.get("enricher", "notes")
+    notes.spec_ = UiSpec(pages=(UiPage("rules", "Rules", load="rules_load", tab="Sieve"), UiPage("more", "More", load="rules_load", tab="Later", tab_after="analyzers")))
+
+    def bar(html: str) -> list[str]:
+        return re.findall(r"<a href=\"[^\"]*\"(?: aria-current=\"page\")?>([^<]+)</a>", html[html.index('aria-label="Pipeline"'):html.index("</nav>", html.index('aria-label="Pipeline"'))])
+
+    page = (await rig.c.get("/pipeline")).text
+    assert bar(page) == ["Providers", "Labels", "Sieve", "Schedules", "Analyzers", "Later", "Machinery"]  # each after the tab it named
+    assert '<a href="/plugins/enricher/notes/pages/rules">Sieve</a>' in page
+    own = (await rig.c.get("/plugins/enricher/notes/pages/rules")).text
+    assert bar(own) == bar(page) and '<a href="/plugins/enricher/notes/pages/rules" aria-current="page">Sieve</a>' in own  # its own page shows the bar, itself current
+    notes.spec_ = None
+    assert "Sieve" not in (await rig.c.get("/pipeline")).text  # a page that does not ask for a tab is not one
+
+
+def test_check_ui_refuses_a_tab_that_is_not_a_short_plain_label_or_follows_nothing() -> None:
+    from oaken_core.plugins.ui import check_ui
+
+    ok = UiSpec(pages=(UiPage("rules", "Rules", load="rules_load", tab="Sieve"),))
+    assert check_ui(ok) == []
+    assert any("tab must be" in p for p in check_ui(UiSpec(pages=(UiPage("rules", "Rules", load="rules_load", tab="<b>x</b>"),))))
+    assert any("tab_after" in p for p in check_ui(UiSpec(pages=(UiPage("rules", "Rules", load="rules_load", tab="Sieve", tab_after="nowhere"),))))

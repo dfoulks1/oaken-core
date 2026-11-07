@@ -84,9 +84,9 @@
 </div>
 {% endmacro %}
 
-{# The Pipeline page's tabs. ``current`` is ``labels``, ``analyzers`` or ``machinery``. #}
+{# The Pipeline page's tabs. ``current`` is a tab's key: ``labels``, ``analyzers``, ``machinery``, or ``plugin:NAME:PAGE`` for a plugin's page. #}
 {% macro pipeline_tabs(current) %}
-<nav class="nav" aria-label="Pipeline">{% for key, href, label in [("providers", "/pipeline", "Providers"), ("labels", "/pipeline/labels", "Labels"), ("schedules", "/pipeline/schedules", "Schedules"), ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")] %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
+<nav class="nav" aria-label="Pipeline">{% for key, href, label in pipeline_tabs_list() %}<a href="{{ href }}"{% if key == current %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
 {% endmacro %}
 
 {# The pipeline as a row of stages, intake first. Each is a link with how much waits in it. #}

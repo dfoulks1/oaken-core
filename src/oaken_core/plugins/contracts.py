@@ -246,6 +246,12 @@ class UiPage:
     test: str = ""
     confirm: str = ""
     order: str = ""
+    tab: str = ""  # a short label: the page is also a tab in the Pipeline page's tab bar (its own page stays where it is)
+    tab_after: str = "labels"  # which of ``PIPELINE_TABS`` it follows; plugin tabs with the same one keep the order they were found in
+
+
+# The Pipeline page's own tabs, in order; a plugin page's ``tab`` goes in after one of them.
+PIPELINE_TABS = ("providers", "labels", "schedules", "analyzers", "machinery")
 
 
 @dataclass(frozen=True)

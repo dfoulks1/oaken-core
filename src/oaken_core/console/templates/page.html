@@ -1,6 +1,8 @@
-{% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% block title %}{{ p.title }}{% endblock %}
+{% extends "base.html" %}{% from "_fields.html" import field, csrf %}{% from "_plugin_table.html" import pipeline_tabs with context %}{% block title %}{{ p.title }}{% endblock %}
 {% block body %}
-<h1>{{ p.title }}</h1>
+{% if p.tab %}<h1>Pipeline</h1>
+{{ pipeline_tabs("plugin:" ~ name ~ ":" ~ p.name) }}
+<h2>{{ p.title }}</h2>{% else %}<h1>{{ p.title }}</h1>{% endif %}
 {% for m in messages %}<div class="alert alert-ok">{{ m }}</div>{% endfor %}
 {% set base = "/ui/plugins/" ~ kind ~ "/" ~ name ~ "/pages/" ~ p.name %}
 {% if fields %}

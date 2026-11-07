@@ -94,6 +94,7 @@ class Console:
             loader=jinja2.FileSystemLoader(HERE / "templates"), autoescape=True, undefined=jinja2.StrictUndefined
         )
         self.env.globals["display"] = forms.display  # macros do not see the page's context
+        self.env.globals["pipeline_tabs_list"] = self._pipeline_tabs  # the Pipeline page's tabs, with the ones plugin pages ask for
         self.env.globals["bases_of"] = lambda plugins: [b for p in plugins if p.plugin == p.name and (b := self._base_of(p))]  # the templates in a table: its header gets the button
         self.env.globals["row_of"] = lambda p: self._host().row(p.kind, p.name)  # a plugin's row, as the plugin declares it
         self.env.filters["docs"] = docs_html  # a plugin's own text as paragraphs and code, escaped
@@ -262,6 +263,22 @@ class Console:
     def _stage_specs(self) -> list[Any]:
         """The queues that are a stage (they serve an analyzer kind), in the order they were made."""
         return [q for q in self.svc.queues.all() if q.kind]
+
+    def _pipeline_tabs(self) -> list[tuple[str, str, str]]:
+        """The Pipeline page's tabs as (key, link, label): core's five, plus a tab for each page of a running plugin that asks for one
+        (``UiPage.tab``), placed after the tab it names (``tab_after``), several after the same one in the order found."""
+        tabs = [("providers", "/pipeline", "Providers"), ("labels", "/pipeline/labels", "Labels"), ("schedules", "/pipeline/schedules", "Schedules"),
+                ("analyzers", "/pipeline/analyzers", "Analyzers"), ("machinery", "/pipeline/machinery", "Machinery")]  # fmt: skip
+        host = self._host()
+        for s in host.statuses():
+            spec = host.plugin_ui(s.kind, s.name) if s.started else None
+            for pg in spec.pages if spec else ():
+                if pg.tab:
+                    at = next((i for i, t in enumerate(tabs) if t[0] == pg.tab_after), len(tabs) - 1)
+                    while at + 1 < len(tabs) and tabs[at + 1][0].startswith("plugin:"):
+                        at += 1
+                    tabs.insert(at + 1, (f"plugin:{s.name}:{pg.name}", f"/plugins/{s.kind}/{s.name}/pages/{pg.name}", pg.tab))
+        return tabs
 
     def _nav(self) -> list[tuple[str, str]]:
         """General, the machinery, then a link per stage in the order they were made, then Config and Capabilities."""

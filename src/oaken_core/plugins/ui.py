@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping, Sequence
 
 from oaken_core.errors import InvalidInput
-from oaken_core.plugins.contracts import UI_ACTIONS, UiPage, UiRow, UiSpec, UiTemplate
+from oaken_core.plugins.contracts import PIPELINE_TABS, UI_ACTIONS, UiPage, UiRow, UiSpec, UiTemplate
 
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
 _OP = re.compile(r"^[a-z][a-z0-9_]{0,60}$")
@@ -35,6 +35,10 @@ def check_ui(spec: object) -> list[str]:
                 problems.append(
                     f"page {page.name}: {role} must name one of the plugin's operations"
                 )
+        if page.tab and not (isinstance(page.tab, str) and len(page.tab) <= 20 and page.tab.replace(" ", "").isalnum()):
+            problems.append(f"page {page.name}: tab must be a short plain label (letters and digits, up to 20)")
+        if page.tab and page.tab_after not in PIPELINE_TABS:
+            problems.append(f"page {page.name}: tab_after must be one of {', '.join(PIPELINE_TABS)}")
         names = [f.name for f in page.fields]
         if len(set(names)) != len(names):
             problems.append(f"page {page.name}: two fields share a name")
