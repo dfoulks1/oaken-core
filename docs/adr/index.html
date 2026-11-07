@@ -1,0 +1,159 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture decisions · Oaken Core</title>
+<meta name="description" content="Every architecture decision record, with its status and date.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Architecture decisions · Oaken Core">
+<meta property="og:description" content="Every architecture decision record, with its status and date.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="../assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="../assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><img src="../assets/brand/favicon.png" alt="" aria-hidden="true" width="24" height="24"> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="../index.html"><img src="../assets/brand/favicon.png" alt="" aria-hidden="true" width="28" height="28"> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">Architecture decisions</div>
+    <div class="docnav"><a class="home-link" href="../index.html">&#8962; Home</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="../architecture/software-map.html">Software map</a>
+      <div class="label">Project</div>
+      <a class="doc-link current" href="index.html" aria-current="page">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#decisions"><span class="num">1</span>Decisions</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-secondary">Generated</span></div>
+    <h1 class="display-6">Architecture decisions</h1>
+    <p class="lead">The significant design decisions behind Oaken Core, in the order made.</p>
+  </header>
+
+<section id="decisions" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>Decisions</h2></div>
+<p>An architecture decision record (ADR) captures one significant decision, why it was
+made, and what follows from it. Records are never rewritten; a later record supersedes
+an earlier one.</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>#</th>
+<th>Decision</th>
+<th>Status</th>
+<th>Date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0001</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0001-record-architecture-decisions.md">Record architecture decisions</a></td>
+<td>accepted</td>
+<td>2026-10-20</td>
+</tr>
+<tr>
+<td>0002</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0002-core-daemon-and-thin-clients.md">One core daemon with thin clients</a></td>
+<td>accepted (the MCP part is superseded by ADR 0004)</td>
+<td>2026-10-20</td>
+</tr>
+<tr>
+<td>0003</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0003-sqlite-access-layer.md">SQLite access: aiosqlite with a write broker and a read pool</a></td>
+<td>accepted</td>
+<td>2026-10-20</td>
+</tr>
+<tr>
+<td>0004</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0004-mcp-server-in-core.md">The MCP server is part of core</a></td>
+<td>accepted</td>
+<td>2026-10-20</td>
+</tr>
+<tr>
+<td>0005</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0005-http-stack-and-api-security.md">The HTTP stack and how the local API defends itself</a></td>
+<td>accepted</td>
+<td>2026-10-20</td>
+</tr>
+<tr>
+<td>0007</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0007-core-stays-headless.md">Core stays headless; a UI is a separate client</a></td>
+<td>accepted</td>
+<td>2026-10-20</td>
+</tr>
+<tr>
+<td>0010</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0010-the-stable-surface-and-its-versioning.md">The stable surface, its versioning and how it is protected</a></td>
+<td>accepted</td>
+<td>2026-10-22</td>
+</tr>
+<tr>
+<td>0011</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0011-service-units-for-the-composition-root.md">Service units: a dependency-ordered build/start/stop for the composition root</a></td>
+<td>accepted</td>
+<td>2026-10-22</td>
+</tr>
+<tr>
+<td>0012</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0012-plugin-extension-hooks.md">Plugin extension hooks: job kinds, pipeline stages and scheduled tasks</a></td>
+<td>accepted</td>
+<td>2026-10-22</td>
+</tr>
+<tr>
+<td>0016</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0016-plugins-own-their-operations-store-and-wizard-commands.md">A plugin owns its operations, its small store and its wizard commands</a></td>
+<td>accepted (ratified 2026-11-03 by the owner, who verified the built implementation for 0.2.0)</td>
+<td>2026-11-03</td>
+</tr>
+<tr>
+<td>0017</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0017-triagers-and-enrichers-are-separate-kinds.md">Triagers and enrichers are separate kinds</a></td>
+<td>accepted (ratified 2026-11-03 by the owner, who verified the built implementation for 0.2.0)</td>
+<td>2026-11-03</td>
+</tr>
+<tr>
+<td>0018</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0018-a-web-ui-contract-for-plugins.md">A web UI contract for plugins: settings, pages and wizards from data</a></td>
+<td>accepted (ratified 2026-11-03 by the owner, who verified the built implementation for 0.2.0)</td>
+<td>2026-11-03</td>
+</tr>
+<tr>
+<td>0019</td>
+<td><a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0019-analyzer-kinds-actions-and-attachments.md">The kinds of analyzer: enrich, triage and action, and the attachment lane</a></td>
+<td>accepted (ratified 2026-11-03 by the owner, who verified the built implementation for 0.2.0; decision 5 is superseded by ADR 0020)</td>
+<td>2026-11-03</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="../assets/site.js"></script>
+
+
+</body>
+</html>

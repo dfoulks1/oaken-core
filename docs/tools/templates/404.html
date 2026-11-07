@@ -1,0 +1,22 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page not found · {{ site.title }}</title>
+<meta name="description" content="The page you asked for does not exist.">
+<link rel="icon" type="image/png" href="{{ base_path }}assets/brand/favicon.png">
+<link rel="stylesheet" href="{{ cdn.css.url }}" integrity="{{ cdn.css.integrity }}" crossorigin="anonymous">
+<style>{{ css_tokens|safe }}</style>
+<script>{{ head_js|safe }}</script>
+</head>
+<body>
+<main class="container py-5" style="max-width: 40rem">
+  <h1 class="display-6" style="color: var(--accent)">Page not found</h1>
+  <p class="lead">There is no page at this address.</p>
+  {# A 404 is served from any depth, so relative links cannot work here; this root-relative one does. #}
+  <p><a href="{{ base_path }}">Go to the {{ site.title }} home page</a></p>
+</main>
+</body>
+</html>

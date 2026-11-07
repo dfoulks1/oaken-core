@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://dfoulks1.github.io/oaken-core/sitemap.xml

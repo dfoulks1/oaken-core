@@ -1,0 +1,458 @@
+# Software map data. The page "Software map" is generated from this file, and the docs build
+# fails if it contradicts the repository or the architecture. Edit it in the same change that
+# builds or alters a component.
+#
+# Stacks are separate pieces of software; each lists its layers, top to bottom. A layer's
+# components are laid out in the order listed, six to a row.
+#
+# Component keys
+#   status     built | partial | planned
+#              built/partial -> `path` must exist; planned -> `path` must not exist yet
+#   uses       direct calls into other components: same layer or lower, never up, no cycles
+#   notifies   events or callbacks the component raises to components strictly ABOVE it
+#   untrusted  true if it handles text from outside, remote data or other unvetted input
+#   types / funcs / notes   optional detail
+#                types = [[name, kind, meaning]]   funcs = [[signature, meaning]]
+#
+# The edges are the INTENDED direction of each relationship. Where the code today imports the
+# other way, the component's notes say so: those are the places to untangle.
+
+[[stacks]]
+id = "core"
+name = "Oaken Core (one asyncio process)"
+layers = ["daemon", "doors", "operations", "pipeline", "plugins", "runtime", "state", "foundation"]
+
+[[layers]]
+id = "daemon"
+name = "Composition root"
+
+[[layers]]
+id = "doors"
+name = "Doors"
+
+[[layers]]
+id = "operations"
+name = "Operations"
+
+[[layers]]
+id = "pipeline"
+name = "Intake pipeline"
+
+[[layers]]
+id = "plugins"
+name = "Plugins"
+
+[[layers]]
+id = "runtime"
+name = "Runtime"
+
+[[layers]]
+id = "state"
+name = "State"
+
+[[layers]]
+id = "foundation"
+name = "Foundation"
+
+# --- Composition root --------------------------------------------------------------------
+[[components]]
+id = "daemon"
+name = "Core daemon"
+layer = "daemon"
+status = "built"
+path = "src/oaken_core/daemon"
+summary = "Builds everything in dependency order, starts it as units, stops it in reverse, and rebuilds it on reload. The only place that knows all the parts."
+uses = ["api", "console", "operations", "intake", "pluginhost", "router", "jobs", "queues", "scheduler", "agents", "events", "labels", "changelog", "settings"]
+types = [
+  ["Core", "class", "The composition root: settings, host and store, labels, queues, jobs, agents, scheduler, runner, services, registry, client, API and console."],
+]
+notes = ["A reload rebuilds Core in the same process and keeps the API and console ports. It does not re-import Python modules: a code change needs a restart."]
+
+# --- Doors -------------------------------------------------------------------------------
+[[components]]
+id = "cli"
+name = "CLI"
+layer = "doors"
+status = "built"
+path = "src/oaken_core/cli"
+summary = "The `oaken` command. Built from the operation registry at plugin load, so a plugin's commands appear when it loads. Talks to the running core, or runs in process for the commands that need no core."
+uses = ["api", "operations"]
+notes = ["`oaken plugins` lists what could be added and reads each plugin's source without importing it."]
+
+[[components]]
+id = "api"
+name = "Local API"
+layer = "doors"
+status = "built"
+path = "src/oaken_core/api"
+summary = "HTTP and server-sent events on 127.0.0.1 with token auth. Routes are generated from the operation registry; a guard checks Host, Origin, content type, token, rate and size before any route runs. Also serves the MCP doors."
+uses = ["operations", "agents", "events", "untrusted"]
+untrusted = true
+types = [
+  ["Api", "class", "The ASGI application: generated operation routes, events, the agent job routes and the MCP mount."],
+  ["Surface", "dataclass", "A path prefix with its own token check, size and concurrency limits and caller class."],
+]
+notes = ["Binds to loopback only; configuration cannot say otherwise."]
+
+[[components]]
+id = "console"
+name = "Console"
+layer = "doors"
+status = "built"
+path = "src/oaken_core/console"
+summary = "The local web console: settings and flow, never content. It draws every plugin's row, settings modal and New instance dialog from the plugin's declared UI, and calls the same operations the CLI does."
+uses = ["operations", "pluginhost", "queues", "settings"]
+untrusted = true
+types = [
+  ["Console", "class", "The Starlette app and its guard: pages for the pipeline, stages, schedules, labels, plugins and capabilities."],
+  ["Field", "dataclass", "One setting as a form draws it, made from the config schema and overridden by the plugin's spec."],
+]
+notes = ["Content views belong to product UIs, which run their own server against the API."]
+
+# --- Operations --------------------------------------------------------------------------
+[[components]]
+id = "operations"
+name = "Operation registry"
+layer = "operations"
+status = "built"
+path = "src/oaken_core/operations"
+summary = "Every action core offers is one operation: typed input and output, a permission class, an MCP mode and an optional preview. The CLI, API, MCP and console are generated from it. A change is a proposal until a person confirms it."
+uses = ["pluginhost", "jobs", "queues", "scheduler", "labels", "changelog", "router", "agents", "settings", "events", "database"]
+types = [
+  ["Operation", "dataclass", "Name, summary, permission, input and output models, mcp mode, preview, group."],
+  ["OperationRegistry", "class", "Core's operations plus the ones loaded plugins offer."],
+  ["CoreClient", "class", "Calls an operation as a caller: validates, gates mutations, audits."],
+  ["Services", "dataclass", "What an operation may reach: the host, jobs, queues, scheduler, labels and more."],
+]
+notes = ["`pluginhost` notifies this layer with the operations a plugin offers; the registry takes them."]
+
+# --- Intake pipeline ---------------------------------------------------------------------
+[[components]]
+id = "intake"
+name = "Intake"
+layer = "pipeline"
+status = "built"
+path = "src/oaken_core/intake.py"
+summary = "The front door: submit, format into parts, triage, store. Every step is a durable job. A reject keeps only a content-free log row."
+uses = ["jobs", "queues", "labels", "changelog", "formatters", "triage", "items"]
+untrusted = true
+types = [
+  ["Intake", "class", "Registers the format, triage, store and embed job kinds and runs them."],
+  ["IntakeItem", "dataclass", "Subject, source, body, labels, key, the parts a formatter made, and what earlier triagers said."],
+  ["Verdict", "dataclass", "accept, reject or unsure, with a reason and labels."],
+]
+notes = ["Triage rule: any reject ends it; otherwise every triager answers and the last to answer decides. Each answering triager's labels are written under its own name."]
+
+[[components]]
+id = "triage"
+name = "Triagers"
+layer = "pipeline"
+status = "built"
+path = "src/oaken_core/triage"
+summary = "The built-in triagers: dedupe (a repeat from the same source), rules (the owner's ordered rules) and llm (a model asks about your criteria). Others, such as the signal triagers, ship in oaken-plugins."
+uses = ["pluginbase", "contracts", "untrusted", "router"]
+untrusted = true
+notes = ["Imports Verdict and IntakeItem from intake: shapes only, no call. Move them to the contracts to make the layering literal."]
+types = [
+  ["DedupeTriager", "class", "Rank 1. Drops an item whose source and key (or body hash) it has seen."],
+  ["RulesTriager", "class", "Rank 5. The first matching rule decides."],
+  ["LlmTriager", "template", "One instance per set of criteria; asks a model backend."],
+]
+
+[[components]]
+id = "router"
+name = "Model router"
+layer = "pipeline"
+status = "built"
+path = "src/oaken_core/router"
+summary = "Picks a model backend and embedder for each call, caches answers by content, keeps a ledger of spend, and refuses a remote backend for a confidential item."
+uses = ["pluginbase", "contracts", "database", "settings", "untrusted"]
+untrusted = true
+types = [
+  ["Router", "class", "Resolves a call to a backend, applies locality and limits, caches, and records usage."],
+  ["NearJunk", "class", "A triager that embeds an item and drops near copies of known junk."],
+]
+notes = ["`pluginbase` imports the router for the LLM types: a lower layer reaching up. Untangle by moving those types to the contracts."]
+
+# --- Plugins -----------------------------------------------------------------------------
+[[components]]
+id = "pluginhost"
+name = "Plugin host"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/plugins/host.py"
+summary = "Discovers plugins (entry points, extension directories, oaken-plugins), checks each against its kind's contract, starts them store-first, makes named instances of templates, and says what each is: template, instance or plain."
+uses = ["pluginbase", "contracts", "catalog", "jobs", "scheduler", "labels", "events", "database", "settings", "formatters", "providers", "items"]
+notifies = ["operations"]
+types = [
+  ["PluginHost", "class", "Loads, starts, reloads, enables and disables plugins; builds each one's row and UI spec."],
+  ["PluginStatus", "dataclass", "Kind, name, health, provider origin (core, plugins or local), API version and template state."],
+  ["AddPlan", "dataclass", "What `plugin add` will write: an instance's table and, for a template not yet loaded, the template's too."],
+]
+notes = ["Offers each plugin's operations, job handlers and scheduled tasks upward; it does not reach into the registry itself.", "Today the host imports the operations package: a lower layer reaching up."]
+
+[[components]]
+id = "pluginbase"
+name = "Plugin base classes"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/plugins/base.py"
+summary = "BasePlugin and the base for each kind, plus the mixins: BaseTemplatePlugin (an instance is how it runs) and BaseMultitenant (several workers may run it). Each plugin writes its api_version and requires_core."
+uses = ["contracts", "labels", "database"]
+types = [
+  ["BasePlugin", "class", "Config, labels, UI spec, row, job handlers, scheduled tasks, traced calls."],
+  ["BaseTemplatePlugin", "mixin", "contextual settings, the template pill and the template part of the UI spec."],
+  ["BaseMultitenant", "mixin", "Marks a plugin several workers may run at once."],
+  ["BaseProvider", "class", "Brings items in with submit()."],
+  ["BaseTriager", "class", "Rates an item before it is stored; any reject ends it."],
+]
+notes = ["Imports the router for the LLM request types; see the router."]
+
+[[components]]
+id = "contracts"
+name = "Plugin contracts"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/plugins/contracts.py"
+summary = "The shapes a plugin and core exchange: context, health, operations, job handlers, scheduled tasks, and the UI spec (settings sections and field overrides, buttons, pages, the row and the template part)."
+uses = ["events", "labels", "database", "untrusted"]
+types = [
+  ["PluginContext", "dataclass", "What a plugin is given: name, config, clock, log, db, labels, submit."],
+  ["UiSpec", "dataclass", "sections, buttons, pages, template, row and field overrides."],
+  ["UiRow", "dataclass", "Status pills and actions (settings, reload, remove) for a plugin's row."],
+  ["UiTemplate", "dataclass", "The settings an instance must be given; one of a|b means one of them."],
+]
+notes = ["PLUGIN_API_VERSION is 1. A plugin that speaks another is refused at load."]
+
+[[components]]
+id = "catalog"
+name = "Catalog and extensions"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/plugins/catalog.py"
+summary = "What could be added: the oaken-plugins package and the extension directories, listed without importing anything. Reads each plugin's summary, api_version and requires_core from its source."
+uses = []
+types = [
+  ["Entry", "dataclass", "A plugin in oaken-plugins: kind, name, module, summary, api, requires."],
+]
+
+[[components]]
+id = "formatters"
+name = "Formatters"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/formatters"
+summary = "Split a raw item into named parts before triage. Core ships json; others (ini, rfc822) live in oaken-plugins."
+uses = ["pluginbase"]
+types = [
+  ["JsonFormatter", "class", "One part per key of a JSON object."],
+]
+
+[[components]]
+id = "providers"
+name = "Providers"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/providers"
+summary = "Sources that bring items into intake. Core ships socket, the machine's door: a template, one instance per Unix path or loopback port, each with its own source and format."
+uses = ["pluginbase", "contracts"]
+notifies = ["intake"]
+untrusted = true
+types = [
+  ["SocketProvider", "template", "Whatever is written to its socket is submitted to intake; replies OK or ERR per item."],
+]
+notes = ["A provider reaches intake only through the submit callback it is given, never by import."]
+
+[[components]]
+id = "items"
+name = "Items ingestor"
+layer = "plugins"
+status = "built"
+path = "src/oaken_core/items.py"
+summary = "The built-in ingestor: stores each accepted item (body and parts) as a row. It steps aside when a product installs its own, and `oaken items list` filters it by label, part and date."
+uses = ["pluginbase", "contracts"]
+types = [
+  ["ItemsIngestor", "class", "The fallback ingestor."],
+]
+notes = ["The ingestor kind is exclusive: one is active at a time."]
+
+# --- Runtime -----------------------------------------------------------------------------
+[[components]]
+id = "jobs"
+name = "Jobs"
+layer = "runtime"
+status = "built"
+path = "src/oaken_core/jobs.py"
+summary = "The durable job store and the runner. Jobs have a kind, a queue, a priority, retries and leases; a crash loses nothing. Handlers are registered by core and by plugins."
+uses = ["labels", "changelog", "database", "events", "agents", "settings"]
+notifies = ["intake", "pluginhost"]
+types = [
+  ["Jobs", "class", "The store: enqueue, claim, complete, fail, requeue, stats."],
+  ["JobRunner", "class", "Runs each queue's workers and calls the registered handler."],
+  ["JobSpec", "dataclass", "Kind, payload, subject and priority."],
+]
+notes = ["Imports the queues for the default queue name: untangle by moving it to a shared constant."]
+
+[[components]]
+id = "queues"
+name = "Queues"
+layer = "runtime"
+status = "built"
+path = "src/oaken_core/queues.py"
+summary = "Named queues, each the stage for one kind of analyzer plugin, defined in config.toml. A queue submits jobs; pausing a queue stops it handing out work."
+uses = ["jobs"]
+types = [
+  ["Queue", "dataclass", "Name, kind, label, workers and what is off in it."],
+  ["Queues", "class", "The registry of queues."],
+]
+
+[[components]]
+id = "scheduler"
+name = "Scheduler"
+layer = "runtime"
+status = "built"
+path = "src/oaken_core/scheduler.py"
+summary = "Recurring jobs by interval or cron (UTC). A due schedule enqueues its job and moves its next run in one transaction, so a crash neither repeats nor loses a run. Plugins seed their own tasks once."
+uses = ["jobs", "queues", "database"]
+types = [
+  ["Scheduler", "class", "add, remove, rows, run_now and the tick loop."],
+]
+notes = ["Schedules live in the database. Create, change, remove and run-now are operations and a console tab."]
+
+[[components]]
+id = "agents"
+name = "Agents"
+layer = "runtime"
+status = "built"
+path = "src/oaken_core/agents.py"
+summary = "External workers with their own tokens that lease jobs over the API or MCP. Off unless enabled; each agent is bounded by the kinds, queues and quotas of its token."
+uses = ["database", "events", "settings"]
+untrusted = true
+types = [
+  ["AgentRegistry", "class", "Creates, authenticates and bounds agents."],
+]
+
+# --- State -------------------------------------------------------------------------------
+[[components]]
+id = "labels"
+name = "Labels"
+layer = "state"
+status = "built"
+path = "src/oaken_core/labels.py"
+summary = "Key and value tags on a subject, in two layers (machine and human). A key must be defined before it is written, by core, a plugin or the owner."
+uses = ["changelog", "database"]
+types = [
+  ["LabelMaker", "class", "The registry of defined keys, with allowed values and who may write them."],
+  ["LabelStore", "class", "Reads and writes labels, with the human value winning."],
+]
+
+[[components]]
+id = "changelog"
+name = "Change log"
+layer = "state"
+status = "built"
+path = "src/oaken_core/changelog.py"
+summary = "Who changed what and when, appended in the same transaction as the change. Content-free: a reject logs a hash and a reason."
+uses = ["database"]
+types = [
+  ["ChangeLog", "class", "Append and read rows."],
+]
+
+[[components]]
+id = "events"
+name = "Events and log"
+layer = "state"
+status = "built"
+path = "src/oaken_core/events.py"
+summary = "The event bus for job state, plugin health and live updates, and the kept log file with its readers."
+uses = ["database"]
+types = [
+  ["EventBus", "class", "Publishes events to streams."],
+  ["JobStateChanged", "dataclass", "A job moved state."],
+]
+
+[[components]]
+id = "database"
+name = "Database"
+layer = "state"
+status = "built"
+path = "src/oaken_core/db.py"
+summary = "The portable-SQL handle every store provides: execute, fetch, transactions and one migration runner across core and plugin tables. SQLite ships as the default store plugin."
+uses = []
+types = [
+  ["Database", "class", "execute, fetchone, fetchall, transaction, migrate."],
+]
+notes = ["The store module defines the SQLite store plugin, so this package imports the plugin base classes."]
+
+# --- Foundation --------------------------------------------------------------------------
+[[components]]
+id = "settings"
+name = "Settings"
+layer = "foundation"
+status = "built"
+path = "src/oaken_core/settings.py"
+summary = "config.toml loaded and checked, edited in place with a backup, and the paths and secrets it points at."
+uses = []
+types = [
+  ["Settings", "class", "The validated configuration, including [plugins.<kind>.<name>] tables and [extensions]."],
+]
+
+[[components]]
+id = "untrusted"
+name = "Untrusted text"
+layer = "foundation"
+status = "built"
+path = "src/oaken_core/untrusted.py"
+summary = "Text from outside is data, never instructions. It reaches a model only wrapped as UntrustedText, between markers the model is told not to obey."
+uses = []
+types = [
+  ["UntrustedText", "class", "A body or source wrapped for a model."],
+]
+
+# --- Call flows --------------------------------------------------------------------------
+[[flows]]
+id = "arrives"
+title = "An item arrives"
+steps = [
+  ["providers", "intake", "submit(item)", "The provider is handed a callback; it never imports intake."],
+  ["intake", "jobs", "enqueue the format job", "Durable, so a crash loses nothing."],
+  ["jobs", "intake", "run the format job", "A handler intake registered."],
+  ["intake", "formatters", "split into parts", "Deterministic; no model."],
+  ["intake", "triage", "ask each triager", "Any reject ends it; the last to answer decides."],
+  ["intake", "labels", "write each answering triager's labels", "Under that triager's own name."],
+  ["intake", "jobs", "enqueue the store job", "Accepted items only."],
+  ["jobs", "intake", "run the store job", "A handler intake registered."],
+  ["intake", "items", "ingest", "The one active ingestor."],
+  ["intake", "changelog", "record the ingest", "Content-free."],
+]
+
+[[flows]]
+id = "schedule"
+title = "A scheduled task runs"
+steps = [
+  ["scheduler", "jobs", "enqueue the task's job", "The job carries a dedupe key naming the slot."],
+  ["jobs", "pluginhost", "run the plugin's job handler", "Registered at start as plugin.NAME.KIND."],
+  ["pluginhost", "providers", "call the handler", "For example an exec instance running a program."],
+  ["providers", "intake", "submit(row)", "One item per row it printed."],
+]
+
+[[flows]]
+id = "change"
+title = "A person changes something"
+steps = [
+  ["console", "operations", "call an operation", "A mutation comes back as a proposal first."],
+  ["operations", "pluginhost", "for example plugin_add", "Writes the instance, and the template if it is new."],
+  ["operations", "settings", "edit config.toml", "Written with a backup, then core reloads."],
+  ["operations", "changelog", "record who did it", "Audited by the registry."],
+]
+
+[[flows]]
+id = "load"
+title = "A plugin loads"
+steps = [
+  ["daemon", "pluginhost", "start the host", "Store first, then everything else."],
+  ["pluginhost", "catalog", "find the plugin", "Entry points, extension directories, oaken-plugins."],
+  ["pluginhost", "pluginbase", "check it against its kind's contract", "A fault switches that plugin off, not core."],
+  ["pluginhost", "labels", "register its label keys", "A bad definition switches it off."],
+  ["pluginhost", "scheduler", "seed its scheduled tasks", "Only if absent: after that they are the owner's."],
+]

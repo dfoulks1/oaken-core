@@ -1,0 +1,4 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+<div class="row g-3">
+{% for c in cards %}  <div class="col-md-6"><a class="doc" href="{{ c.href }}"><div class="s">{{ c.kicker }}</div><div class="t">{{ c.title }}</div><p>{{ c.blurb }}</p></a></div>
+{% endfor %}</div>

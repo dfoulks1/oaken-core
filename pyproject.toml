@@ -23,6 +23,8 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest", "pytest-asyncio", "openapi-spec-validator"]
+# Site tooling (docs/tools). The core runtime must not depend on it.
+docs = ["markdown-it-py", "mdit-py-plugins", "pygments"]
 
 [project.scripts]
 oaken = "oaken_core.cli.commands:main"

@@ -1,0 +1,33 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+{% include "_head.html" %}
+</head>
+<body class="home">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex justify-content-between align-items-start">
+      <div class="d-flex flex-wrap gap-2 mb-3">{% for cls, text in page.badges %}<span class="badge {{ cls }}">{{ text }}</span>{% endfor %}</div>
+      <button class="btn btn-sm btn-outline-secondary" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button>
+    </div>
+    <div class="masthead">
+      <img class="logo" src="assets/brand/logo.png" alt="" aria-hidden="true" width="160" height="106">
+      <h1 class="display-5">{{ site.title|upper }}</h1>
+    </div>
+    <div class="d-flex flex-wrap gap-2 mb-3">
+{% if has_demo %}      <a class="btn btn-primary fw-semibold" href="demo-core/index.html">Try the demo</a>
+{% endif %}      <a class="btn btn-warning fw-semibold" href="{{ site.repo_url }}">&#9733; Star this repo on GitHub</a>
+      <a class="btn btn-outline-secondary" href="{{ site.repo_url }}">View on GitHub</a>
+      <a class="btn btn-outline-secondary" href="{{ site.repo_url }}/issues/new">Report an issue</a>
+      <a class="btn btn-outline-secondary" href="{{ site.repo_url }}/blob/{{ site.branch }}/LICENSE">Apache-2.0 license</a>
+    </div>
+{% if page.lead %}    <p class="lead">{{ page.lead }}</p>
+{% endif %}  </header>
+{{ rendered.intro_html|safe }}
+  <footer>{{ footer }}</footer>
+</main>
+{% include "_footer_scripts.html" %}
+</body>
+</html>
