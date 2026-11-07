@@ -1,9 +1,22 @@
 [project]
 name = "oaken-core"
-version = "0.0.0"
+version = "1.0.0"
 description = "Oaken Core: an async pipeline and plugin loader. Products (mail, grove) are plugins on it."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE*"]
+readme = "README.md"
+keywords = ["pipeline", "plugins", "async", "mcp", "llm", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Framework :: AsyncIO",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+]
 requires-python = ">=3.11"
 dependencies = [
     "httpx2>=2.15.1",
@@ -25,6 +38,10 @@ dependencies = [
 dev = ["pytest", "pytest-asyncio", "openapi-spec-validator"]
 # Site tooling (docs/tools). The core runtime must not depend on it.
 docs = ["markdown-it-py", "mdit-py-plugins", "pygments"]
+
+[project.urls]
+Repository = "https://github.com/dfoulks1/oaken-core"
+Issues = "https://github.com/dfoulks1/oaken-core/issues"
 
 [project.scripts]
 oaken = "oaken_core.cli.commands:main"
