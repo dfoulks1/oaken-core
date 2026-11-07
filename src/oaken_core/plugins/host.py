@@ -585,7 +585,8 @@ class PluginHost:
         rec = self._records.get((kind, name))
         if rec is None or rec.plugin == rec.name:
             return {}
-        return {k: v for k, v in self.tables.table(kind, rec.plugin).items() if k not in ("enabled", "plugin", "class", "stage")}
+        own = {n for e in getattr(rec.instance, "contextual", ()) for n in e.split("|")}  # what an instance must be given is each instance's own: never a default
+        return {k: v for k, v in self.tables.table(kind, rec.plugin).items() if k not in ("enabled", "plugin", "class", "stage") and k not in own}
 
     def effective(self, kind: str, name: str) -> dict[str, Any]:
         """A plugin's settings as it runs on them: an instance's own over what it inherits."""
@@ -628,8 +629,11 @@ class PluginHost:
             rec.started = rec.healthy = False
             await self._announce(rec)
             return
-        if (missing := missing_contextual(tuple(getattr(rec.instance, "contextual", ())), config)):
-            # Enabled, a template deploys instances; it does not run as itself, and that is not a failure.
+        declared = tuple(getattr(rec.instance, "contextual", ()))
+        if declared and (rec.plugin == rec.name or (missing := missing_contextual(declared, config))):
+            # Enabled, a template deploys instances; it does not run as itself, and that is not a failure. A plugin that declares what an
+            # instance must be given is a template in its own table whatever that table holds: settings there are never an instance's.
+            missing = missing_contextual(declared, config) or [c.replace("|", " or ") for c in declared]
             rec.started = rec.healthy = False
             rec.detail = f"add an instance that sets {', '.join(missing)}: the + on a stage's page"
             await self._announce(rec)
@@ -1053,7 +1057,8 @@ class PluginHost:
         return f"needs {' and '.join(label for label, _ in need)}", how
 
     def _is_template(self, rec: _Record) -> bool:
-        return rec.instance is not None and bool(missing_contextual(tuple(getattr(rec.instance, "contextual", ())), self._config(rec)))
+        declared = tuple(getattr(rec.instance, "contextual", ())) if rec.instance is not None else ()
+        return bool(declared) and (rec.plugin == rec.name or bool(missing_contextual(declared, self._config(rec))))  # its own table is always the template
 
     def describe(self, kind: str, name: str) -> dict[str, Any]:
         """What the plugin says about itself, for its page: its docstring, ``setup_help``, ``config_example`` and the settings

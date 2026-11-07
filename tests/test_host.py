@@ -12,7 +12,7 @@ from oaken_core.logging import get_logger
 from oaken_core.errors import NotFound, PluginError
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore
-from oaken_core.plugins.base import BaseLLMAnalyzer, BasePlugin, BaseTriager, command
+from oaken_core.plugins.base import BaseLLMAnalyzer, BasePlugin, BaseProvider, BaseTemplatePlugin, BaseTriager, command
 from oaken_core.plugins.contracts import Health, PluginContext, PluginOpContext
 from oaken_core.plugins.host import PluginHost
 from oaken_core.plugins.kinds import KindRegistry, KindSpec
@@ -470,3 +470,27 @@ async def test_an_llm_analyzer_is_a_kind_base_plus_base_llm_analyzer_in_either_o
     del plain.ctx
     with pytest.raises(AttributeError):  # ctx is set by start()
         await plain.ask(None, BaseModel, content_hash="h")
+
+
+class Account(BaseTemplatePlugin, BaseProvider):
+    """A template: an instance is an account."""
+
+    contextual: ClassVar[tuple[str, ...]] = ("account",)
+    started: ClassVar[list[str]] = []
+
+    async def start(self, ctx: PluginContext) -> None:
+        await super().start(ctx)
+        self.started.append(f"{ctx.name}:{ctx.config.get('account')}")
+
+
+async def test_a_plugin_that_declares_a_template_is_one_in_its_own_table_whatever_the_table_holds(tmp_path: Path, clock: FakeClock) -> None:
+    Account.started.clear()
+    host = make(tmp_path, clock, [STORE, ("provider", "account", Account)], {"provider": {"account": {"account": "old-style"}, "work": {"plugin": "account", "account": "work"}}})
+    await host.start()
+    try:
+        by = {s.name: s for s in host.statuses() if s.kind == "provider"}
+        assert by["account"].template and not by["account"].started  # settings in its own table do not make it run as an account
+        assert by["work"].started and not by["work"].template  # an instance that is given its account runs
+        assert Account.started == ["work:work"]  # and never inherits the template's account
+    finally:
+        await host.stop()
