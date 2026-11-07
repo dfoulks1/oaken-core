@@ -13,7 +13,7 @@
 <a class="skip" href="#main">Skip to the page</a>
 {% include "_icons.html" %}
 <header class="hd">
-  <a class="brand" href="/" aria-label="{{ app_title }} home"><span class="wordmark">{{ wordmark[0] }}<span>{{ wordmark[1] }}</span></span></a>
+  <a class="brand" href="/" aria-label="{{ app_title }} home"><span class="logo" aria-hidden="true"></span><span class="wordmark">{{ wordmark[0] }}<span>{{ wordmark[1] }}</span></span></a>
   <nav class="nav" aria-label="Pages">{% for href, label in nav %}<a href="{{ href }}"{% if href == here or (href != "/" and here.startswith(href ~ "/")) %} aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}</nav>
   {% include "_theme.html" %}
 </header>

@@ -1230,3 +1230,11 @@ async def test_the_schedules_table_says_what_each_one_runs(tmp_path: Path) -> No
     finally:
         await client.aclose()
         await core.host.stop()
+
+
+async def test_the_nav_has_the_logo_beside_the_wordmark_and_the_console_serves_it(rig: Rig) -> None:  # noqa: F811
+    page = (await rig.c.get("/")).text
+    assert '<span class="logo" aria-hidden="true"></span><span class="wordmark">' in page  # the mark, then the name
+    logo = await rig.c.get("/static/logo.png")
+    assert logo.status_code == 200 and logo.headers["content-type"] == "image/png" and logo.content[:4] == b"\x89PNG"
+    assert "mask: url(/static/logo.png)" in (await rig.c.get("/static/oaken.css")).text  # drawn in the palette's brand colour
