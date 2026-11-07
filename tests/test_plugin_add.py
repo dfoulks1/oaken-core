@@ -110,3 +110,9 @@ async def test_the_host_finds_plugins_in_extensions_directories_and_skips_a_worl
         (root / "oaken-enricher-x" / "pyproject.toml").write_text('[project.entry-points."oaken_core.enrichers"]\nx = "m:X"\n')
         root.chmod(0o777 if wide else 0o755)
     assert [e.name for e in extensions.entry_points([str(good), str(bad), str(tmp_path / "missing")], "oaken_core.enrichers")] == ["x"]
+
+
+async def test_plugin_remove_refuses_a_plugin_with_no_class_table(rig: Rig, oaken_home: Path) -> None:  # noqa: F811
+    host = rig.core.client.svc.host
+    with pytest.raises(Exception, match="switch it off"):
+        await host.remove_instance("enricher", "notes")  # a plugin with no class table: switched off, not removed

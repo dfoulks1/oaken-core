@@ -426,7 +426,11 @@ class PluginHost:
         if rec is None:
             raise NotFound(f"no {kind} named {name!r}")
         if rec.plugin == rec.name:
-            raise PluginError(f"{name} is a plugin, not an instance of one: switch it off instead")
+            if not self.tables.tables.get(kind, {}).get(name, {}).get("class"):  # shortcut: only a plugin added by class line can go; entry-point ones have no table to delete
+                raise PluginError(f"{name} is a plugin, not an instance of one: switch it off instead")
+            users = sorted(r.name for r in self._records.values() if r.kind == kind and r.plugin == name and r.name != name)
+            if users:
+                raise PluginError(f"{kind} {name} is the template of {', '.join(users)}: remove those first")
         await self._stop_one(rec)
         del self._records[(kind, name)]
         self.tables.tables.get(kind, {}).pop(name, None)
