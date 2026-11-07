@@ -2,5 +2,16 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://dfoulks1.github.io/oaken-core/</loc></url>
   <url><loc>https://dfoulks1.github.io/oaken-core/adr/index.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/daemon.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/jobs.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/operations.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/overview.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/prompt-safety.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/router.html</loc></url>
   <url><loc>https://dfoulks1.github.io/oaken-core/architecture/software-map.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/architecture/swarm.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/getting-started.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/keyring.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/plugins.html</loc></url>
+  <url><loc>https://dfoulks1.github.io/oaken-core/settings.html</loc></url>
 </urlset>

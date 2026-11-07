@@ -27,7 +27,7 @@
       <button class="btn btn-sm btn-outline-secondary" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button>
     </div>
     <div class="masthead">
-      <img class="logo" src="assets/brand/logo.png" alt="" aria-hidden="true" width="160" height="106">
+      <span class="mark logo" aria-hidden="true"></span>
       <h1 class="display-5">OAKEN CORE</h1>
     </div>
     <div class="d-flex flex-wrap gap-2 mb-3">
@@ -48,7 +48,18 @@
 <h2 id="the-documents">The documents</h2>
 
 <div class="row g-3">
+  <div class="col-md-6"><a class="doc" href="getting-started.html"><div class="s">Start</div><div class="t">Set up Oaken Core from scratch</div><p>A first-time setup of Oaken Core: install, set OAKEN_HOME, oaken start, oaken plugins, oaken plugin add KIND.NAME, and the console on 127.0.0.1:62536.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="keyring.html"><div class="s">Start</div><div class="t">Store credentials in your keyring</div><p>How Oaken Core uses the OS keyring: the service and entry names, oaken secret set, status and delete, what config.toml refuses, and what the no-keyring error means.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="settings.html"><div class="s">Start</div><div class="t">Settings, storage and the event log</div><p>oaken settings get and set, config validate and save, reload, storage and vacuum, the answer cache, the event log, the log and the change log.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/overview.html"><div class="s">Concepts</div><div class="t">Architecture overview</div><p>Intake, labels, queues, jobs, the router, the four doors, the plugin kinds and the databases.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/jobs.html"><div class="s">Concepts</div><div class="t">Events, jobs and the scheduler</div><p>The event bus and logs, the durable job queues with leases and retries, queue pause, and the scheduler.</p></a></div>
   <div class="col-md-6"><a class="doc" href="architecture/software-map.html"><div class="s">Concepts</div><div class="t">Software map</div><p>The layered map of Oaken Core&#39;s components and their build status.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/swarm.html"><div class="s">Concepts</div><div class="t">The swarm</div><p>External agents that lease jobs: opt-in config, scoped tokens, quotas, validated results, and the HTTP and MCP doors they work through.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/daemon.html"><div class="s">Concepts</div><div class="t">The daemon and the local API</div><p>The core daemon: startup and shutdown order, the runtime file, the API token, the Host, Origin and content-type guards, event streaming, the console listener, and the threat model.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="plugins.html"><div class="s">Concepts</div><div class="t">Writing a plugin</div><p>How to write a plugin for core: kinds, BasePlugin and @command, template plugins, config_model, tags, migrations, labels, versions, the UI contract, contract tests and entry points.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/router.html"><div class="s">Concepts</div><div class="t">The model router</div><p>The router ladder (cache, near-duplicate shortcut, capped small model, one escalation), backends and routes, the cache key, the ledger, the daily token budget and Deferred.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/prompt-safety.html"><div class="s">Concepts</div><div class="t">Prompt safety</div><p>UntrustedText and its delimiters, the triage llm plugin as the worked example, structured answers, and the confidential rule: local always, lan on an allowlist, hosted never.</p></a></div>
+  <div class="col-md-6"><a class="doc" href="architecture/operations.html"><div class="s">Concepts</div><div class="t">Operations</div><p>The operation registry, permission classes, the confirm gate and proposals, MCP exposure you control, plugin operations, the OpenAPI document and the CLI exit codes.</p></a></div>
   <div class="col-md-6"><a class="doc" href="adr/index.html"><div class="s">Project</div><div class="t">Architecture decisions</div><p>Every architecture decision record, with its status and date.</p></a></div>
 </div>
 

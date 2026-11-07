@@ -1,0 +1,150 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Store credentials in your keyring · Oaken Core</title>
+<meta name="description" content="How Oaken Core uses the OS keyring: the service and entry names, oaken secret set, status and delete, what config.toml refuses, and what the no-keyring error means.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Store credentials in your keyring · Oaken Core">
+<meta property="og:description" content="How Oaken Core uses the OS keyring: the service and entry names, oaken secret set, status and delete, what config.toml refuses, and what the no-keyring error means.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">Where Oaken keeps a plugin&#39;s passwords and tokens</div>
+    <div class="docnav"><a class="home-link" href="index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link current" href="keyring.html" aria-current="page">Store credentials in your keyring</a>
+      <a class="doc-link" href="settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="architecture/overview.html">Architecture overview</a>
+      <a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="architecture/software-map.html">Software map</a>
+      <a class="doc-link" href="architecture/swarm.html">The swarm</a>
+      <a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="architecture/router.html">The model router</a>
+      <a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="architecture/operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#what-the-keyring-is"><span class="num">1</span>What the keyring is</a>
+      <a class="nav-link" href="#what-is-stored-there"><span class="num">2</span>What is stored there</a>
+      <a class="nav-link" href="#where-secrets-are-refused"><span class="num">3</span>Where secrets are refused</a>
+      <a class="nav-link" href="#store-a-credential"><span class="num">4</span>Store a credential</a>
+      <a class="nav-link" href="#when-there-is-no-keyring"><span class="num">5</span>When there is no keyring</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Store credentials in your keyring</h1>
+    <p class="lead">Core never writes a password or token to a file. A plugin asks your operating system&#39;s keyring to keep it. This page shows the entry names, the commands, and what happens when there is no keyring.</p>
+  </header>
+
+<section id="what-the-keyring-is" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>What the keyring is</h2></div>
+<p>An encrypted store run by your desktop session. Programs ask it to save and fetch small secrets.
+On Linux it is usually GNOME Keyring or KWallet (Secret Service); on macOS, Keychain; on Windows,
+Credential Locker. Your login password normally unlocks it.</p>
+<p>Core uses the Python <code>keyring</code> package. It imports it when a secret is first stored or read, so
+core runs without a keyring until then. If the package is missing, the error says
+<code>no keyring is installed (pip install keyring); secrets need one</code>.</p>
+</section>
+<section id="what-is-stored-there" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>What is stored there</h2></div>
+<p>Each secret is one entry, found by a <strong>service</strong> and a <strong>user</strong> name.</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Part</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Service</td>
+<td>The product's app name: <code>oaken</code> for core.</td>
+</tr>
+<tr>
+<td>User</td>
+<td><code>&lt;kind&gt;:&lt;name&gt;/&lt;key&gt;</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>&lt;kind&gt;:&lt;name&gt;</code> is the plugin instance (<code>provider.socket</code> is kind <code>provider</code>, name <code>socket</code>).
+<code>&lt;key&gt;</code> is what the plugin calls the secret, such as <code>password</code>. Each plugin reaches only its own
+entries, through <code>ctx.secrets</code> (<code>get</code>, <code>set</code>, <code>delete</code>). Two instances of one plugin never see
+each other's. A product built on core has its own app name, so its entries are filed apart.</p>
+</section>
+<section id="where-secrets-are-refused" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>Where secrets are refused</h2></div>
+<p>A secret never goes in <code>config.toml</code>. Core guesses from the words of a key: <code>password</code>, <code>passwd</code>,
+<code>passphrase</code>, <code>secret</code>, <code>token</code>, <code>apikey</code>, <code>api_key</code> and <code>credential(s)</code> are refused. A key that
+ends in <code>file</code>, <code>path</code>, <code>dir</code>, <code>folder</code>, <code>name</code>, <code>url</code> or <code>id</code> is allowed, so <code>client_secret_file</code>
+passes (it names where a secret is kept). So does <code>chunk_tokens</code>: <code>tokens</code> is a count, not <code>token</code>.</p>
+<p>The check runs on every door that writes the file:</p>
+<ul>
+<li><code>oaken config validate</code> and <code>oaken config save</code> (whole file).</li>
+<li><code>oaken plugin add --config</code> and the plugin forms in the console.</li>
+<li>The console's <code>/config</code> editor.</li>
+</ul>
+<p>The error reads: <code>'password' looks like a secret, and secrets are never stored in config.toml; they go in the OS keyring</code>.</p>
+<p>A secret is also never logged, traced or written to an operation's audit row. The input is a
+<code>SecretStr</code>, masked wherever it is dumped.</p>
+</section>
+<section id="store-a-credential" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Store a credential</h2></div>
+<p>Plugins often ship their own sign-in command. Core has three generic ones:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--kind<span class="w"> </span>provider<span class="w"> </span>--name<span class="w"> </span>socket<span class="w"> </span>--key<span class="w"> </span>password<span class="w">   </span><span class="c1"># asks, no echo</span>
+oaken<span class="w"> </span>secret<span class="w"> </span>status<span class="w"> </span>--kind<span class="w"> </span>provider<span class="w"> </span>--name<span class="w"> </span>socket<span class="w"> </span>--key<span class="w"> </span>password<span class="w">   </span><span class="c1"># stored: true or false</span>
+oaken<span class="w"> </span>secret<span class="w"> </span>delete<span class="w"> </span>--kind<span class="w"> </span>provider<span class="w"> </span>--name<span class="w"> </span>socket<span class="w"> </span>--key<span class="w"> </span>password
+</code></pre></div>
+<p>The value is asked for on a terminal without echo. It is never an argument. <code>set</code> is a change, so
+without <code>--yes</code> it shows what would happen and exits 5. <code>set</code> refuses a plugin that is not loaded.
+<code>status</code> never prints the value. None of the three is offered over MCP.</p>
+</section>
+<section id="when-there-is-no-keyring" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>When there is no keyring</h2></div>
+<p>Core stops that call with <code>the OS keyring failed: &lt;ErrorName&gt;</code>. It does not fall back to a file,
+and it does not print the value. Usual causes:</p>
+<ul>
+<li><strong>The keyring is locked.</strong> Unlock it; your login password opens it.</li>
+<li><strong>No Secret Service is running.</strong> Install and start one (for example <code>gnome-keyring</code>).</li>
+<li><strong>No desktop session</strong>, as over SSH or in a container. Run the command from your desktop session,
+or start one with <code>dbus-run-session</code> and unlock a keyring inside it.</li>
+</ul>
+<p><code>MemorySecrets</code> in <code>repo:src/oaken_core/secrets.py</code> keeps secrets in process memory for tests. A
+product can pass its own <code>SecretStore</code> (<code>get</code>, <code>set</code>, <code>delete</code>). Code: <code>repo:src/oaken_core/secrets.py</code>.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>

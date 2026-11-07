@@ -13,7 +13,9 @@
   .cover .lead { max-width: 46rem; }
   .masthead { display: flex; align-items: center; gap: 1.25rem; margin-bottom: .75rem; }
   .masthead h1 { margin: 0; }
-  .cover .logo { width: 7rem; height: auto; flex: none; }
+  .cover .logo { width: 7rem; height: 7rem; flex: none; }
+  .mark { display: inline-block; flex: none; vertical-align: -.45em; margin-right: .2rem; background-color: var(--accent);
+          -webkit-mask: url(brand/logo.png) center / contain no-repeat; mask: url(brand/logo.png) center / contain no-repeat; }  /* the logo's shape, in the theme's accent: right in light and dark */
   .brand img { vertical-align: -.4em; margin-right: .15rem; }
   .doc-section { padding-top: 1.5rem; margin-top: 1.5rem; border-top: 1px solid var(--bs-border-color); }
   .section-head { display: flex; align-items: baseline; gap: .8rem; margin-bottom: .8rem; }

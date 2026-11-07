@@ -1,0 +1,423 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Writing a plugin · Oaken Core</title>
+<meta name="description" content="How to write a plugin for core: kinds, BasePlugin and @command, template plugins, config_model, tags, migrations, labels, versions, the UI contract, contract tests and entry points.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Writing a plugin · Oaken Core">
+<meta property="og:description" content="How to write a plugin for core: kinds, BasePlugin and @command, template plugins, config_model, tags, migrations, labels, versions, the UI contract, contract tests and entry points.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">Kinds, base classes, commands, templates and tests</div>
+    <div class="docnav"><a class="home-link" href="index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="architecture/overview.html">Architecture overview</a>
+      <a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="architecture/software-map.html">Software map</a>
+      <a class="doc-link" href="architecture/swarm.html">The swarm</a>
+      <a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a>
+      <a class="doc-link current" href="plugins.html" aria-current="page">Writing a plugin</a>
+      <a class="doc-link" href="architecture/router.html">The model router</a>
+      <a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="architecture/operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#kinds"><span class="num">1</span>Kinds</a>
+      <a class="nav-link" href="#a-plugin-in-one-screen"><span class="num">2</span>A plugin in one screen</a>
+      <a class="nav-link" href="#what-a-base-class-gives-you"><span class="num">3</span>What a base class gives you</a>
+      <a class="nav-link" href="#template-plugins"><span class="num">4</span>Template plugins</a>
+      <a class="nav-link" href="#the-plugin-api-version"><span class="num">5</span>The plugin API version</a>
+      <a class="nav-link" href="#the-ui-contract"><span class="num">6</span>The UI contract</a>
+      <a class="nav-link" href="#testing"><span class="num">7</span>Testing</a>
+      <a class="nav-link" href="#registering-it"><span class="num">8</span>Registering it</a>
+      <a class="nav-link" href="#what-the-host-does"><span class="num">9</span>What the host does</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Writing a plugin</h1>
+    <p class="lead">Everything core does beyond its pipeline is a plugin: a small class, registered with a Python entry point. Start from a base class, override what your plugin does, and run the contract suite.</p>
+  </header>
+
+<section id="kinds" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>Kinds</h2></div>
+<p>A kind is a role. <code>repo:src/oaken_core/plugins/kinds.py</code> lists the ones core ships. Each names an
+entry-point group and the members a plugin of that kind must have.</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Kind</th>
+<th>Entry-point group</th>
+<th>Must have</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>store</code></td>
+<td><code>oaken_core.stores</code></td>
+<td><code>open</code> (one active; starts first)</td>
+</tr>
+<tr>
+<td><code>auth</code></td>
+<td><code>oaken_core.auth</code></td>
+<td><code>authenticate</code>, <code>authorize</code> (one active)</td>
+</tr>
+<tr>
+<td><code>gateway</code></td>
+<td><code>oaken_core.gateways</code></td>
+<td><code>serve</code></td>
+</tr>
+<tr>
+<td><code>provider</code></td>
+<td><code>oaken_core.providers</code></td>
+<td>nothing (it calls <code>submit</code>)</td>
+</tr>
+<tr>
+<td><code>llm_backend</code></td>
+<td><code>oaken_core.llm_backends</code></td>
+<td><code>model_id</code>, <code>context_window</code>, <code>generate</code></td>
+</tr>
+<tr>
+<td><code>embedder</code></td>
+<td><code>oaken_core.embedders</code></td>
+<td><code>model_id</code>, <code>dimensions</code>, <code>embed</code></td>
+</tr>
+<tr>
+<td><code>vector_store</code></td>
+<td><code>oaken_core.vector_stores</code></td>
+<td><code>upsert</code>, <code>delete</code>, <code>query</code>, <code>stats</code></td>
+</tr>
+<tr>
+<td><code>cache_store</code></td>
+<td><code>oaken_core.cache_stores</code></td>
+<td><code>key</code>, <code>get</code>, <code>put</code>, <code>stats</code>, <code>clear</code></td>
+</tr>
+<tr>
+<td><code>triager</code></td>
+<td><code>oaken_core.triagers</code></td>
+<td><code>version</code>, <code>needs_llm</code>, <code>rank</code>, <code>triage</code></td>
+</tr>
+<tr>
+<td><code>enricher</code></td>
+<td><code>oaken_core.enrichers</code></td>
+<td><code>version</code>, <code>needs_llm</code>, <code>enrich</code></td>
+</tr>
+<tr>
+<td><code>action</code></td>
+<td><code>oaken_core.actions</code></td>
+<td><code>version</code>, <code>needs_llm</code>, <code>routes</code>, <code>act</code></td>
+</tr>
+<tr>
+<td><code>formatter</code></td>
+<td><code>oaken_core.formatters</code></td>
+<td><code>formats</code>, <code>split</code></td>
+</tr>
+<tr>
+<td><code>ingestor</code></td>
+<td><code>oaken_core.ingestors</code></td>
+<td><code>ingest</code> (one active)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Triagers, enrichers and actions are <strong>analyzers</strong>: each is the stage of a queue, and they take part in
+the <code>needs</code> graph. The list is not closed. A product adds a kind with <code>KindRegistry.register</code>.</p>
+<p>The base classes are optional. A kind is a shape, and any object with the right members works. The
+host checks the same rules either way. The bases (<code>BaseTriager</code>, <code>BaseEmbedder</code>, <code>BaseLLMBackend</code>
+and the rest in <code>repo:src/oaken_core/plugins/base.py</code>) give you defaults and tracing.</p>
+</section>
+<section id="a-plugin-in-one-screen" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>A plugin in one screen</h2></div>
+<p>A triager that rejects items with too little text. The test below runs against the code as written
+here.</p>
+<div class="code"><pre class="highlight"><code class="language-python"><span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">ClassVar</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core.intake</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntakeItem</span><span class="p">,</span> <span class="n">Verdict</span><span class="p">,</span> <span class="n">item_text</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core.plugins.base</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseTriager</span><span class="p">,</span> <span class="n">command</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core.plugins.contracts</span><span class="w"> </span><span class="kn">import</span> <span class="n">PluginOpContext</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pydantic</span><span class="w"> </span><span class="kn">import</span> <span class="n">BaseModel</span><span class="p">,</span> <span class="n">Field</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ShortConfig</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">min_chars</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="n">Field</span><span class="p">(</span><span class="n">default</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">ge</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">description</span><span class="o">=</span><span class="s2">"Items shorter than this are rejected."</span><span class="p">)</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">CheckIn</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">text</span><span class="p">:</span> <span class="nb">str</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">CheckOut</span><span class="p">(</span><span class="n">BaseModel</span><span class="p">):</span>
+    <span class="n">verdict</span><span class="p">:</span> <span class="nb">str</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">ShortTriager</span><span class="p">(</span><span class="n">BaseTriager</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">"""Rejects items with too little text."""</span>
+
+    <span class="n">api_version</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">requires_core</span> <span class="o">=</span> <span class="s2">"&gt;=0.0.0"</span>
+    <span class="n">version</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"1"</span>
+    <span class="n">rank</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">20</span>
+    <span class="n">tags</span><span class="p">:</span> <span class="n">ClassVar</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"example"</span><span class="p">,)</span>
+    <span class="n">config_model</span> <span class="o">=</span> <span class="n">ShortConfig</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">triage</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">item</span><span class="p">:</span> <span class="n">IntakeItem</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Verdict</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">item_text</span><span class="p">(</span><span class="n">item</span><span class="p">))</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">min_chars</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">Verdict</span><span class="p">(</span><span class="s2">"reject"</span><span class="p">,</span> <span class="s2">"too short"</span><span class="p">)</span>
+        <span class="k">return</span> <span class="kc">None</span>  <span class="c1"># no opinion: the next triager decides</span>
+
+    <span class="nd">@command</span><span class="p">(</span><span class="s2">"check"</span><span class="p">,</span> <span class="s2">"Say what this triager would do with some text."</span><span class="p">,</span> <span class="nb">input</span><span class="o">=</span><span class="n">CheckIn</span><span class="p">,</span> <span class="n">output</span><span class="o">=</span><span class="n">CheckOut</span><span class="p">)</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">check</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctx</span><span class="p">:</span> <span class="n">PluginOpContext</span><span class="p">,</span> <span class="n">inp</span><span class="p">:</span> <span class="n">CheckIn</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">CheckOut</span><span class="p">:</span>
+        <span class="n">v</span> <span class="o">=</span> <span class="k">await</span> <span class="bp">self</span><span class="o">.</span><span class="n">triage</span><span class="p">(</span><span class="n">IntakeItem</span><span class="p">(</span><span class="s2">"s"</span><span class="p">,</span> <span class="s2">"try"</span><span class="p">,</span> <span class="n">inp</span><span class="o">.</span><span class="n">text</span><span class="p">,</span> <span class="p">{}))</span>
+        <span class="k">return</span> <span class="n">CheckOut</span><span class="p">(</span><span class="n">verdict</span><span class="o">=</span><span class="n">v</span><span class="o">.</span><span class="n">kind</span> <span class="k">if</span> <span class="n">v</span> <span class="k">else</span> <span class="s2">"pass"</span><span class="p">)</span>
+</code></pre></div>
+<div class="code"><pre class="highlight"><code class="language-python"><span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core</span><span class="w"> </span><span class="kn">import</span> <span class="n">__version__</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core.plugins.kinds</span><span class="w"> </span><span class="kn">import</span> <span class="n">KindRegistry</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core.plugins.validate</span><span class="w"> </span><span class="kn">import</span> <span class="n">check_plugin</span><span class="p">,</span> <span class="n">check_started</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">oaken_core.testing.contracts</span><span class="w"> </span><span class="kn">import</span> <span class="n">running</span>
+
+
+<span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">test_short_triager</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+    <span class="n">spec</span> <span class="o">=</span> <span class="n">KindRegistry</span><span class="o">.</span><span class="n">shipped</span><span class="p">()</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"triager"</span><span class="p">)</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">problems</span> <span class="o">=</span> <span class="n">check_plugin</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="s2">"short"</span><span class="p">,</span> <span class="n">ShortTriager</span><span class="p">(),</span> <span class="n">__version__</span><span class="p">)</span>
+    <span class="k">assert</span> <span class="ow">not</span> <span class="n">problems</span>
+    <span class="k">async</span> <span class="k">with</span> <span class="n">running</span><span class="p">(</span><span class="n">ShortTriager</span><span class="p">(),</span> <span class="s2">"triager"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"min_chars"</span><span class="p">:</span> <span class="mi">5</span><span class="p">})</span> <span class="k">as</span> <span class="n">t</span><span class="p">:</span>
+        <span class="k">assert</span> <span class="ow">not</span> <span class="n">check_started</span><span class="p">(</span><span class="n">spec</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+        <span class="k">assert</span> <span class="p">(</span><span class="k">await</span> <span class="n">t</span><span class="o">.</span><span class="n">triage</span><span class="p">(</span><span class="n">IntakeItem</span><span class="p">(</span><span class="s2">"s1"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"hi"</span><span class="p">,</span> <span class="p">{})))</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s2">"reject"</span>
+        <span class="k">assert</span> <span class="k">await</span> <span class="n">t</span><span class="o">.</span><span class="n">triage</span><span class="p">(</span><span class="n">IntakeItem</span><span class="p">(</span><span class="s2">"s2"</span><span class="p">,</span> <span class="s2">"x"</span><span class="p">,</span> <span class="s2">"long enough"</span><span class="p">,</span> <span class="p">{}))</span> <span class="ow">is</span> <span class="kc">None</span>
+        <span class="k">assert</span> <span class="p">[</span><span class="n">op</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">op</span> <span class="ow">in</span> <span class="n">t</span><span class="o">.</span><span class="n">operations</span><span class="p">()]</span> <span class="o">==</span> <span class="p">[</span><span class="s2">"check"</span><span class="p">]</span>
+</code></pre></div>
+<p><code>check_plugin</code> is what the host runs at load. <code>running</code> starts the plugin as the host does and stops
+it after. With <code>asyncio_mode = &quot;auto&quot;</code> in pytest, the test needs no decorator.</p>
+</section>
+<section id="what-a-base-class-gives-you" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>What a base class gives you</h2></div>
+<p><code>BasePlugin</code> carries class attributes the host reads without importing your code's side effects:</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kind</code></td>
+<td>Set by the kind's base (<code>triager</code>, <code>llm_backend</code>...).</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>Your plugin's version. For an analyzer it is part of the answer cache key: bump it when the output could change.</td>
+</tr>
+<tr>
+<td><code>api_version</code></td>
+<td>The plugin API you wrote against. See below.</td>
+</tr>
+<tr>
+<td><code>requires_core</code></td>
+<td>A version range of core (<code>&quot;&gt;=0.1,&lt;0.2&quot;</code>). Empty: any. The host refuses a plugin outside it.</td>
+</tr>
+<tr>
+<td><code>config_model</code></td>
+<td>A pydantic model of your settings. <code>start()</code> parses <code>ctx.config</code> into <code>self.config</code> and raises a <code>PluginError</code> naming the bad fields. The JSON Schema builds the console's settings form.</td>
+</tr>
+<tr>
+<td><code>requires_config</code></td>
+<td>Settings you cannot run without. While one is missing the plugin stays off, with the reason shown, and starts when it is set.</td>
+</tr>
+<tr>
+<td><code>enabled_default</code></td>
+<td><code>False</code> makes the plugin opt-in (it costs money or reaches a network).</td>
+</tr>
+<tr>
+<td><code>fallback</code></td>
+<td><code>True</code>: used only while no other plugin of its kind is installed.</td>
+</tr>
+<tr>
+<td><code>needs</code></td>
+<td>For an analyzer, the stored results it reads (<code>&quot;&lt;analyzer&gt;@&lt;relation&gt;&quot;</code>). Must be acyclic.</td>
+</tr>
+<tr>
+<td><code>tags</code></td>
+<td>What the plugin is for beyond its kind (<code>(&quot;mail&quot;,)</code>). <code>oaken plugins --tag</code> filters on it.</td>
+</tr>
+<tr>
+<td><code>migrations_dir</code></td>
+<td>A folder of <code>NNNN_name.sql</code> files for tables you own.</td>
+</tr>
+<tr>
+<td><code>setup_help</code>, <code>config_example</code></td>
+<td>Plain words and a config snippet, shown where people set the plugin up.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Methods you may override: <code>start(ctx)</code>, <code>stop()</code>, <code>health()</code>, <code>labels()</code>, <code>ui()</code>, <code>row()</code>,
+<code>operations()</code>, <code>job_handlers()</code>, <code>scheduled_tasks()</code>, <code>setting_choices()</code>. Every call a plugin
+implements from the kind's contract (<code>generate</code>, <code>embed</code>, <code>triage</code>, and so on) is traced with no
+code in the plugin. <code>self.trace(kind, **data)</code> adds an event of your own.</p>
+<p>Plugins run in-process and are not sandboxed. The contract keeps the code tidy. It does not contain a
+hostile plugin. Install only what you trust.</p>
+<h3 id="commands">Commands</h3>
+<p><code>@command(name, summary, input=, output=)</code> offers a method as an operation named <code>&lt;plugin&gt;.&lt;name&gt;</code>.
+It is in the operation registry like any core operation, so the CLI builds a verb for it
+(<code>oaken &lt;plugin&gt; &lt;name&gt;</code>, one flag per input field). <code>permission</code> is <code>read</code> (default) or <code>mutate</code>
+(confirmed). For a <code>mutate</code>, <code>preview</code> names a method that says what would change. A command is off
+over MCP until the user turns it on (<code>mcp=&quot;never&quot;</code> keeps it off for good). A plugin that fails to load
+takes its commands with it.</p>
+<p>Do not write <code>enable</code>, <code>disable</code>, <code>reload</code> or settings commands. Core does those for every plugin
+(the operations <code>plugin_enable</code>, <code>plugin_disable</code>, <code>plugin_reload</code>).</p>
+<h3 id="tables-labels-and-deferred">Tables, labels and Deferred</h3>
+<ul>
+<li><strong>Tables.</strong> Set <code>migrations_dir</code> and name your tables <code>&lt;plugin&gt;_...</code>. The host applies them once
+per plugin (with its own version table), in the same run as core's, before <code>start</code>. You get <code>ctx.db</code>.</li>
+<li><strong>Labels.</strong> <code>labels()</code> returns the label keys you define. Core reserves <code>queue</code>, <code>priority</code> and
+<code>confidential</code>. A clash switches the plugin off.</li>
+<li><strong>Deferred.</strong> Raise <code>oaken_core.errors.Deferred(message, retry_after)</code> when something you need is
+down or spent. The job goes back to the queue and the attempt is not counted.</li>
+</ul>
+<h3 id="asking-a-model">Asking a model</h3>
+<p>An analyzer that needs a model adds <code>BaseLLMAnalyzer</code> (<code>class Mine(BaseLLMAnalyzer, BaseTriager)</code>),
+declares <code>prompt</code>, <code>guard</code> and a default <code>route</code>, and calls <code>self.ask(request, Answer, content_hash=...)</code>.
+See the <a href="architecture/router.html">router</a> and <a href="architecture/prompt-safety.html">prompt safety</a>. For
+embeddings and nearest-example lookups add <code>BaseVecAnalyzer</code>. <code>BaseMultitenant</code> says several workers
+may run the plugin at once.</p>
+</section>
+<section id="template-plugins" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Template plugins</h2></div>
+<p>A template runs only as named instances, each given what makes it what it is. The <code>llm</code> triager is
+one: every instance has its own <code>criteria</code>.</p>
+<div class="code"><pre class="highlight"><code class="language-python"><span class="k">class</span><span class="w"> </span><span class="nc">Mine</span><span class="p">(</span><span class="n">BaseTemplatePlugin</span><span class="p">,</span> <span class="n">BaseTriager</span><span class="p">):</span>
+    <span class="n">contextual</span> <span class="o">=</span> <span class="p">(</span><span class="s2">"criteria"</span><span class="p">,)</span>
+</code></pre></div>
+<p><code>contextual</code> lists the settings an instance must set. A template with an empty <code>contextual</code> raises
+<code>TypeError</code> at class creation. Bare, the plugin never starts. The console shows a template pill, and
+a <strong>+</strong> makes an instance. An entry <code>a|b</code> means one of the two is enough. An instance is a config
+table that says which template it is:</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.triager.llm_fast]</span>
+<span class="n">plugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"llm"</span>
+<span class="n">stage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"signal_triage"</span>
+<span class="n">criteria</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"A company that could buy a vector database."</span>
+</code></pre></div>
+<p>Tables are <code>[plugins.&lt;kind&gt;.&lt;name&gt;]</code>. The keys <code>enabled</code>, <code>plugin</code>, <code>class</code>, <code>stage</code>, <code>locality</code>,
+<code>concurrency</code>, <code>route</code>, <code>prompt</code> and <code>guard</code> belong to the host. Your <code>ctx.config</code> never holds them.
+<code>class = &quot;pkg.mod:Class&quot;</code> loads a class with no entry point. Use <code>setup_help</code> and <code>config_example</code> to
+say what the template is for.</p>
+</section>
+<section id="the-plugin-api-version" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>The plugin API version</h2></div>
+<p><code>PLUGIN_API_VERSION</code> (now 1, in <code>repo:src/oaken_core/plugins/contracts.py</code>) is the shape of the
+contracts. A plugin whose <code>api_version</code> differs is refused, and the reason shows beside it. Plugin
+authors should set it explicitly, as the example does. <code>requires_core</code> is the separate, finer check
+against core's own version. See <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>.</p>
+</section>
+<section id="the-ui-contract" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>The UI contract</h2></div>
+<p>A plugin declares its console UI as data, never markup (<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0018-a-web-ui-contract-for-plugins.md">ADR 0018</a>).
+Override <code>ui()</code> and return a <code>UiSpec</code> (<code>repo:src/oaken_core/plugins/ui.py</code> checks it):</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Part</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fields</code></td>
+<td>Overrides for settings the config schema already made (label, kind, help, choices).</td>
+</tr>
+<tr>
+<td><code>sections</code>, <code>buttons</code></td>
+<td>Group settings; run one of the plugin's own operations (no input).</td>
+</tr>
+<tr>
+<td><code>pages</code></td>
+<td>A form core serves: <code>load</code> (a read operation), optional <code>test</code>, <code>submit</code>, and <code>order</code> for a list the user reorders by typing positions.</td>
+</tr>
+<tr>
+<td><code>template</code></td>
+<td>Set by <code>BaseTemplatePlugin.template_ui()</code>.</td>
+</tr>
+<tr>
+<td><code>row</code></td>
+<td>The pills and buttons in the plugin's table row (<code>row()</code>).</td>
+</tr>
+</tbody>
+</table></div>
+<p>A field kind is <code>text</code>, <code>number</code>, <code>bool</code>, <code>enum</code>, <code>list</code> or <code>textarea</code>. A button or page may call only
+the plugin's own operations. Core owns the HTML, escaping and CSRF. If <code>check_ui</code> finds a problem, core
+ignores the spec and builds the settings modal from the schema. Without <code>ui()</code>, that is what you get.</p>
+</section>
+<section id="testing" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>Testing</h2></div>
+<p>Contract suites live in <code>repo:src/oaken_core/testing/contracts.py</code>. There is one for each of four
+kinds: <code>EmbedderContract</code>, <code>LLMContract</code>, <code>VectorStoreContract</code> and <code>CacheContract</code>. Use one as a
+pytest mixin and override the fixture:</p>
+<div class="code"><pre class="highlight"><code class="language-python"><span class="k">class</span><span class="w"> </span><span class="nc">TestMyEmbedder</span><span class="p">(</span><span class="n">EmbedderContract</span><span class="p">):</span>
+    <span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">embedder</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">MyEmbedder</span><span class="p">()</span>
+</code></pre></div>
+<p>Or in one call, <code>await verify_embedder(MyEmbedder)</code> (also <code>verify_llm</code>, <code>verify_vector_store</code>,
+<code>verify_cache</code>), which runs every rule and raises one error listing all failures. Add
+<code>embedder_config</code> (and <code>llm_config</code>, <code>store_config</code>) for a plugin that needs settings. The suites check
+the host's own validity rules too. Other kinds have no suite yet: test them as the example does.</p>
+<p><code>repo:src/oaken_core/router/stub.py</code> gives a scripted <code>StubBackend</code>, a <code>StubEmbedder</code> and
+<code>MemoryVectors</code> for testing code that uses a model, with no network.</p>
+</section>
+<section id="registering-it" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>Registering it</h2></div>
+<p>Add an entry point in your package's <code>pyproject.toml</code>, in the group of your kind. The entry-point
+name is the plugin's name. Core's own plugins do exactly this.</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[project.entry-points.</span><span class="s2">"oaken_core.triagers"</span><span class="k">]</span>
+<span class="n">short</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"my_package.short:ShortTriager"</span>
+</code></pre></div>
+<p>Install the package in the same environment as core and core finds it. <code>oaken plugin add KIND.NAME</code>
+writes the config table. <code>oaken plugins</code> lists the plugins in the <code>oaken-plugins</code> package and your
+<code>[extensions] dirs</code>, with <code>--kind</code> and <code>--tag</code> filters.</p>
+</section>
+<section id="what-the-host-does" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>What the host does</h2></div>
+<ul>
+<li><strong>Load.</strong> Imports the plugin and checks it: <code>api_version</code>, <code>requires_core</code>, the members of its
+kind, its commands, jobs and UI. It reports every problem at once.</li>
+<li><strong>Start.</strong> Calls <code>start(ctx)</code>. The store starts first, then core's migrations, then the rest.</li>
+<li><strong>Watch.</strong> Polls <code>health()</code>. A plugin that fails to load, start or answer is marked unhealthy,
+logged, announced as <code>PluginHealthChanged</code>, and left out of lookups. One whose <code>start()</code> failed is
+retried at each check.</li>
+<li><strong>Stop.</strong> Calls <code>stop()</code> once.</li>
+</ul>
+<p>Core never stops because a plugin did.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>

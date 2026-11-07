@@ -11,7 +11,7 @@
 <a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
 <header class="topbar d-lg-none">
   <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
-  <span class="brand"><img src="{{ prefix }}assets/brand/favicon.png" alt="" aria-hidden="true" width="24" height="24"> {{ site.title|upper }}</span>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> {{ site.title|upper }}</span>
 </header>
 <nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
   <div class="offcanvas-header d-lg-none">
@@ -19,7 +19,7 @@
     <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
   </div>
   <div class="offcanvas-body"><div class="sidebar-inner">
-    <div class="top"><a class="brand" href="{{ home_href }}"><img src="{{ prefix }}assets/brand/favicon.png" alt="" aria-hidden="true" width="28" height="28"> {{ site.title|upper }}</a>
+    <div class="top"><a class="brand" href="{{ home_href }}"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> {{ site.title|upper }}</a>
       <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
     <div class="what">{{ page.subtitle }}</div>
     <div class="docnav"><a class="home-link" href="{{ home_href }}">&#8962; Home</a>

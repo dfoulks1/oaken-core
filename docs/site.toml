@@ -14,6 +14,10 @@ home = "index.md"
 
 # Navigation groups, in display order.
 [[groups]]
+id = "start"
+name = "Start"
+
+[[groups]]
 id = "concepts"
 name = "Concepts"
 
@@ -23,6 +27,50 @@ name = "Project"
 
 [check]
 allow_hosts = ["www.apache.org"]
+
+[[pages]]
+id = "getting-started"
+file = "getting-started.md"
+
+[[pages]]
+id = "keyring"
+file = "keyring.md"
+
+[[pages]]
+id = "settings"
+file = "settings.md"
+
+[[pages]]
+id = "plugins"
+file = "plugins.md"
+
+[[pages]]
+id = "architecture/overview"
+file = "architecture/overview.md"
+
+[[pages]]
+id = "architecture/jobs"
+file = "architecture/jobs.md"
+
+[[pages]]
+id = "architecture/daemon"
+file = "architecture/daemon.md"
+
+[[pages]]
+id = "architecture/operations"
+file = "architecture/operations.md"
+
+[[pages]]
+id = "architecture/swarm"
+file = "architecture/swarm.md"
+
+[[pages]]
+id = "architecture/router"
+file = "architecture/router.md"
+
+[[pages]]
+id = "architecture/prompt-safety"
+file = "architecture/prompt-safety.md"
 
 [[pages]]
 id = "architecture/software-map"

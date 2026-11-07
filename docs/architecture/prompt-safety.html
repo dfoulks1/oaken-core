@@ -1,0 +1,179 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompt safety · Oaken Core</title>
+<meta name="description" content="UntrustedText and its delimiters, the triage llm plugin as the worked example, structured answers, and the confidential rule: local always, lan on an allowlist, hosted never.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Prompt safety · Oaken Core">
+<meta property="og:description" content="UntrustedText and its delimiters, the triage llm plugin as the worked example, structured answers, and the confidential rule: local always, lan on an allowlist, hosted never.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="../assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="../assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="../index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">How outside text reaches a language model without becoming an instruction</div>
+    <div class="docnav"><a class="home-link" href="../index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="../getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="../keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="../settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="overview.html">Architecture overview</a>
+      <a class="doc-link" href="jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="software-map.html">Software map</a>
+      <a class="doc-link" href="swarm.html">The swarm</a>
+      <a class="doc-link" href="daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="../plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="router.html">The model router</a>
+      <a class="doc-link current" href="prompt-safety.html" aria-current="page">Prompt safety</a>
+      <a class="doc-link" href="operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="../adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#the-rule"><span class="num">1</span>The rule</a>
+      <a class="nav-link" href="#the-worked-example-the-llm-triager"><span class="num">2</span>The worked example: the llm triager</a>
+      <a class="nav-link" href="#structured-answers"><span class="num">3</span>Structured answers</a>
+      <a class="nav-link" href="#confidential-items"><span class="num">4</span>Confidential items</a>
+      <a class="nav-link" href="#what-this-does-not-prove"><span class="num">5</span>What this does not prove</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Prompt safety</h1>
+    <p class="lead">Outside text is data. It enters a prompt only inside a fenced block with a fresh random nonce. The instructions are written in code. The answer is JSON that is checked, never run.</p>
+  </header>
+
+<section id="the-rule" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>The rule</h2></div>
+<p>An item can say anything, including &quot;ignore your instructions&quot;. So core keeps item text away from the
+instructions:</p>
+<ul>
+<li>
+<p>The <strong>system prompt</strong> is the plugin's own text. <code>LLMRequest.system</code> is for that and nothing else.</p>
+</li>
+<li>
+<p>Outside text goes only in the <strong>user turn</strong>, as <code>UntrustedText</code> (<code>repo:src/oaken_core/untrusted.py</code>).
+It has no <code>str()</code> (calling it raises <code>TypeError</code>), so it cannot slip into an f-string or a log line.
+The one way to show it to a model is <code>render()</code>, which fences it:</p>
+<div class="code"><pre class="highlight"><code class="language-text">&lt;&lt;&lt;DATA label=item nonce=3f9c2a71d04be856&gt;&gt;&gt;
+...the item text...
+&lt;&lt;&lt;END nonce=3f9c2a71d04be856&gt;&gt;&gt;
+</code></pre></div>
+</li>
+<li>
+<p>The nonce is new on every call, so the text cannot know it ahead of time. Text that looks like a
+delimiter is neutralized first. Runs of two or more <code>&lt;</code> or <code>&gt;</code> (and look-alikes such as full-width
+or angle-quote characters) become <code>‹</code> and <code>›</code>. Invisible format characters (zero-width,
+bidirectional controls) are removed. A single <code>&lt;</code>, as in <code>&lt;a@b.example&gt;</code>, stays.</p>
+</li>
+<li>
+<p>The plugin's <code>guard</code> text tells the model that fenced text is data, never to obey it, and to answer
+only with the JSON the schema asks for. That is a request, not a guarantee.</p>
+</li>
+</ul>
+</section>
+<section id="the-worked-example-the-llm-triager" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>The worked example: the llm triager</h2></div>
+<p><code>repo:src/oaken_core/triage/llm.py</code> is the pattern. It asks a model whether an item meets the owner's
+<code>criteria</code>.</p>
+<ul>
+<li><code>PROMPT</code> and <code>GUARD</code> are class constants. The owner may override them in the plugin's table
+(<code>prompt</code>, <code>guard</code>); the plugin reads them with <code>effective_prompt()</code> and <code>effective_guard()</code>.</li>
+<li>The criteria are the owner's own words. They go in the system text. The item and its source go
+in as two <code>UntrustedText</code> parts, labelled <code>item</code> and <code>source</code>.</li>
+<li>The answer is a pydantic model (<code>verdict</code>: accept, reject or unsure; <code>reason</code>; <code>confidence</code>). The
+JSON schema goes in the request. The reason is cut to twenty words.</li>
+<li>The cache key includes a hash of the criteria, so changing them never returns an old answer.</li>
+<li><code>oaken llm try</code> asks about some text without submitting anything.</li>
+</ul>
+<p>A plugin asks through <code>BaseLLMAnalyzer.ask()</code>, which hands the request to the <a href="router.html">router</a>.</p>
+</section>
+<section id="structured-answers" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>Structured answers</h2></div>
+<p>The router validates every reply against the plugin's answer model. A reply that is not JSON, or does
+not fit, counts as a bad answer. It gets one escalation to a larger model, if the route names one.
+Then the call raises <code>AIBackendError</code> and stores nothing. Error text names the fields that were wrong
+(never the input or the reply). Tokens spent on a bad answer are still counted in the ledger.</p>
+<p>Output is capped (<code>[router] default_output_tokens</code>, 256 unless the request sets its own). Input is
+cut to the backend's context window (and to <code>default_input_tokens</code>, 2000). Later parts are cut first.</p>
+</section>
+<section id="confidential-items" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Confidential items</h2></div>
+<p>An item labelled <code>confidential = &quot;true&quot;</code> (a reserved label) must stay off remote machines. The router
+reads each backend's <code>locality</code> from its table, <code>[plugins.llm_backend.&lt;name&gt;]</code>:</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Locality</th>
+<th>A confidential call may use it</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>local</code></td>
+<td>Always.</td>
+</tr>
+<tr>
+<td><code>lan</code></td>
+<td>Only if its name is in <code>[router] lan_allowlist</code>.</td>
+</tr>
+<tr>
+<td><code>hosted</code></td>
+<td>Never.</td>
+</tr>
+</tbody>
+</table></div>
+<p>A backend that does not say counts as <code>hosted</code>. So does a locality core does not know (it logs an
+error). A disallowed backend is skipped, including in <code>fallback</code> and <code>escalate</code>. If none is left, the
+router raises <code>ConfidentialRefused</code>. It never falls back to a remote box. The same rule covers the
+embedder.</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[router]</span>
+<span class="n">lan_allowlist</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"desk"</span><span class="p">]</span>
+
+<span class="k">[plugins.llm_backend.desk]</span>
+<span class="n">plugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"ollama"</span>
+<span class="n">locality</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"lan"</span>
+</code></pre></div>
+</section>
+<section id="what-this-does-not-prove" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>What this does not prove</h2></div>
+<p>Delimiters, nonces and a schema make an attack harder and make a success visible. They do not make a
+model obey. A model can still be talked into a wrong answer, which is why answers are validated,
+never executed, and never trigger an action by themselves. The unit tests check what is sent and what
+is refused (<code>tests/test_untrusted.py</code>, <code>tests/test_triage_llm.py</code>). They cannot show how a given model
+behaves when it reads hostile text. That needs a live run against a real model. Core does not yet
+lint plugin source for prompts built from raw strings (oaken-mail does); a plugin author keeps outside
+text out of <code>system</code> by hand.</p>
+<p>The answer cache holds text derived from items, so treat it as sensitive as the items. <code>cache_clear</code>
+removes it, all of it or one analyzer's.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="../assets/site.js"></script>
+
+
+</body>
+</html>

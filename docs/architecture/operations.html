@@ -1,0 +1,251 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Operations · Oaken Core</title>
+<meta name="description" content="The operation registry, permission classes, the confirm gate and proposals, MCP exposure you control, plugin operations, the OpenAPI document and the CLI exit codes.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Operations · Oaken Core">
+<meta property="og:description" content="The operation registry, permission classes, the confirm gate and proposals, MCP exposure you control, plugin operations, the OpenAPI document and the CLI exit codes.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="../assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="../assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="../index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">Every capability is one typed operation, with a permission class and a confirm gate</div>
+    <div class="docnav"><a class="home-link" href="../index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="../getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="../keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="../settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="overview.html">Architecture overview</a>
+      <a class="doc-link" href="jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="software-map.html">Software map</a>
+      <a class="doc-link" href="swarm.html">The swarm</a>
+      <a class="doc-link" href="daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="../plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="router.html">The model router</a>
+      <a class="doc-link" href="prompt-safety.html">Prompt safety</a>
+      <a class="doc-link current" href="operations.html" aria-current="page">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="../adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#one-registry-four-doors"><span class="num">1</span>One registry, four doors</a>
+      <a class="nav-link" href="#permission-classes"><span class="num">2</span>Permission classes</a>
+      <a class="nav-link" href="#the-confirm-gate"><span class="num">3</span>The confirm gate</a>
+      <a class="nav-link" href="#what-an-agent-is-offered"><span class="num">4</span>What an agent is offered</a>
+      <a class="nav-link" href="#plugin-operations"><span class="num">5</span>Plugin operations</a>
+      <a class="nav-link" href="#cli-exit-codes"><span class="num">6</span>CLI exit codes</a>
+      <a class="nav-link" href="#not-built-yet"><span class="num">7</span>Not built yet</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Operations</h1>
+    <p class="lead">The CLI, the console and the MCP server do not each decide what is safe. They all call one registry of typed operations, and the rules live in code: a permission class on every operation, a confirm gate on every change, and a ceiling on what an agent may ever be offered.</p>
+  </header>
+
+<section id="one-registry-four-doors" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>One registry, four doors</h2></div>
+<p>An operation has a name, a one-line summary, input and output models (pydantic), a permission class
+and a handler. <code>GET /v1/operations</code> lists them with their JSON Schemas. The OpenAPI 3.1 document at
+<code>/v1/openapi.json</code> is derived from the same models, so it cannot disagree with the code. Each
+operation is <code>POST /v1/operations/&lt;name&gt;</code>, and there is no route written by hand for any of them.</p>
+<pre class="mermaid">flowchart LR
+  CLI --&gt; C[CoreClient]
+  UI[console] --&gt; C
+  MCP --&gt; C
+  API[HTTP API] --&gt; C
+  C --&gt; G{gate} --&gt; H[handler] --&gt; A[change log]
+</pre><noscript><pre><code>flowchart LR
+  CLI --&gt; C[CoreClient]
+  UI[console] --&gt; C
+  MCP --&gt; C
+  API[HTTP API] --&gt; C
+  C --&gt; G{gate} --&gt; H[handler] --&gt; A[change log]
+</code></pre></noscript>
+<p>A caller says which door it came through: <code>cli</code>, <code>ui</code>, <code>mcp</code> or <code>internal</code>. The transport sets that,
+never the caller. An <code>mcp</code> caller is always an agent, and a <code>cli</code> or <code>ui</code> caller always acts for the
+user. Only a person can confirm.</p>
+<p>Core operations are plain names (<code>queue_list</code>, <code>label_set</code>). A name has a group: <code>queue_requeue</code> is
+<code>queue requeue</code> on the CLI, and the group must prefix the name. A plugin's operations are
+<code>&lt;plugin&gt;.&lt;name&gt;</code> and sit under the plugin on the CLI.</p>
+</section>
+<section id="permission-classes" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Permission classes</h2></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Class</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>read</code></td>
+<td>Changes nothing.</td>
+</tr>
+<tr>
+<td><code>mutate</code></td>
+<td>Changes something. Needs confirming.</td>
+</tr>
+<tr>
+<td><code>send</code></td>
+<td>Reserved. Refused in this version, and never offered over MCP.</td>
+</tr>
+</tbody>
+</table></div>
+<p>Defining an operation that breaks a rule fails at import, so it cannot ship: a bad name, a <code>send</code> that
+could be offered over MCP, a <code>mutate</code> an agent can reach that has no preview (it could not say what it
+would change), or a plugin operation that starts <code>on</code> over MCP.</p>
+</section>
+<section id="the-confirm-gate" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>The confirm gate</h2></div>
+<p>Every call goes through <code>CoreClient.call</code>, in this order:</p>
+<ol>
+<li><strong>Exposure.</strong> An MCP caller gets &quot;not available&quot; for anything not offered to it, in the same words
+whether it is switched off, can never be offered, or this agent was not granted it.</li>
+<li><strong>Input.</strong> It must parse. The error names the field, never the value.</li>
+<li><strong>Class.</strong> <code>send</code> is refused.</li>
+<li><strong>Confirmation, for <code>mutate</code>.</strong>
+<ul>
+<li>A person at the CLI or console confirms by passing <code>confirm</code> (<code>--yes</code> on the CLI), meaning they
+asked for exactly this.</li>
+<li>An agent cannot. It gets a <strong>proposal</strong>: a summary, what would change (ids with before and
+after), a count, and a single-use <code>confirmation_token</code>. Nothing has changed yet. It calls again
+with the token, which is accepted only for the same operation, the same input (by hash) and the
+same caller (class, actor and agent id).</li>
+</ul>
+</li>
+<li><strong>Run, validate the output, audit.</strong></li>
+</ol>
+<p>Tokens are random, kept in memory only (a restart forgets them, which is the safe direction), and
+stored as a hash. They last <code>[operations] confirm_ttl_seconds</code> (300 by default) and are burned by any
+attempt to use them, right or wrong. A caller can hold at most <code>max_pending_confirmations</code> (64) at
+once. A proposal lists at most <code>proposal_changes_shown</code> (20) changes and always carries the true
+count.</p>
+<p>The audit row is a change-log entry, <code>call:&lt;operation&gt;</code>, naming the door and the agent if any. It holds
+a hash of the input, never the input, because an input can hold what a person typed. The registry
+writes it for a confirmed <code>mutate</code>, and for any operation declared <code>audit=&quot;always&quot;</code> (the agent job
+protocol, so what an agent did is on the record).</p>
+</section>
+<section id="what-an-agent-is-offered" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>What an agent is offered</h2></div>
+<p>Each operation has a <strong>ceiling</strong> fixed in code: <code>never</code>, <code>off</code> or <code>on</code>.</p>
+<ul>
+<li><code>never</code>: cannot be offered over MCP, whatever you set. Managing agents, editing exposure itself,
+the <code>mcp_power</code> switch and similar are <code>never</code>.</li>
+<li><code>off</code>: may be offered, and is not until you turn it on.</li>
+<li><code>on</code>: offered by default.</li>
+</ul>
+<p>You can lower an operation, or a whole plugin, from the default, and raise one up to its ceiling.
+Exposure rows live in the database (<code>operation_settings</code>) and change through <code>exposure_set</code>, which is
+<code>never</code> itself, so an agent cannot widen its own reach. Every change is logged. In <code>config.toml</code>:</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[mcp.allowed]</span>
+<span class="n">status</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">my_plugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">     </span><span class="c1"># a plugin name turns all of its operations on or off</span>
+
+<span class="k">[operations]</span>
+<span class="n">lift_never</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span><span class="w">       </span><span class="c1"># operations whose `never` ceiling this file lifts, by name</span>
+</code></pre></div>
+<p>The <code>[mcp.allowed]</code> table is the source of truth for its own rows: they are rewritten on every start,
+and a key removed from the file drops its row. An unknown name, or a <code>never</code> operation, is warned about
+and skipped, so a typo in a headless file does not stop startup. <code>lift_never</code> is the one way past a
+ceiling. It lowers <code>never</code> to <code>off</code> (still off until turned on), only someone who can edit the file can
+do it, and no operation can.</p>
+<p>An <strong>agent</strong> on <code>/mcp/agent</code> is also bound by what it was granted. It may call the job protocol
+(<code>job_claim</code>, <code>job_heartbeat</code>, <code>job_complete</code>, <code>job_fail</code>; see <a href="swarm.html">the swarm</a>) with no grant,
+because its token's own scope bounds it. Anything else needs a grant by name or by <code>plugin:&lt;name&gt;</code>, and
+the ceiling stays above any grant. A revoke or a changed grant applies at once.</p>
+<p>The person's MCP door also has a master switch, <code>[api] mcp_enabled</code>. Results over MCP are cut at
+<code>[api] mcp_max_result_bytes</code> (256000), and a result that holds outside text is fenced as data.</p>
+</section>
+<section id="plugin-operations" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Plugin operations</h2></div>
+<p>A plugin can offer operations, named <code>&lt;plugin&gt;.&lt;name&gt;</code>. They get the same gate, the same audit and
+the same ceiling rules, with these differences:</p>
+<ul>
+<li>they start <strong>off</strong> over MCP (a plugin cannot declare itself <code>on</code>);</li>
+<li>the handler gets the context the plugin host builds for it, not the database;</li>
+<li>a failure inside a plugin is reduced to its type, because it could quote private text;</li>
+<li>a call has a timeout, and a plugin that is not healthy offers nothing.</li>
+</ul>
+<p>Plugin operations are looked up live, so one that goes unhealthy drops out and returns with the plugin.
+See <a href="../plugins.html">plugins</a>.</p>
+</section>
+<section id="cli-exit-codes" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>CLI exit codes</h2></div>
+<p>The exit codes are a stable contract a script can rely on. They live in one place,
+<code>repo:src/oaken_core/cli/exits.py</code>, and map core's machine <code>code</code> onto a number.</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Code</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>ok</td>
+</tr>
+<tr>
+<td>1</td>
+<td>error: the operation ran and failed, or an unexpected error</td>
+</tr>
+<tr>
+<td>2</td>
+<td>usage: bad arguments or input (<code>invalid_input</code>)</td>
+</tr>
+<tr>
+<td>3</td>
+<td>core is not running (also an <code>unavailable</code> error)</td>
+</tr>
+<tr>
+<td>4</td>
+<td>authentication: the API token was refused (<code>auth_required</code>)</td>
+</tr>
+<tr>
+<td>5</td>
+<td>needs confirmation: a mutation returned a proposal and was not confirmed (<code>confirmation_invalid</code> maps here too)</td>
+</tr>
+</tbody>
+</table></div>
+<p>A mutation without <code>--yes</code> prints what would change and exits 5. Any other code is exit 1.</p>
+</section>
+<section id="not-built-yet" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>Not built yet</h2></div>
+<ul>
+<li>Confirmation tokens are in memory. They do not survive a restart, and there is no shared store.</li>
+<li><code>send</code> is a reserved class with no operation behind it.</li>
+</ul>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I" crossorigin="anonymous"></script>
+<script src="../assets/site.js"></script>
+
+
+</body>
+</html>

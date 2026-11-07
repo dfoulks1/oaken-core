@@ -1,0 +1,224 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The swarm · Oaken Core</title>
+<meta name="description" content="External agents that lease jobs: opt-in config, scoped tokens, quotas, validated results, and the HTTP and MCP doors they work through.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The swarm · Oaken Core">
+<meta property="og:description" content="External agents that lease jobs: opt-in config, scoped tokens, quotas, validated results, and the HTTP and MCP doors they work through.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="../assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="../assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="../index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">Optional extra workers, local or not</div>
+    <div class="docnav"><a class="home-link" href="../index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="../getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="../keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="../settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="overview.html">Architecture overview</a>
+      <a class="doc-link" href="jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="software-map.html">Software map</a>
+      <a class="doc-link current" href="swarm.html" aria-current="page">The swarm</a>
+      <a class="doc-link" href="daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="../plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="router.html">The model router</a>
+      <a class="doc-link" href="prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="../adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#two-kinds-of-parallelism"><span class="num">1</span>Two kinds of parallelism</a>
+      <a class="nav-link" href="#turning-it-on"><span class="num">2</span>Turning it on</a>
+      <a class="nav-link" href="#agents-and-their-tokens"><span class="num">3</span>Agents and their tokens</a>
+      <a class="nav-link" href="#results-are-untrusted"><span class="num">4</span>Results are untrusted</a>
+      <a class="nav-link" href="#privacy"><span class="num">5</span>Privacy</a>
+      <a class="nav-link" href="#over-http"><span class="num">6</span>Over HTTP</a>
+      <a class="nav-link" href="#over-mcp"><span class="num">7</span>Over MCP</a>
+      <a class="nav-link" href="#a-worked-example"><span class="num">8</span>A worked example</a>
+      <a class="nav-link" href="#not-built-yet"><span class="num">9</span>Not built yet</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">The swarm</h1>
+    <p class="lead">Core runs its own workers. If you have the tokens and the hardware, you can also let external AI agents lease jobs from the same queue. It is off by default and you choose, kind by kind, what they may take.</p>
+  </header>
+
+<section id="two-kinds-of-parallelism" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>Two kinds of parallelism</h2></div>
+<ul>
+<li><strong>Internal workers.</strong> Each queue has its own <code>workers</code> (<code>[queues.&lt;name&gt;] workers</code>), and
+<code>[jobs] kind_limits</code> caps a kind of job (one <code>embed</code> job at a time on a single GPU, say). This is all
+most people need. See <a href="jobs.html">jobs</a>.</li>
+<li><strong>External agents (the swarm).</strong> A separate program, such as a larger model driven from a script or
+an MCP client, leases jobs from the same queue, does the work and hands back a result.</li>
+</ul>
+<p>An agent follows the rules internal workers do: leases with heartbeats, retries, and recovery when it
+stalls or dies. A stalled agent cannot overwrite the next worker's result, because a result from a
+worker that no longer holds the lease is refused (<code>lease_lost</code>, 409). Claiming goes through core, so
+nothing here lets an agent touch the database.</p>
+</section>
+<section id="turning-it-on" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Turning it on</h2></div>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[swarm]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">          </span><span class="c1"># nothing is offered to agents unless this is true</span>
+<span class="n">allowed_kinds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span><span class="w">       </span><span class="c1"># job kinds an agent may ever be given, for example ["&lt;kind&gt;.&lt;name&gt;"]</span>
+<span class="n">max_agents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8</span><span class="w">           </span><span class="c1"># active (unrevoked) agents</span>
+<span class="n">default_max_leases</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="w">   </span><span class="c1"># jobs one agent may hold at once</span>
+<span class="n">default_max_per_hour</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="w">  </span><span class="c1"># jobs one agent may claim per hour</span>
+<span class="n">agent_lease_seconds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="w">   </span><span class="c1"># how long an agent holds a job before it must heartbeat</span>
+
+<span class="k">[jobs]</span>
+<span class="n">max_result_bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">65536</span>
+</code></pre></div>
+<p><code>enabled</code> and <code>allowed_kinds</code> are set by hand in <code>config.toml</code>. The console and <code>settings set</code> leave
+them alone, because they hand job text to an outside worker. Both have to be set, so turning the swarm
+on does not give any work to anyone by itself. With the swarm off, no agent token is accepted at all.
+The agent lease is long on purpose: a large model on modest hardware is slow.</p>
+<p>Which kinds make sense? Those that need a model and not the vector index, which an agent cannot reach.
+The plugin host lists them (<code>agent_eligible_kinds</code>, as <code>&lt;kind&gt;.&lt;name&gt;</code>). It only lists. You opt in.</p>
+</section>
+<section id="agents-and-their-tokens" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>Agents and their tokens</h2></div>
+<p>A person makes an agent with <code>agent_create</code> (<code>oaken agent create</code>). Each agent has its own token
+(<code>oaken_agent_...</code>), its own list of job kinds, optionally the queues it may lease from, optionally a
+list of extra operations it is granted, and its own quotas. Creating one is a <code>mutate</code>, so it is a
+proposal until you confirm. The token is random (256 bits), shown <strong>once</strong>, and only its SHA-256 is
+stored. A kind must be in <code>allowed_kinds</code> when the agent is made, or creation fails and says to add it.</p>
+<p>Revoking an agent (<code>agent_revoke</code>) takes effect at once. The jobs it held go back to the queue without
+counting the attempt, and its token stops working. The agent operations (<code>agent_create</code>, <code>agent_list</code>,
+<code>agent_grant</code>, <code>agent_revoke</code>) are never offered over MCP, so an agent cannot mint or widen a token.</p>
+<p>A claim is checked inside the same transaction that leases the job. The agent must not be revoked, the
+queue and kind must be in its scope, it must hold fewer than <code>max_leases</code> jobs, and it must have
+claimed fewer than <code>max_per_hour</code> in the last hour (<code>quota_exceeded</code> otherwise). Quotas are per agent,
+so one runaway agent cannot starve another. At most <code>[swarm] max_agents</code> agents are active at once.</p>
+</section>
+<section id="results-are-untrusted" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Results are untrusted</h2></div>
+<p>An agent's output is data from an outside party, possibly from a model that read hostile text. So a
+result is checked <strong>before</strong> anything is stored:</p>
+<ul>
+<li>it must match the result model registered for that job kind (a kind with no model accepts no
+result at all, so a job cannot be used to store arbitrary data);</li>
+<li>it must be under <code>[jobs] max_result_bytes</code>;</li>
+<li>a bad result is rejected with <code>invalid_result</code> (422), and the job stays leased, so the agent can fix
+it or fail the job.</li>
+</ul>
+<p>Each finished job records who finished it (<code>completed_by</code>) and which model the finisher says produced
+the result (<code>produced_by</code>). The second is self-reported, a label for people and not a guarantee.
+Results from the internal handlers go through the same validation.</p>
+<p>A claimed job's payload is data from outside. Over MCP it comes back inside the untrusted-text
+envelope, a randomized delimiter block with a note that nothing in it is an instruction. See
+<a href="prompt-safety.html">prompt safety</a>.</p>
+</section>
+<section id="privacy" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Privacy</h2></div>
+<p>Handing a job to an agent sends that job's text to the agent, and if the agent is a hosted model, to
+its provider. So:</p>
+<ul>
+<li>a kind is never offered to an agent unless you listed it in <code>allowed_kinds</code>;</li>
+<li>you choose per kind, so an agent can take one kind and never see another;</li>
+<li>an agent can be limited to certain queues;</li>
+<li>an agent calls only the job protocol, plus operations you grant it by name (or <code>plugin:&lt;name&gt;</code>). The
+<code>never</code> ceiling on an operation stays above any grant.</li>
+</ul>
+<p>Local-first is not local-only, and a model that is not on this machine can still be yours: a second
+machine on your network, a box you rent, an internal service. Core cannot tell which is which. It is
+your call, and the change log shows what each agent did.</p>
+</section>
+<section id="over-http" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Over HTTP</h2></div>
+<p>An agent works through four routes on the <a href="daemon.html">local API</a>, each authenticated by its own token:</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Route</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /v1/agent/jobs/claim</code></td>
+<td>Lease the next job the agent may take, <code>{&quot;queue&quot;: &quot;default&quot;, &quot;kinds&quot;: [...]}</code> both optional</td>
+</tr>
+<tr>
+<td><code>POST /v1/agent/jobs/{id}/heartbeat</code></td>
+<td>Extend the lease; the answer says if the job was cancelled</td>
+</tr>
+<tr>
+<td><code>POST /v1/agent/jobs/{id}/complete</code></td>
+<td>Hand back <code>{&quot;result&quot;: {...}, &quot;produced_by&quot;: &quot;model-name&quot;}</code></td>
+</tr>
+<tr>
+<td><code>POST /v1/agent/jobs/{id}/fail</code></td>
+<td>Report <code>{&quot;error&quot;: &quot;...&quot;, &quot;permanent&quot;: false}</code>; it retries unless permanent or out of attempts</td>
+</tr>
+</tbody>
+</table></div>
+<p>They are the <code>job_claim</code>, <code>job_heartbeat</code>, <code>job_complete</code> and <code>job_fail</code> operations, called as that
+agent through the same client as every other operation. HTTP, MCP and the CLI are one implementation.
+Claim, complete and fail always write an audit row naming the agent. A heartbeat does not.</p>
+<p>An agent token opens only these routes, and no other route accepts one. A claim past the agent's quota
+is a <code>429</code>, a result that does not match the kind's model is a <code>422</code>, and a lease it no longer holds
+(expired, or the agent was revoked) is a <code>409</code>.</p>
+</section>
+<section id="over-mcp" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>Over MCP</h2></div>
+<p>With the swarm on, core has an MCP door at <code>/mcp/agent</code>. It takes an agent's own token and offers the
+four job tools, plus any operation the agent was granted. They are the same operations as the HTTP
+routes, with the same scope, quotas, revocation, result check and lease fence. The person's MCP token
+does not open this door, an agent token does not open <code>/mcp</code>, and the agent tools are not on the
+person's tool list. An ungranted or <code>never</code> tool gives the same &quot;not available&quot; error, so an agent
+learns nothing about what it was not offered.</p>
+</section>
+<section id="a-worked-example" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>A worked example</h2></div>
+<p>In <code>config.toml</code> turn the swarm on for one kind (find the names with <code>plugin list</code>):</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[swarm]</span>
+<span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+<span class="n">allowed_kinds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"&lt;kind&gt;.&lt;name&gt;"</span><span class="p">]</span>
+</code></pre></div>
+<p>Reload core, then create the agent and revoke it when you are done:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>agent<span class="w"> </span>create<span class="w"> </span>--label<span class="w"> </span><span class="s2">"big model"</span><span class="w"> </span>--kinds<span class="w"> </span>&lt;kind&gt;.&lt;name&gt;<span class="w"> </span>--yes
+oaken<span class="w"> </span>agent<span class="w"> </span>revoke<span class="w"> </span>--agent-id<span class="w"> </span>AGENT_ID<span class="w"> </span>--yes
+</code></pre></div>
+<p>Point a script or MCP client at the agent door with the token it printed. The loop is: claim a job; if
+there is one, treat its payload as data, never as instructions; complete it with a result that fits the
+kind's model; if you cannot, fail it; then claim again.</p>
+</section>
+<section id="not-built-yet" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>Not built yet</h2></div>
+<ul>
+<li>Spawn budgets and loop guards for agents that create jobs.</li>
+<li>Waiting on child jobs: a job can name a parent (<code>parent_job_id</code>), but nothing waits on children.</li>
+</ul>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="../assets/site.js"></script>
+
+
+</body>
+</html>

@@ -1,0 +1,223 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The model router · Oaken Core</title>
+<meta name="description" content="The router ladder (cache, near-duplicate shortcut, capped small model, one escalation), backends and routes, the cache key, the ledger, the daily token budget and Deferred.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The model router · Oaken Core">
+<meta property="og:description" content="The router ladder (cache, near-duplicate shortcut, capped small model, one escalation), backends and routes, the cache key, the ledger, the daily token budget and Deferred.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="../assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="../assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="../index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">The cheapest honest way to answer</div>
+    <div class="docnav"><a class="home-link" href="../index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="../getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="../keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="../settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="overview.html">Architecture overview</a>
+      <a class="doc-link" href="jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="software-map.html">Software map</a>
+      <a class="doc-link" href="swarm.html">The swarm</a>
+      <a class="doc-link" href="daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="../plugins.html">Writing a plugin</a>
+      <a class="doc-link current" href="router.html" aria-current="page">The model router</a>
+      <a class="doc-link" href="prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="../adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#the-ladder"><span class="num">1</span>The ladder</a>
+      <a class="nav-link" href="#backends-and-routes"><span class="num">2</span>Backends and routes</a>
+      <a class="nav-link" href="#the-cache-key"><span class="num">3</span>The cache key</a>
+      <a class="nav-link" href="#the-ledger"><span class="num">4</span>The ledger</a>
+      <a class="nav-link" href="#the-daily-budget"><span class="num">5</span>The daily budget</a>
+      <a class="nav-link" href="#deferred"><span class="num">6</span>Deferred</a>
+      <a class="nav-link" href="#stand-ins"><span class="num">7</span>Stand-ins</a>
+      <a class="nav-link" href="#junk"><span class="num">8</span>Junk</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">The model router</h1>
+    <p class="lead">A plugin asks the router a question. The router tries the cache, then a near-duplicate&#39;s answer, then a small model with a capped answer, then one larger model. Every rung is counted.</p>
+  </header>
+
+<section id="the-ladder" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>The ladder</h2></div>
+<p><code>Router.ask(route, call, request, output)</code> in <code>repo:src/oaken_core/router/router.py</code> returns a
+validated answer. A plugin reaches it through <code>BaseLLMAnalyzer.ask()</code>. Cheapest rung first:</p>
+<pre class="mermaid">flowchart TD
+  A[ask] --&gt; C{answer cache hit?}
+  C -- yes --&gt; R[return, cache_hits++]
+  C -- no --&gt; N{needs_vec and a near-duplicate stored?}
+  N -- yes --&gt; S[return its answer, shortcut_hits++]
+  N -- no --&gt; B{daily_tokens spent?}
+  B -- yes --&gt; D[raise Deferred]
+  B -- no --&gt; M[small model, capped answer]
+  M --&gt; Q{valid and confident?}
+  Q -- yes --&gt; W[store, return]
+  Q -- no --&gt; E[one escalation to the larger model]
+  E --&gt; W
+</pre><noscript><pre><code>flowchart TD
+  A[ask] --&gt; C{answer cache hit?}
+  C -- yes --&gt; R[return, cache_hits++]
+  C -- no --&gt; N{needs_vec and a near-duplicate stored?}
+  N -- yes --&gt; S[return its answer, shortcut_hits++]
+  N -- no --&gt; B{daily_tokens spent?}
+  B -- yes --&gt; D[raise Deferred]
+  B -- no --&gt; M[small model, capped answer]
+  M --&gt; Q{valid and confident?}
+  Q -- yes --&gt; W[store, return]
+  Q -- no --&gt; E[one escalation to the larger model]
+  E --&gt; W
+</code></pre></noscript>
+<p>The plugin's own rules come before all of this (they are not in the router). The rungs:</p>
+<ol>
+<li><strong>Cache.</strong> Looks up the answer for this exact question (below). Also tries the escalation model's
+key. A hit costs no model call. A stored answer that no longer fits the schema is ignored.</li>
+<li><strong>Near-duplicate shortcut.</strong> Only for a plugin that sets <code>needs_vec</code> (<code>BaseVecAnalyzer</code>) and passes
+<code>text</code>. The router embeds the text and asks the vector store for the nearest stored question. If
+its score is at least <code>[router] near_duplicate_score</code> (0.97) and its answer is still cached, that
+answer is returned. Off when <code>[router] shortcuts = false</code>.</li>
+<li><strong>Small model, capped.</strong> The first backend of the route that is healthy and allowed (the route's
+own, then its <code>fallback</code> list in order). The answer is capped at <code>max_output_tokens</code> (default
+<code>[router] default_output_tokens</code>, 256). Input is cut to fit the context window. A call that
+takes more than <code>call_timeout_seconds</code> (120) counts as a backend failure, and the next fallback is tried.</li>
+<li><strong>One escalation.</strong> If the answer is invalid, or has a <code>confidence</code> field below
+<code>[router] min_confidence</code> (0.6), the router asks the route's <code>escalate</code> backend and model once. No
+second retry. If nothing larger may answer, a low-confidence answer is kept, and an invalid one raises
+<code>AIBackendError</code>. An escalated answer that is invalid raises it too, and nothing is stored.</li>
+</ol>
+<p>Only an answer that stands is stored.</p>
+</section>
+<section id="backends-and-routes" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Backends and routes</h2></div>
+<p>A backend is a plugin of kind <code>llm_backend</code>. Each instance is a table
+<code>[plugins.llm_backend.&lt;name&gt;]</code> with <code>plugin</code>, <code>locality</code> and <code>concurrency</code>. <code>locality</code> is <code>local</code>,
+<code>lan</code> or <code>hosted</code>; unset means <code>hosted</code>. <code>concurrency</code> (default 1) is the size of that backend's own
+semaphore. It is read when the backend is first used, so a change needs a restart.</p>
+<p>A plugin names what it wants in <code>route</code>, as a default dict on the class. The owner overrides it in
+<code>[plugins.&lt;kind&gt;.&lt;name&gt;.route]</code>:</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.triager.llm.route]</span>
+<span class="n">backend</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"desk"</span>
+<span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"qwen3"</span><span class="w">          </span><span class="c1"># empty: the backend's own default</span>
+<span class="n">fallback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"laptop"</span><span class="p">]</span><span class="w">    </span><span class="c1"># tried in order if the backend errors</span>
+<span class="n">min_confidence</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.7</span><span class="w">     </span><span class="c1"># overrides [router] min_confidence</span>
+<span class="n">daily_tokens</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200000</span><span class="w">    </span><span class="c1"># 0 (the default): no budget</span>
+<span class="n">escalate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">backend</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"big"</span><span class="p">,</span><span class="w"> </span><span class="n">model</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"qwen3-72b"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>Who may answer a confidential item is in <a href="prompt-safety.html">prompt safety</a>.</p>
+</section>
+<section id="the-cache-key" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>The cache key</h2></div>
+<p>The key is <strong>(analyzer, version, content hash, model)</strong>, the model being the one that answers (the
+route's, else the backend's default). The table is <code>answer_cache</code> in core's database. Each part earns
+its place:</p>
+<ul>
+<li><code>version</code> is the plugin's <code>version</code>. Bump it when the prompt or the answer could change, and old
+answers stop matching.</li>
+<li><code>content hash</code> names what the answer is about. The plugin supplies it. Anything that changes the
+answer (the llm triager's criteria, for one) belongs in it.</li>
+<li><code>model</code> keeps two models from sharing an answer.</li>
+</ul>
+<p>A <code>cache_store</code> plugin may replace the table. Name it in <code>[router] cache_store</code>. It must provide
+<code>key</code>, <code>get</code>, <code>put</code>, <code>stats</code> and <code>clear</code>. While it is unhealthy, core's own table is used.
+<code>cache_clear</code> deletes cached answers.</p>
+</section>
+<section id="the-ledger" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>The ledger</h2></div>
+<p>Every rung writes counters to <code>llm_ledger</code>, one row per (analyzer, model, backend):</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Column</th>
+<th>Counts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>calls</code>, <code>tokens_in</code>, <code>tokens_out</code></td>
+<td>Model calls that ran, and their tokens (the backend's count, else length / 4).</td>
+</tr>
+<tr>
+<td><code>cache_hits</code>, <code>shortcut_hits</code></td>
+<td>Questions answered without a model.</td>
+</tr>
+<tr>
+<td><code>escalations</code></td>
+<td>Times the larger model was asked.</td>
+</tr>
+<tr>
+<td><code>tokens_saved</code></td>
+<td>For a hit, what the stored answer cost to make (in plus out).</td>
+</tr>
+</tbody>
+</table></div>
+<p>The ledger never holds text. The operation <code>ai_usage</code> (not offered over MCP) reports it, with totals
+for calls, tokens spent, tokens saved and answers made without a model.</p>
+<p><code>tokens_saved</code> is an estimate of calls skipped. It is not a bill, and it says nothing about what a
+client would have read.</p>
+</section>
+<section id="the-daily-budget" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>The daily budget</h2></div>
+<p><code>daily_tokens</code> on a route caps what one analyzer may spend in a UTC day. Spend is kept in <code>llm_spend</code>
+(tokens and deferrals per analyzer per day), and <code>ai_usage</code> shows it as <code>spent_today</code>. Once spend
+reaches the cap:</p>
+<ul>
+<li>Cache and shortcut hits stay free.</li>
+<li>A model call is not made. The router raises <code>Deferred</code>.</li>
+<li>An escalation is skipped, and the small model's answer stands.</li>
+</ul>
+<p>The check happens before a call, so one call may carry spend a little past the cap.</p>
+</section>
+<section id="deferred" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Deferred</h2></div>
+<p><code>Deferred</code> is &quot;not now, and not a failure&quot;. The job returns to the queue after <code>retry_after</code> seconds
+(see <a href="jobs.html">jobs</a>), and the attempt is not counted. The router raises it when the budget is spent
+(retry at the next UTC midnight) and when a <code>needs_vec</code> call finds no healthy embedder or vector
+store (retry after <code>[router] wait_seconds</code>, 30). A backend that is down raises <code>Unavailable</code> instead.</p>
+</section>
+<section id="stand-ins" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>Stand-ins</h2></div>
+<p><code>repo:src/oaken_core/router/stub.py</code> has a scripted backend, a hashing embedder and an in-memory
+vector store. They are for tests, and for trying core with no model.</p>
+</section>
+<section id="junk" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>Junk</h2></div>
+<p>Off by default. With <code>[router] junk_index = true</code>, a triager can reject an item and ask the router to
+keep its vector and hash (never the text). The <code>nearjunk</code> triager (rank 40) then rejects items whose
+vector scores at least <code>nearjunk_score</code> (0.95) against stored junk. It is off by default because a
+vector can be partly inverted back toward its text.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I" crossorigin="anonymous"></script>
+<script src="../assets/site.js"></script>
+
+
+</body>
+</html>

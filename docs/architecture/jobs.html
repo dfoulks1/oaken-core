@@ -1,0 +1,337 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Events, jobs and the scheduler · Oaken Core</title>
+<meta name="description" content="The event bus and logs, the durable job queues with leases and retries, queue pause, and the scheduler.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Events, jobs and the scheduler · Oaken Core">
+<meta property="og:description" content="The event bus and logs, the durable job queues with leases and retries, queue pause, and the scheduler.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="../assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="../assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="../assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="../index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">How core does work in the background</div>
+    <div class="docnav"><a class="home-link" href="../index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="../getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="../keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="../settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="overview.html">Architecture overview</a>
+      <a class="doc-link current" href="jobs.html" aria-current="page">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="software-map.html">Software map</a>
+      <a class="doc-link" href="swarm.html">The swarm</a>
+      <a class="doc-link" href="daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="../plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="router.html">The model router</a>
+      <a class="doc-link" href="prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="../adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#the-pieces"><span class="num">1</span>The pieces</a>
+      <a class="nav-link" href="#queues"><span class="num">2</span>Queues</a>
+      <a class="nav-link" href="#the-job-lifecycle"><span class="num">3</span>The job lifecycle</a>
+      <a class="nav-link" href="#numbers"><span class="num">4</span>Numbers</a>
+      <a class="nav-link" href="#guarantees-and-rules"><span class="num">5</span>Guarantees and rules</a>
+      <a class="nav-link" href="#events"><span class="num">6</span>Events</a>
+      <a class="nav-link" href="#the-event-log"><span class="num">7</span>The event log</a>
+      <a class="nav-link" href="#the-trace"><span class="num">8</span>The trace</a>
+      <a class="nav-link" href="#results-parents-and-actors"><span class="num">9</span>Results, parents and actors</a>
+      <a class="nav-link" href="#the-scheduler"><span class="num">10</span>The scheduler</a>
+      <a class="nav-link" href="#testing"><span class="num">11</span>Testing</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Events, jobs and the scheduler</h1>
+    <p class="lead">An in-memory event bus says what happened. A durable job queue does the work and survives a crash. A scheduler puts recurring work on that queue.</p>
+  </header>
+
+<section id="the-pieces" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>The pieces</h2></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Piece</th>
+<th>Lives in</th>
+<th>Survives a restart?</th>
+<th>Job</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Event bus</td>
+<td>memory</td>
+<td>no</td>
+<td>tell listeners that something happened</td>
+</tr>
+<tr>
+<td>Event log</td>
+<td><code>events.jsonl</code></td>
+<td>yes</td>
+<td>keep what the bus said</td>
+</tr>
+<tr>
+<td>Job queues</td>
+<td><code>core.db</code></td>
+<td>yes</td>
+<td>run work at least once, with retries</td>
+</tr>
+<tr>
+<td>Scheduler</td>
+<td><code>core.db</code></td>
+<td>yes</td>
+<td>enqueue recurring work on time, once</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section id="queues" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Queues</h2></div>
+<p>A queue is a named lane of jobs. <code>default</code> always exists and cannot be removed. Intake formatting
+runs there. <code>store</code> and <code>embed</code> are hidden stages core runs for you (the ingestor and the
+embedder do their work). You make more in <code>config.toml</code> as <code>[queues.&lt;name&gt;]</code>, each the stage of
+one analyzer kind. Names match <code>[a-z][a-z0-9_-]{0,40}</code>. Each queue has a worker count (default
+one; <code>default</code> gets two). See <code>repo:src/oaken_core/queues.py</code>.</p>
+<p>A job never picks its queue. It goes where its subject's <code>queue</code> label says, or to <code>default</code>. A
+label change does not move jobs already queued: use <code>requeue</code> with a target queue.</p>
+<p><strong>Pause.</strong> <code>oaken queue pause NAME</code> stops a queue handing out jobs. Running jobs finish. The switch
+is a row in <code>queue_state</code>, so it survives a restart. <code>oaken queue resume NAME</code> undoes it. Pausing is
+how you free a GPU or stop a stage while you fix a plugin. Each change is published as a
+<code>QueueStateChanged</code> event.</p>
+</section>
+<section id="the-job-lifecycle" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>The job lifecycle</h2></div>
+<p>A job is a row in <code>core.db</code>. A worker <em>claims</em> it: one short transaction marks the best runnable
+job <code>running</code> and gives the worker a <strong>lease</strong>. A worker that dies stops renewing its lease. When
+the lease expires, the job is queued again.</p>
+<pre class="mermaid">sequenceDiagram
+    participant P as Producer
+    participant Q as Queue (core.db)
+    participant W as Worker
+    participant H as Handler
+    P-&gt;&gt;Q: enqueue(kind, payload, dedupe_key)
+    Q--&gt;&gt;P: job id (or the existing one)
+    W-&gt;&gt;Q: claim(queue, kinds, limits)
+    Note over Q: reclaim expired leases, skip paused queue,&lt;br/&gt;skip kinds at their limit, pick highest priority,&lt;br/&gt;set lease, attempts + 1
+    Q--&gt;&gt;W: job
+    W-&gt;&gt;H: handler(payload, job)
+    loop while it runs
+        W-&gt;&gt;Q: heartbeat (extends the lease)
+    end
+    alt success
+        H--&gt;&gt;W: returns
+        W-&gt;&gt;Q: complete, status succeeded
+    else error and attempts left
+        H--&gt;&gt;W: raises
+        W-&gt;&gt;Q: fail, queued again after backoff
+    else permanent error or out of attempts
+        W-&gt;&gt;Q: fail, status failed (last_error kept)
+    end
+</pre><noscript><pre><code>sequenceDiagram
+    participant P as Producer
+    participant Q as Queue (core.db)
+    participant W as Worker
+    participant H as Handler
+    P-&gt;&gt;Q: enqueue(kind, payload, dedupe_key)
+    Q--&gt;&gt;P: job id (or the existing one)
+    W-&gt;&gt;Q: claim(queue, kinds, limits)
+    Note over Q: reclaim expired leases, skip paused queue,&lt;br/&gt;skip kinds at their limit, pick highest priority,&lt;br/&gt;set lease, attempts + 1
+    Q--&gt;&gt;W: job
+    W-&gt;&gt;H: handler(payload, job)
+    loop while it runs
+        W-&gt;&gt;Q: heartbeat (extends the lease)
+    end
+    alt success
+        H--&gt;&gt;W: returns
+        W-&gt;&gt;Q: complete, status succeeded
+    else error and attempts left
+        H--&gt;&gt;W: raises
+        W-&gt;&gt;Q: fail, queued again after backoff
+    else permanent error or out of attempts
+        W-&gt;&gt;Q: fail, status failed (last_error kept)
+    end
+</code></pre></noscript>
+<p>States are <code>queued</code>, <code>running</code>, <code>succeeded</code>, <code>failed</code> and <code>cancelled</code>. Every change is published
+as a <code>JobStateChanged</code> event.</p>
+</section>
+<section id="numbers" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Numbers</h2></div>
+<p>All from <code>[jobs]</code> in <code>config.toml</code> unless noted.</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Setting</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>lease_seconds</code></td>
+<td>60</td>
+<td>How long a worker holds a job before it must heartbeat</td>
+</tr>
+<tr>
+<td><code>max_attempts</code></td>
+<td>3</td>
+<td>Tries before a job is <code>failed</code></td>
+</tr>
+<tr>
+<td><code>backoff_base_seconds</code></td>
+<td>5</td>
+<td>Delay after the first failure</td>
+</tr>
+<tr>
+<td><code>backoff_max_seconds</code></td>
+<td>900</td>
+<td>Cap on the delay</td>
+</tr>
+<tr>
+<td><code>backoff_jitter</code></td>
+<td>0.2</td>
+<td>Fraction taken off the delay, at random</td>
+</tr>
+<tr>
+<td><code>handler_timeout_seconds</code></td>
+<td>600</td>
+<td>A handler that runs longer fails. 0 turns it off</td>
+</tr>
+<tr>
+<td><code>max_result_bytes</code></td>
+<td>65536</td>
+<td>Cap on a stored result</td>
+</tr>
+<tr>
+<td><code>requeue_cooldown_seconds</code></td>
+<td>60</td>
+<td>Per job, between requeues</td>
+</tr>
+<tr>
+<td><code>kind_limits</code></td>
+<td>none</td>
+<td>Concurrency cap per job kind</td>
+</tr>
+</tbody>
+</table></div>
+<p>Priority is a number, higher first: user 100, ingest 50 (the default), backfill 10. Within a
+priority, the job that became runnable first goes first.</p>
+</section>
+<section id="guarantees-and-rules" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Guarantees and rules</h2></div>
+<ul>
+<li><strong>At least once.</strong> If a worker dies mid-job, the job runs again after its lease expires, so
+handlers must be idempotent. A worker that lost its lease cannot mark the job done: the finish
+is fenced by the worker's id.</li>
+<li><strong>Dedupe.</strong> An <code>enqueue</code> with a <code>dedupe_key</code> that is already queued or running adds nothing and
+returns the existing job. When the job finishes the key is free again.</li>
+<li><strong>Retries.</strong> After the Nth failed attempt a job waits <code>min(backoff_max, backoff_base * 2^(N-1))</code>
+seconds, less up to <code>backoff_jitter</code> at random. A handler can raise <code>PermanentJobError</code> to fail
+at once. A payload that does not validate, or a result that fails its schema, fails at once too.</li>
+<li><strong>Deferral.</strong> A handler can raise <code>Deferred</code>. The job goes back for the time it names and the
+attempt is not counted: it is waiting, not failing. The embed stage does this while no embedder
+is healthy.</li>
+<li><strong>Errors are stored safely.</strong> <code>last_error</code> has secrets redacted and is cut to 500 characters.</li>
+<li><strong>Per-kind concurrency.</strong> A handler may declare a cap (one <code>embed</code> job at a time on one GPU).
+<code>[jobs] kind_limits</code> wins. The cap is enforced in the claim, so it holds across all workers.</li>
+<li><strong>Cancellation.</strong> A queued job is cancelled at once. A running job is asked to stop: its handler
+task is cancelled, so handlers should be cancel-safe.</li>
+<li><strong>Shutdown.</strong> <code>stop()</code> gives in-flight jobs a grace period (30 seconds), then cancels them and
+releases their leases without counting the attempt.</li>
+<li><strong>Long jobs.</strong> A running job renews its lease every third of the lease length.</li>
+<li><strong>Requeue.</strong> <code>oaken queue requeue</code> puts failed, cancelled or queued jobs back to run now, with
+attempts reset. It can move them to another queue. For intake jobs, <code>retriage</code> clears the machine
+labels so triage decides again (the human layer stays). Each requeue writes a change-log row.</li>
+</ul>
+</section>
+<section id="events" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Events</h2></div>
+<p>The bus carries typed, frozen events: job state changes, queue pause changes, plugin health,
+events a plugin defines itself, and two private kinds (log lines and the trace). Two kinds of
+listener:</p>
+<ul>
+<li><strong>Handlers</strong> are internal components. Every matching event reaches every handler. A handler that
+raises is logged and skipped. It cannot hurt anyone else.</li>
+<li><strong>Streams</strong> feed clients (the <code>/v1/events</code> endpoint, <code>oaken watch</code>). Each has a bounded queue
+(256 by default). If a consumer falls behind, the <strong>oldest</strong> events are dropped and counted. A
+slow stream never blocks the publisher. Log and trace events reach a stream only when asked for.</li>
+</ul>
+<p>The API keeps the last <code>[api] event_ring_size</code> events (1000) for a client that reconnects.</p>
+</section>
+<section id="the-event-log" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>The event log</h2></div>
+<p>The bus forgets on restart. The <strong>event log</strong> is one more handler that appends every event to
+<code>events.jsonl</code> in the data directory (<code>[log] events_file</code>; empty turns it off). A line is
+<code>{&quot;ts&quot;, &quot;kind&quot;, &quot;data&quot;}</code>. Data holds ids, states and numbers, never private text. The file is
+owner-only and rotates by size (<code>[log] file_max_bytes</code>, <code>file_backups</code>). <code>oaken events tail</code> reads the
+newest lines back. See <code>repo:src/oaken_core/eventlog.py</code>.</p>
+<p>Log lines have their own home: the <code>log_lines</code> table, pruned after <code>[log] keep_days</code> (7), or the
+<code>[log] file</code> if you set one.</p>
+</section>
+<section id="the-trace" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>The trace</h2></div>
+<p>The trace records what a model or agent is told, and what it returns, in full text. It is for a
+person tuning triage. Because it holds private text it is <strong>off by default</strong>, goes to its own
+owner-only file (<code>trace.jsonl</code>, rotated like the event log), is never offered over MCP, and is
+read only through the authenticated API (<code>/v1/trace/stream</code>). Each row carries the plugin and job
+it ran under, so you can follow one job. See <code>repo:src/oaken_core/trace.py</code>.</p>
+</section>
+<section id="results-parents-and-actors" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>Results, parents and actors</h2></div>
+<p>A job can store a <strong>result</strong>, checked against a schema for its kind before it is saved. It can
+name a <strong>parent</strong> job. It records its <strong>actor</strong> (user, agent or system). External agents can lease
+jobs too: see <a href="swarm.html">the swarm</a>.</p>
+</section>
+<section id="the-scheduler" class="doc-section"><div class="section-head"><span class="section-num">10</span><h2>The scheduler</h2></div>
+<p>A schedule is a fixed interval or a five-field cron expression. It stores its <code>next_run</code> in
+<code>core.db</code>. A tick enqueues every due schedule and moves <code>next_run</code> forward in one transaction, so
+a restart neither repeats a run nor skips one. The job also carries a dedupe key naming the slot,
+as a second guard. Each schedule names a queue, a kind, a payload and a priority (default 50).</p>
+<ul>
+<li><strong>UTC only.</strong> Cron fields are read in UTC. The parser can take a time zone, but the scheduler
+does not pass one, so there is no time zone setting today.</li>
+<li><strong>No catch-up storm.</strong> If the process was down for several periods, the missed runs collapse
+into one run on the next tick. Then the normal rhythm resumes. Intervals keep their phase
+(anchor plus a whole number of periods).</li>
+<li><strong>Run now.</strong> <code>oaken schedule run</code> enqueues one run and leaves <code>next_run</code> alone.</li>
+<li><strong>Idempotent.</strong> Adding a schedule at every start is safe. An unchanged one keeps its <code>next_run</code>.
+A changed one recomputes it. A plugin's own schedule comes back at the next start.</li>
+</ul>
+<p>The cron parser has no dependency. It covers <code>*</code>, numbers, ranges, lists, steps and three-letter
+month and weekday names (weekday 0 and 7 are Sunday). If both day-of-month and day-of-week are
+restricted, either may match, as in classic cron. There is no <code>@daily</code> and no seconds field. See
+<code>repo:src/oaken_core/cron.py</code> and <code>repo:src/oaken_core/scheduler.py</code>.</p>
+</section>
+<section id="testing" class="doc-section"><div class="section-head"><span class="section-num">11</span><h2>Testing</h2></div>
+<p>Everything above runs against a fake clock with no sleeping: advance the clock, call <code>drain()</code> on
+the runner or <code>tick()</code> on the scheduler, and look at the database.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js" integrity="sha384-rbtjAdnIQE/aQJGEgXrVUlMibdfTSa4PQju4HDhN3sR2PmaKFzhEafuePsl9H/9I" crossorigin="anonymous"></script>
+<script src="../assets/site.js"></script>
+
+
+</body>
+</html>

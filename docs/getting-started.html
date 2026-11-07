@@ -1,0 +1,204 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Set up Oaken Core from scratch · Oaken Core</title>
+<meta name="description" content="A first-time setup of Oaken Core: install, set OAKEN_HOME, oaken start, oaken plugins, oaken plugin add KIND.NAME, and the console on 127.0.0.1:62536.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Set up Oaken Core from scratch · Oaken Core">
+<meta property="og:description" content="A first-time setup of Oaken Core: install, set OAKEN_HOME, oaken start, oaken plugins, oaken plugin add KIND.NAME, and the console on 127.0.0.1:62536.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">From install to a running core and its console</div>
+    <div class="docnav"><a class="home-link" href="index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link current" href="getting-started.html" aria-current="page">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="architecture/overview.html">Architecture overview</a>
+      <a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="architecture/software-map.html">Software map</a>
+      <a class="doc-link" href="architecture/swarm.html">The swarm</a>
+      <a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="architecture/router.html">The model router</a>
+      <a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="architecture/operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#1-install"><span class="num">1</span>1. Install</a>
+      <a class="nav-link" href="#2-pick-a-home"><span class="num">2</span>2. Pick a home</a>
+      <a class="nav-link" href="#3-start-core"><span class="num">3</span>3. Start core</a>
+      <a class="nav-link" href="#4-look-at-the-plugins"><span class="num">4</span>4. Look at the plugins</a>
+      <a class="nav-link" href="#5-add-a-plugin"><span class="num">5</span>5. Add a plugin</a>
+      <a class="nav-link" href="#6-open-the-console"><span class="num">6</span>6. Open the console</a>
+      <a class="nav-link" href="#7-stop"><span class="num">7</span>7. Stop</a>
+      <a class="nav-link" href="#if-something-fails"><span class="num">8</span>If something fails</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Set up Oaken Core from scratch</h1>
+    <p class="lead">Install core, start it, look at what it runs, add a plugin. Core alone has no product: a first run shows the built-in plugins and an empty pipeline. Each step says how to check it worked.</p>
+  </header>
+<p>Everything below stays on your machine.</p>
+
+<section id="1-install" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>1. Install</h2></div>
+<p>You need Python 3.11 or newer.</p>
+<div class="code"><pre class="highlight"><code class="language-bash">python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>oaken-core<span class="w">   </span><span class="c1"># into a virtual environment you keep for it</span>
+oaken<span class="w"> </span>--help
+</code></pre></div>
+<p>To work on core itself, use a checkout: <code>uv sync</code>, then <code>uv run oaken ...</code>.</p>
+<p><code>oaken --help</code> works with no core running. It lists core's own commands. A plugin's commands
+appear only while core runs.</p>
+</section>
+<section id="2-pick-a-home" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>2. Pick a home</h2></div>
+<p>Set <code>OAKEN_HOME=/some/dir</code> to put everything under one directory, and put the line in your shell
+profile so every shell agrees.</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Path</th>
+<th>Holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config/</code></td>
+<td><code>config.toml</code> (when you or a command write one), <code>api_token</code>, <code>mcp_token</code></td>
+</tr>
+<tr>
+<td><code>data/</code></td>
+<td><code>core.db</code>, <code>vectors.db</code>, <code>events.jsonl</code>, plugin databases</td>
+</tr>
+<tr>
+<td><code>plugins/</code></td>
+<td>folders plugins own</td>
+</tr>
+<tr>
+<td><code>run/</code></td>
+<td><code>runtime.json</code>: pid, API port, console port</td>
+</tr>
+</tbody>
+</table></div>
+<p>Every folder is created owner-only (mode 0700). Core does not write a <code>config.toml</code> on first
+start. Without one it runs on defaults.</p>
+<p>If <code>OAKEN_HOME</code> is unset, core uses the home it last ran under (a pointer file in your user
+state folder, written only when the variable was set), or else the platform folders. Core cannot
+export a variable into your shell.</p>
+</section>
+<section id="3-start-core" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>3. Start core</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>start<span class="w">      </span><span class="c1"># in the background; --fg keeps it attached to this terminal</span>
+oaken<span class="w"> </span>status<span class="w">     </span><span class="c1"># version, queues, plugins healthy</span>
+</code></pre></div>
+<p><code>start</code> prints <code>core running (pid ..., port ...)</code>. <code>status</code> exits 3 with <code>core is not running</code> when
+there is no core. If <code>start</code> fails (&quot;core exited while starting&quot;), run <code>oaken start --fg</code>. It
+prints the real error, such as a port in use.</p>
+<p>Core serves its API on loopback only. <a href="architecture/daemon.html">The daemon</a> explains the rest.</p>
+<p>A first run shows three queues (<code>default</code>, <code>store</code>, <code>embed</code>), all empty, and nine built-in plugins,
+seven of them healthy. Nothing flows yet: no provider brings items in.</p>
+</section>
+<section id="4-look-at-the-plugins" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>4. Look at the plugins</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugin<span class="w"> </span>list<span class="w">    </span><span class="c1"># what core runs, and why one did not start</span>
+oaken<span class="w"> </span>plugins<span class="w">        </span><span class="c1"># what you can add</span>
+</code></pre></div>
+<p>Two plugins do not start on a fresh core, and <code>plugin list</code> says why:</p>
+<ul>
+<li><code>provider.socket</code> needs an instance that sets <code>unix_path</code> or <code>port</code>.</li>
+<li><code>triager.llm</code> needs <code>criteria</code> and a model backend plugin.</li>
+</ul>
+<p><code>oaken plugins</code> lists plugins you can add by name, from <code>[extensions] dirs</code> in <code>config.toml</code>
+first, then from the <code>oaken-plugins</code> package. With neither, it prints
+<code>Nothing to list. Set [extensions] dirs in config.toml, or: pip install oaken-plugins</code>. It needs no
+running core. Filter it with <code>--kind provider</code> or <code>--tag mail</code>. See <a href="plugins.html">Plugins</a>.</p>
+</section>
+<section id="5-add-a-plugin" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>5. Add a plugin</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">pip<span class="w"> </span>install<span class="w"> </span>oaken-plugins
+oaken<span class="w"> </span>plugins<span class="w"> </span>--kind<span class="w"> </span>provider
+oaken<span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>KIND.NAME<span class="w">           </span><span class="c1"># e.g. provider.socket</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span>list<span class="w">                    </span><span class="c1"># the new row should say healthy</span>
+</code></pre></div>
+<p><code>plugin add</code> writes a <code>[plugins.&lt;kind&gt;.&lt;name&gt;]</code> table to <code>config.toml</code>, starts the plugin, and
+reloads core if it had to find it. Without <code>--yes</code> it shows what would change and exits 5.
+<code>--name</code> gives one instance its own name, so you can run two of a plugin. <code>--config JSON</code> sets its
+settings. A secret in there is refused: <a href="keyring.html">Store credentials</a>.</p>
+<p>A plugin that fails to start is listed with the reason, not hidden. <code>oaken plugin disable NAME</code>,
+<code>enable</code> and <code>reload</code> act on one without restarting core.</p>
+</section>
+<section id="6-open-the-console" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>6. Open the console</h2></div>
+<p>The console is at <code>http://127.0.0.1:62536/</code>. It always binds 127.0.0.1. Change the port with
+<code>[console] port</code> (0 picks a free one). It has pages for the pipeline, each stage, each plugin, the
+log, capabilities and <code>/config</code>, where you edit <code>config.toml</code> as text: it checks a change before
+saving and keeps one backup. See <a href="settings.html">Settings, storage and the event log</a>.</p>
+</section>
+<section id="7-stop" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>7. Stop</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>stop
+</code></pre></div>
+</section>
+<section id="if-something-fails" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>If something fails</h2></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Message</th>
+<th>Likely cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>core is not running</code></td>
+<td>Start it with <code>oaken start</code>.</td>
+</tr>
+<tr>
+<td><code>core is already running</code></td>
+<td>A daemon is up. <code>oaken status</code> shows it; <code>oaken stop</code> ends it.</td>
+</tr>
+<tr>
+<td><code>core exited while starting</code></td>
+<td>Run <code>oaken start --fg</code> for the error.</td>
+</tr>
+<tr>
+<td><code>the OS keyring failed: ...</code></td>
+<td>See <a href="keyring.html">the keyring page</a>.</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>

@@ -1,0 +1,207 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings, storage and the event log · Oaken Core</title>
+<meta name="description" content="oaken settings get and set, config validate and save, reload, storage and vacuum, the answer cache, the event log, the log and the change log.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Settings, storage and the event log · Oaken Core">
+<meta property="og:description" content="oaken settings get and set, config validate and save, reload, storage and vacuum, the answer cache, the event log, the log and the change log.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">Change core&#39;s settings, see where the data is, tidy it, and read what happened</div>
+    <div class="docnav"><a class="home-link" href="index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link current" href="settings.html" aria-current="page">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="architecture/overview.html">Architecture overview</a>
+      <a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="architecture/software-map.html">Software map</a>
+      <a class="doc-link" href="architecture/swarm.html">The swarm</a>
+      <a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="architecture/router.html">The model router</a>
+      <a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="architecture/operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link" href="adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#core-settings"><span class="num">1</span>Core settings</a>
+      <a class="nav-link" href="#the-whole-file"><span class="num">2</span>The whole file</a>
+      <a class="nav-link" href="#storage"><span class="num">3</span>Storage</a>
+      <a class="nav-link" href="#the-answer-cache"><span class="num">4</span>The answer cache</a>
+      <a class="nav-link" href="#what-happened-events-the-log-and-the-change-log"><span class="num">5</span>What happened: events, the log and the change log</a>
+      <a class="nav-link" href="#is-it-healthy"><span class="num">6</span>Is it healthy?</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <h1 class="display-6">Settings, storage and the event log</h1>
+    <p class="lead">Everything here is a command on the running core. It edits one table of config.toml and leaves your comments alone, and it tells you what a change needs before it takes effect.</p>
+  </header>
+<p>Examples use the real CLI. A change asks first: without <code>--yes</code> it prints what would change and
+exits 5. Add <code>--json</code> for the original data.</p>
+
+<section id="core-settings" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>Core settings</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>settings<span class="w"> </span>get<span class="w">                                   </span><span class="c1"># the sections, with a summary each</span>
+oaken<span class="w"> </span>settings<span class="w"> </span>get<span class="w"> </span>--section<span class="w"> </span>log<span class="w"> </span>--json<span class="w">              </span><span class="c1"># one section: every key, value, default, editable, effect</span>
+oaken<span class="w"> </span>settings<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--section<span class="w"> </span>log<span class="w"> </span>--values<span class="w"> </span><span class="s1">'{"level":"DEBUG"}'</span><span class="w">          </span><span class="c1"># shows the change, exit 5</span>
+oaken<span class="w"> </span>settings<span class="w"> </span><span class="nb">set</span><span class="w"> </span>--section<span class="w"> </span>log<span class="w"> </span>--values<span class="w"> </span><span class="s1">'{"level":"DEBUG"}'</span><span class="w"> </span>--yes<span class="w">    </span><span class="c1"># saves it</span>
+oaken<span class="w"> </span>reload<span class="w">                                         </span><span class="c1"># core re-reads config.toml in place</span>
+</code></pre></div>
+<p>Only some keys are editable here. Anything that changes where core listens or keeps data, or that
+hands text to an outside worker or a LAN backend, is set by hand in <code>config.toml</code>. <code>get --json</code>
+marks it <code>editable: false</code> with the note <code>set by hand in config.toml</code>, and <code>set</code> refuses it:</p>
+<div class="code"><pre class="highlight"><code class="language-text">log.file cannot be changed here (set by hand in config.toml)
+</code></pre></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Section</th>
+<th>Table</th>
+<th>Holds</th>
+<th>By hand</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log</code></td>
+<td><code>[log]</code></td>
+<td>Level, per-logger levels, format, keep days, <code>enabled</code>.</td>
+<td><code>file</code>, <code>file_max_bytes</code>, <code>file_backups</code>, <code>events_file</code></td>
+</tr>
+<tr>
+<td><code>jobs</code></td>
+<td><code>[jobs]</code></td>
+<td>Leases, retries, backoff, timeouts, per-kind limits, store and embed defaults.</td>
+<td>none</td>
+</tr>
+<tr>
+<td><code>swarm</code></td>
+<td><code>[swarm]</code></td>
+<td>Agent limits and lease time.</td>
+<td><code>enabled</code>, <code>allowed_kinds</code></td>
+</tr>
+<tr>
+<td><code>router</code></td>
+<td><code>[router]</code></td>
+<td>Shortcuts, confidence, token limits, waits, embedder and vector store.</td>
+<td><code>lan_allowlist</code></td>
+</tr>
+<tr>
+<td><code>console</code></td>
+<td><code>[console]</code></td>
+<td><code>palette</code> and <code>mode</code>.</td>
+<td><code>port</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>[api]</code>, <code>[queues]</code>, <code>[labels]</code>, <code>[extensions]</code> and each plugin's table are not here. Plugin
+settings have their own commands: see <a href="plugins.html">Plugins</a>.</p>
+<h3 id="what-a-change-costs">What a change costs</h3>
+<p>Each key has an effect, and the answer to <code>set</code> names it:</p>
+<ul>
+<li><strong>reload</strong>: <code>oaken reload</code>. Core rebuilds on <code>config.toml</code> in the same process, with no restart.
+Logging is reconfigured too.</li>
+<li><strong>restart</strong>: for a key a reload cannot apply. No key needs one today, but if one does it is
+reported the same way.</li>
+<li><strong>none</strong>: the change altered nothing, so nothing was written.</li>
+</ul>
+<h3 id="safe-by-construction">Safe by construction</h3>
+<ul>
+<li>Only the one table is rewritten. Comments, other tables and plugin settings stay.</li>
+<li>The whole file is validated before anything is written. An error names the key.</li>
+<li>A change that alters nothing writes nothing (<code>Nothing to change.</code>).</li>
+<li>There is no environment override of a setting. The file is the only source. (<code>OAKEN_HOME</code> only
+says where the file lives.)</li>
+<li>A key that looks like a secret is refused. See <a href="keyring.html">Store credentials</a>.</li>
+</ul>
+</section>
+<section id="the-whole-file" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>The whole file</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>config<span class="w"> </span>validate<span class="w"> </span>--text<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>cat<span class="w"> </span>config.toml<span class="k">)</span><span class="s2">"</span><span class="w">    </span><span class="c1"># ok: true, or the error; warnings name plugins that will stay disabled</span>
+oaken<span class="w"> </span>config<span class="w"> </span>save<span class="w"> </span>--text<span class="w"> </span><span class="s2">"</span><span class="k">$(</span>cat<span class="w"> </span>config.toml<span class="k">)</span><span class="s2">"</span><span class="w"> </span>--yes<span class="w">  </span><span class="c1"># checked first; the old file is kept as config.toml.bak</span>
+</code></pre></div>
+<p><code>save</code> writes nothing for a file core would not start on. The backup is one level: the file as it
+was before this save. A plugin table that does not fit its plugin loads anyway, and comes back as a
+warning, because that plugin stays disabled until you fix it. The console's <code>/config</code> page does the
+same as text.</p>
+</section>
+<section id="storage" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>Storage</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>storage<span class="w"> </span>info<span class="w">          </span><span class="c1"># data dir, core.db and its write-ahead log, other databases there</span>
+oaken<span class="w"> </span>storage<span class="w"> </span>vacuum<span class="w"> </span>--yes<span class="w">  </span><span class="c1"># queue a vacuum job</span>
+</code></pre></div>
+<p>Sizes are read from the files. <code>vacuum</code> queues the job <code>maintenance.vacuum</code> and returns its
+<code>job_id</code>. Only one runs at a time (asking again returns the one queued or running, <code>created: false</code>). It refuses when free disk is under 1.1 times the database's size. While it works the
+database is write-locked: writers wait and readers carry on. Watch it with <code>oaken job</code> (see
+<a href="architecture/jobs.html">Jobs</a>).</p>
+</section>
+<section id="the-answer-cache" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>The answer cache</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>cache<span class="w"> </span>stats<span class="w">                         </span><span class="c1"># entries, bytes, entries per analyzer, oldest</span>
+oaken<span class="w"> </span>cache<span class="w"> </span>clear<span class="w"> </span>--yes<span class="w">                   </span><span class="c1"># all of it</span>
+oaken<span class="w"> </span>cache<span class="w"> </span>clear<span class="w"> </span>--analyzer<span class="w"> </span>triager.llm<span class="w"> </span>--yes<span class="w">   </span><span class="c1"># one analyzer's answers</span>
+</code></pre></div>
+<p>The cache holds model answers keyed by what produced them. Clearing costs only the calls it had
+saved. See <a href="architecture/router.html">The model router</a>.</p>
+</section>
+<section id="what-happened-events-the-log-and-the-change-log" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>What happened: events, the log and the change log</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>events<span class="w"> </span>tail<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span><span class="w">                    </span><span class="c1"># recent events, including from before core's last restart</span>
+oaken<span class="w"> </span>events<span class="w"> </span>tail<span class="w"> </span>--kinds<span class="w"> </span>JobStateChanged<span class="w"> </span>--since<span class="w"> </span><span class="m">2026</span>-11-07T09:00:00
+oaken<span class="w"> </span>watch<span class="w">                                     </span><span class="c1"># follow events live</span>
+oaken<span class="w"> </span>log<span class="w"> </span>tail<span class="w"> </span>--level<span class="w"> </span>warning<span class="w"> </span>--limit<span class="w"> </span><span class="m">50</span><span class="w">       </span><span class="c1"># the log; also --plugin KIND/NAME or --stage QUEUE</span>
+oaken<span class="w"> </span>log<span class="w"> </span>list<span class="w"> </span>--limit<span class="w"> </span><span class="m">20</span><span class="w">                       </span><span class="c1"># the change log: who changed what</span>
+</code></pre></div>
+<ul>
+<li><strong>Events.</strong> Core writes every event to <code>events.jsonl</code> in the data directory (<code>[log] events_file</code>;
+empty turns it off), one JSON line each, owner-only. It rotates with the log file's size
+(<code>file_max_bytes</code>) and keeps <code>file_backups</code> older files. Events hold ids, states and numbers,
+never item text. <code>events tail</code> reads them back, oldest first.</li>
+<li><strong>The log.</strong> <code>log tail</code> reads the <code>log_lines</code> table (kept <code>[log] keep_days</code>, default 7), or the
+log file when <code>[log] file</code> is set. <code>kept_in</code> says which. Lines are scrubbed already. It scopes to
+one plugin, one stage (a queue's name), or everything.</li>
+<li><strong>The change log.</strong> <code>log list</code> shows each operation that ran: time, actor, the operation, and a
+hash of its input (never the input, so a secret cannot land there).</li>
+</ul>
+</section>
+<section id="is-it-healthy" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Is it healthy?</h2></div>
+<p><code>oaken status</code> prints the version, each queue (queued, running, failed, paused, oldest wait) and how
+many plugins are healthy. It exits 3 when core is not running.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>
