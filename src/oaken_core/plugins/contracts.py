@@ -488,7 +488,7 @@ class Query:
 
     ``where`` matches top-level keys by equality; ``has`` needs these keys present in ``data`` (a dotted key reaches inside: ``parts.headers``); ``labels`` needs
     the record's id (a subject) to carry each label (``None`` value: any value); ``since`` and ``until`` bound
-    ``created_at`` (``until`` excluded). Oldest first unless ``newest_first``.
+    ``created_at`` (``until`` excluded). Oldest first unless ``newest_first``; ``order_by`` names a key of ``data`` to sort on instead of ``created_at``.
     """
 
     where: dict[str, Any] = field(default_factory=dict)
@@ -496,6 +496,7 @@ class Query:
     labels: tuple[tuple[str, str | None], ...] = ()  # (key, value) pairs; a None value means any value
     since: str | None = None
     until: str | None = None
+    order_by: str | None = None  # a top-level key of ``data`` to sort by instead of ``created_at`` (ties by id)
     newest_first: bool = False
     limit: int = 100
     offset: int = 0

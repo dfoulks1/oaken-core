@@ -140,8 +140,9 @@ class SqliteStore(BaseStore):
         q = query or Query()
         sql, args = self._conditions(collection, q)
         order = "DESC" if q.newest_first else "ASC"
+        by = f"json_extract(data_json, '$.{self._key(q.order_by)}')" if q.order_by else "created_at"
         rows = await self._database().fetchall(
-            f"SELECT * FROM records{sql} ORDER BY created_at {order}, id {order} LIMIT ? OFFSET ?", (*args, q.limit, q.offset)
+            f"SELECT * FROM records{sql} ORDER BY {by} {order}, id {order} LIMIT ? OFFSET ?", (*args, q.limit, q.offset)
         )
         return [self._record(r) for r in rows]
 

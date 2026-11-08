@@ -40,6 +40,7 @@ from oaken_core.queues import DEFAULT, EMBED, STORE
 log = get_logger("oaken_core.intake")
 
 FORMAT_KIND = "intake.format"  # in ``default``: split the raw item into parts
+ENVELOPE = "oaken"  # the key that marks an envelope: ``{"oaken": 1, "body": ...}``
 KIND = "intake.triage"  # in a triager stage: judge the parts
 STORE_KIND = "intake.store"
 EMBED_KIND = "intake.embed"
@@ -55,6 +56,8 @@ class IntakePayload(BaseModel):
     )  # set at submit, e.g. confidential
     key: str | None = None  # what makes this the same item again (a message id); a dedupe triager reads it
     format: str | None = None  # what the body is (``email/rfc822``): picks the formatter; none keeps it whole
+    parent: str | None = None  # the subject this item was made from (an envelope from inside); None for a first arrival
+    hops: int = 0  # how many re-submissions deep it is (an envelope from inside); an outside item starts at 0
     parts: dict[str, Part] = Field(default_factory=dict)  # filled by the format step
 
 
@@ -178,10 +181,18 @@ class Intake:
         key: str | None = None,
         format: str | None = None,
         actor: Actor = SYSTEM,
+        trusted: bool = False,
     ) -> SubjectId:
         """Queue an item for triage. Returns its provisional subject id. ``labels`` are set before
         triage (a provider marks ``confidential`` here, so a remote triager never sees it). ``key`` is the
         source's own id for the item, for a triager that drops repeats."""
+        parent, hops = None, 0
+        if isinstance(body, dict) and body.get(ENVELOPE) == 1 and "body" in body:  # an envelope: unwrap it
+            env, body = body, body["body"]
+            format, key = format or env.get("format"), key or env.get("key")  # what the sender says about the body
+            if trusted:  # only from inside core: an outsider's labels, parent and hops could steer an item or dodge a loop guard
+                labels = {**{str(k): str(v) for k, v in dict(env.get("labels") or {}).items()}, **(labels or {})}
+                parent, hops = env.get("parent"), max(0, int(env.get("hops") or 0))
         subject = new_subject_id()
         for label, value in (
             labels or {}
@@ -194,6 +205,8 @@ class Intake:
             labels=labels or {},
             key=key,
             format=format,
+            parent=parent,
+            hops=hops,
         )
         await self.jobs.enqueue(
             FORMAT_KIND, payload, subject=subject, queue=DEFAULT, actor=actor

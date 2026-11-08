@@ -46,3 +46,10 @@ async def test_list_and_count_by_where_has_order_and_page(store: SqliteStore) ->
     assert len(await s.list("n", page)) == 2 and await s.count("n", page) == 5
     with pytest.raises(Exception):
         await s.list("n", Query(where={"k') OR 1=1 --": 1}))
+
+
+async def test_order_by_sorts_on_a_key_of_the_data(store: SqliteStore) -> None:
+    for i, when in enumerate(["c", "a", "b"]):
+        await store.create("n", {"when": when}, id=f"i{i}")
+    assert [r.data["when"] for r in await store.list("n", Query(order_by="when"))] == ["a", "b", "c"]
+    assert [r.data["when"] for r in await store.list("n", Query(order_by="when", newest_first=True))] == ["c", "b", "a"]

@@ -843,6 +843,7 @@ class PluginHost:
                     key=key,
                     format=format,
                     actor=Actor("system", rec.name),
+                    trusted=rec.kind != "provider",  # a provider relays outside text; its envelope's labels, parent and hops are not believed
                 )
             )
 
