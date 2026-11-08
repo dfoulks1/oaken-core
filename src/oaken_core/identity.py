@@ -26,8 +26,10 @@ def daemon_command() -> list[str]:
 
 
 def home_env() -> str:
-    """The variable that relocates this app's home. A product has its own, so it never lands in another
-    Oaken's folder just because ``OAKEN_HOME`` is set for a different one."""
+    """The variable that relocates this app's home. A product has its own, so setting it pins this
+    app to a folder of its own. Plain core's is ``OAKEN_HOME``. A product never borrows another
+    Oaken's home: when its own var is unset, it falls to its remembered or platform-default home,
+    not to someone else's root."""
     return "OAKEN_HOME" if app == DEFAULT_APP else app.upper().replace("-", "_") + "_HOME"
 
 

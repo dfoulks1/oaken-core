@@ -61,18 +61,29 @@ def build_parser(prog: str, ops: list[OpInfo]) -> argparse.ArgumentParser:
     sub.add_parser("watch", help="Follow core's events as they happen.", parents=[_parent()])
     for verb, text in DAEMON.items():
         sub.add_parser(verb, help=text)
-    groups: dict[str, argparse._SubParsersAction[argparse.ArgumentParser]] = {}
+    groups: dict[tuple[str, ...], argparse._SubParsersAction[argparse.ArgumentParser]] = {}
+
+    def group_under(prefix: tuple[str, ...], parent: argparse._SubParsersAction[argparse.ArgumentParser], name: str, metavar: str) -> argparse._SubParsersAction[argparse.ArgumentParser]:
+        """The subparsers for ``name`` under ``parent``, made once and reused (keyed by the full path prefix)."""
+        if prefix not in groups:
+            node = parent.add_parser(name, help=f"{name} commands", aliases=ALIASES.get(name, []))
+            # a reserved dest that no schema flag can collide with (flag dests are field names, never start with a space)
+            groups[prefix] = node.add_subparsers(dest=" sub " + ".".join(prefix), metavar=metavar)
+        return groups[prefix]
+
     for op in sorted(ops, key=lambda o: o.cli_path):
         path = op.cli_path
         if path[0] in BUILTIN:
             continue
-        if len(path) == 1:
+        if len(path) == 1:  # a core operation with no group: a top-level verb
             leaf = sub.add_parser(path[0], help=op.summary, parents=[_parent()])
-        else:
-            if path[0] not in groups:
-                group = sub.add_parser(path[0], help=f"{path[0]} commands", aliases=ALIASES.get(path[0], []))
-                groups[path[0]] = group.add_subparsers(dest="action", metavar="VERB")
-            leaf = groups[path[0]].add_parser(path[1], help=op.summary, parents=[_parent()])
+        elif len(path) == 2:  # group/plugin -> verb
+            under = group_under((path[0],), sub, path[0], "VERB")
+            leaf = under.add_parser(path[1], help=op.summary, parents=[_parent()])
+        else:  # template -> instance -> verb (a template plugin's operation)
+            tmpl = group_under((path[0],), sub, path[0], "INSTANCE")
+            inst = group_under((path[0], path[1]), tmpl, path[1], "VERB")
+            leaf = inst.add_parser(path[2], help=op.summary, parents=[_parent()])
         leaf.set_defaults(_op=op)
         add_flags(leaf, dict(op.input_schema or {}), enforce_required=False)
     return parser
@@ -231,6 +242,13 @@ async def amain(argv: list[str], *, prog: str = "oaken", client_factory: ClientF
             if not args.verb:
                 parser.print_help()
                 return int(ExitCode.OK)
+            if args.verb not in BUILTIN and args.verb not in DAEMON and getattr(args, "_op", None) is None:
+                # a group with no verb (``oaken gmail`` or ``oaken gmail warwalrux``): show its help,
+                # which lists the next token (INSTANCE or VERB). argparse renders it for the exact path.
+                try:
+                    parser.parse_args([*argv, "-h"])
+                except SystemExit as exc:
+                    return int(exc.code or 0) if isinstance(exc.code, int) else int(ExitCode.OK)
             return await _run(args, client, ops)
     except SystemExit as exc:  # argparse: --help is 0, a usage error is 2
         return int(exc.code or 0) if isinstance(exc.code, int) else int(ExitCode.USAGE)

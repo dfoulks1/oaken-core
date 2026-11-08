@@ -83,6 +83,10 @@ class Operation(Generic[In, Out]):
     audit: AuditBy = "registry"
     plugin: str | None = None  # the plugin that offers it (its name is the name's prefix)
     description: str = ""
+    # The template this is an instance of (``gmail`` for a ``warwalrux`` instance), set when the
+    # plugin is a template. It names the CLI group: ``oaken <template> <instance> <verb>``. None for
+    # a plain plugin, which stays two-level (``oaken <plugin> <verb>``).
+    template: str | None = None
     # The CLI group a core operation sits under (``queue`` for ``queue_requeue``: ``queue requeue``).
     # A plugin operation's group is its plugin (``<plugin>.<name>`` is ``<plugin> <name>``).
     group: str = ""
@@ -117,10 +121,14 @@ class Operation(Generic[In, Out]):
 
     @property
     def cli_path(self) -> tuple[str, ...]:
-        """Where the CLI puts it: ``(group, verb)`` for a core operation in a group,
-        ``(plugin, name)`` for a plugin's, ``(name,)`` for a core operation with none."""
+        """Where the CLI puts it: ``(template, instance, verb)`` for a template instance's
+        operation (``oaken gmail warwalrux auth``), ``(group, verb)`` for a core operation in a
+        group, ``(plugin, verb)`` for a plain plugin's, ``(name,)`` for a core operation with none."""
         if self.plugin is not None:
-            return (self.plugin, self.name.split(PLUGIN_SEP, 1)[1])
+            verb = self.name.split(PLUGIN_SEP, 1)[1]
+            if self.template is not None:
+                return (self.template, self.plugin, verb)
+            return (self.plugin, verb)
         if self.group:
             return (self.group, self.name[len(self.group) + 1 :])
         return (self.name,)

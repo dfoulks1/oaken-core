@@ -53,6 +53,7 @@ class InProcessApiClient(ApiClient):
                 permission=op.permission,
                 group=op.group,
                 plugin=op.plugin,
+                template=op.template,
                 agent_ok=op.agent_ok,
                 streaming=op.streaming,
                 input_schema=op.input_schema(),

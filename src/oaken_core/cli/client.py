@@ -44,6 +44,7 @@ class OpInfo:
     permission: str  # "read" | "mutate" | "send"
     group: str = ""
     plugin: str | None = None
+    template: str | None = None  # the template this is an instance of; sets the 3-level CLI path
     agent_ok: bool = False
     streaming: bool = False
     input_schema: Mapping[str, Any] = field(default_factory=dict)
@@ -51,9 +52,13 @@ class OpInfo:
 
     @property
     def cli_path(self) -> tuple[str, ...]:
-        """Where the CLI puts it: ``(plugin, name)``, ``(group, verb)`` or ``(name,)``."""
+        """Where the CLI puts it: ``(template, instance, verb)``, ``(plugin, verb)``,
+        ``(group, verb)`` or ``(name,)``."""
         if self.plugin:
-            return (self.plugin, self.name.split(".", 1)[1])
+            verb = self.name.split(".", 1)[1]
+            if self.template:
+                return (self.template, self.plugin, verb)
+            return (self.plugin, verb)
         if self.group:
             return (self.group, self.name[len(self.group) + 1 :])
         return (self.name,)

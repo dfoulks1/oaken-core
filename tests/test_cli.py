@@ -169,3 +169,36 @@ def test_a_field_marked_stdin_is_filled_from_a_pipe_when_no_flag_gave_it(monkeyp
     monkeypatch.setattr("sys.stdin", tty)
     with pytest.raises(Exception, match="--text"):
         _payload(argparse.Namespace(), op)
+
+
+def test_a_template_instances_op_is_three_levels_and_a_plain_plugins_is_two() -> None:
+    """A template plugin's operation addresses as ``oaken <template> <instance> <verb>``; a plain
+    plugin stays ``oaken <plugin> <verb>``. The third level is the ``template`` field; the op's own
+    name (and so its dispatch) is unchanged (``<instance>.<verb>``)."""
+    from oaken_core.cli.client import OpInfo
+
+    tmpl = OpInfo(name="warwalrux.auth", summary="sign in", permission="mutate", plugin="warwalrux", template="gmail")
+    plain = OpInfo(name="crm.scan", summary="scan", permission="read", plugin="crm")
+    assert tmpl.cli_path == ("gmail", "warwalrux", "auth")  # template -> instance -> verb
+    assert plain.cli_path == ("crm", "scan")  # unchanged two-level
+
+
+def test_the_three_level_template_tree_routes_to_the_right_leaf() -> None:
+    """``build_parser`` nests template -> instance -> verb, and ``oaken gmail warwalrux auth`` reaches
+    that op's leaf. Two instances of the same template share the ``gmail`` group."""
+    from oaken_core.cli.client import OpInfo
+    from oaken_core.cli.commands import build_parser
+
+    ops = [
+        OpInfo(name="warwalrux.auth", summary="sign in", permission="mutate", plugin="warwalrux", template="gmail"),
+        OpInfo(name="warwalrux.check", summary="check", permission="read", plugin="warwalrux", template="gmail"),
+        OpInfo(name="dfoulks.auth", summary="sign in", permission="mutate", plugin="dfoulks", template="gmail"),
+        OpInfo(name="crm.scan", summary="scan", permission="read", plugin="crm"),  # a plain plugin: two levels
+    ]
+    parser = build_parser("oaken", ops)
+    args = parser.parse_args(["gmail", "warwalrux", "auth"])
+    assert getattr(args, "_op").name == "warwalrux.auth"
+    args = parser.parse_args(["gmail", "dfoulks", "auth"])
+    assert getattr(args, "_op").name == "dfoulks.auth"
+    args = parser.parse_args(["crm", "scan"])  # plain plugin unchanged
+    assert getattr(args, "_op").name == "crm.scan"

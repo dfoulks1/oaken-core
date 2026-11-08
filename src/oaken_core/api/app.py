@@ -119,7 +119,7 @@ def caller_of(request: Request) -> CallerContext:
 def operation_info(op: AnyOperation) -> models.OperationInfo:
     return models.OperationInfo(
         name=op.name, summary=op.summary, permission=op.permission, group=op.group,
-        plugin=op.plugin, agent_ok=op.agent_ok, streaming=op.streaming, mcp=op.mcp,
+        plugin=op.plugin, template=op.template, agent_ok=op.agent_ok, streaming=op.streaming, mcp=op.mcp,
         input_schema=op.input_schema(), output_schema=op.output_schema(),
     )  # fmt: skip
 

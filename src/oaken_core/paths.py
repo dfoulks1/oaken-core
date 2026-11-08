@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Where Oaken keeps its files. ``OAKEN_HOME`` (or the product's own variable, see ``identity``) relocates
-everything under one root."""
+"""Where Oaken keeps its files. The product's own home variable (``OAKEN_HOME`` for plain core, or
+the product's, see ``identity``) relocates everything under one root. A product never borrows
+another Oaken's home."""
 
 import contextlib
 import os
@@ -51,8 +52,11 @@ def remember_home() -> bool:
 
 
 def home_source() -> tuple[str, Path | None]:
-    """How the home was chosen: ``env`` (``OAKEN_HOME``), ``remembered`` (the last known good
-    home, used when the variable is unset) or ``default`` (the platform folders)."""
+    """How the home was chosen, in precedence order: ``env`` (this product's own var, e.g.
+    ``OAKEN_MAIL_HOME``, which for plain core is ``OAKEN_HOME``), ``remembered`` (the last known
+    good home), or ``default`` (the platform folders). A product never borrows another Oaken's
+    home: its own var is the only env that selects it, so one product can be relocated without
+    dragging the rest along."""
     raw = os.environ.get(identity.home_env())
     if raw:
         return "env", Path(raw).expanduser().resolve()

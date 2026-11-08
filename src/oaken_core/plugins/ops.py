@@ -75,6 +75,7 @@ def adapt(host: PluginHost, offered: OfferedOperation) -> AnyOperation:
         preview=preview if d.permission == "mutate" else None,
         audit="registry",
         plugin=plugin,
+        template=offered.template,
         description=f"Offered by the {plugin} plugin.",
     )
 

@@ -141,8 +141,9 @@ class _Record:
 
 @dataclass(frozen=True)
 class OfferedOperation:
-    plugin: str
+    plugin: str  # the instance name: the op is ``<plugin>.<verb>``
     declaration: PluginOperation
+    template: str | None = None  # the template this is an instance of (``gmail``), for the 3-level CLI path; None for a plain plugin
 
 
 @dataclass(frozen=True)
@@ -425,16 +426,13 @@ class PluginHost:
                     if (
                         name and name != base and self._is_template_class(path)
                     ):  # an instance of a template: the template is written too, so there is always one to make more from
-                        if base in self.tables.tables.get(hit[0].kind, {}):
-                            raise PluginError(
-                                f"{hit[0].kind} {base!r} is already configured: add the instance with --name and plugin = {base!r}"
-                            )
+                        have = base in self.tables.tables.get(hit[0].kind, {})
                         return AddPlan(
                             hit[0].kind,
                             name,
                             {"plugin": base, **config},
                             "reload",
-                            base=(base, {"class": plan.table["class"]}),
+                            base=None if have else (base, {"class": plan.table["class"]}),
                         )
                     return plan
                 except ValueError as exc:
@@ -956,6 +954,13 @@ class PluginHost:
         ctx = PluginContext(
             name=rec.name, kind=rec.kind, plugin=rec.plugin, clock=self.clock,
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
+            # TODO(db-passthrough): LOOK AT THIS REALLY HARD — possibly remove. This hands a plugin a
+            # raw SQL Database handle, the one escape hatch from the "plugins keep data in the record
+            # store, never SQL" discipline (see PluginContext.store docstring). A plugin that uses it
+            # owns a table, bespoke SQL and migrations — exactly what we moved providers off of. If
+            # nothing but the store itself needs raw SQL, drop `db` from the plugin context entirely
+            # and let `migrations_dir`/db go with it. Keep only if a real case demands relational SQL
+            # a plugin cannot express as records (and then sqlc it, never inline).
             db=None if spec.first else self.db, store=self.store, labels=labels, router=self.router, submit=self._submitter(rec),
             secrets=PluginSecrets(self.secrets, rec.kind, rec.name) if self.secrets is not None else None,
             route=dict(self.effective(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
@@ -1292,7 +1297,11 @@ class PluginHost:
                 )
                 continue
             out.extend(
-                OfferedOperation(rec.name, d)
+                OfferedOperation(
+                    rec.name,
+                    d,
+                    template=rec.plugin if isinstance(rec.instance, BaseTemplatePlugin) else None,
+                )
                 for d in decls
                 if isinstance(d, PluginOperation)
             )

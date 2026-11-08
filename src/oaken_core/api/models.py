@@ -28,6 +28,7 @@ class OperationInfo(BaseModel):
     permission: Literal["read", "mutate", "send"]
     group: str = ""
     plugin: str | None = None
+    template: str | None = None
     agent_ok: bool = False
     streaming: bool
     mcp: Literal["never", "off", "on"]

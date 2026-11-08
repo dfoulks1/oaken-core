@@ -134,6 +134,7 @@ class HttpApiClient(_Base, ApiClient):
                 permission=o.get("permission", "read"),
                 group=str(o.get("group", "")),
                 plugin=o.get("plugin"),
+                template=o.get("template"),
                 agent_ok=bool(o.get("agent_ok", False)),
                 streaming=bool(o.get("streaming", False)),
                 input_schema=o.get("input_schema", {}),
