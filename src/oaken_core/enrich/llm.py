@@ -15,8 +15,6 @@ The backend is ``[plugins.enricher.<name>.route]`` (default: the ``ollama`` back
 bigger model for low-confidence answers. ``oaken llm try`` asks about a piece of text without storing
 anything, to tune the instructions.
 
-shortcut: core has no enrich target contract yet, so ``enrich`` takes an intake-shaped item (``body``, ``source``,
-``labels``) and returns a plain dict; fix the shape when core's enrich stage lands.
 """
 
 import hashlib
@@ -31,6 +29,7 @@ from oaken_core.plugins.base import (
     command,
 )
 from oaken_core.plugins.contracts import LLMRequest, PluginOpContext, UiField, UiSpec
+from oaken_core.stages import EnrichTarget, Enrichment
 from oaken_core.untrusted import UntrustedText
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -121,13 +120,13 @@ class LlmEnricher(BaseMultitenant, BaseTemplatePlugin, BaseLLMAnalyzer, BaseEnri
             confidential=confidential,
         )
 
-    async def enrich(self, target: Any) -> dict[str, Any]:
+    async def enrich(self, target: EnrichTarget) -> Enrichment:
         answer = await self._ask(
             item_text(target),
             target.source,
             target.labels.get("confidential") == "true",
         )
-        return answer.model_dump()
+        return Enrichment(data=answer.model_dump())
 
     @command(
         "try",

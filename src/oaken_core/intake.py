@@ -62,6 +62,7 @@ class StorePayload(IntakePayload):
     verdict: str
     reason: str = ""
     by: str = "system"  # the triager that decided, for the change log
+    routes: list[str] = Field(default_factory=list)  # the action routes the triagers asked for (ADR 0019)
 
 
 class EmbedPayload(BaseModel):
@@ -99,6 +100,7 @@ class Verdict:
     )  # written to the provisional subject
     # Reject and learn: embed the item (vector and hash only) and do nothing else. Needs a reject.
     learn: bool = False
+    route: tuple[str, ...] = ()  # action routes this item is owed (ADR 0019); empty routes nowhere
 
 
 class Triager(Protocol):
@@ -135,7 +137,9 @@ class Intake:
         router: Any = None,
         triager_source: Callable[[str], Sequence[Triager]] | None = None,
         formatter_for: Callable[[str | None], Any] | None = None,
+        on_stored: Callable[[Any], Awaitable[None]] | None = None,
     ) -> None:
+        self.on_stored = on_stored  # called with a ``StagePayload`` once an item is stored: the enrich and act loops
         self.router = router  # the model router, for ``Verdict.learn``
         self.jobs, self.labels, self.db, self.changelog = jobs, labels, db, changelog
         self.triagers = sorted(triagers, key=lambda t: (t.rank, t.name))
@@ -327,7 +331,8 @@ class Intake:
         elif not keep:  # passed, but not kept: it goes on under its provisional id
             return IntakeResult(verdict=verdict.kind, subject_id=p.subject_id)
         await self.jobs.enqueue(
-            STORE_KIND, StorePayload(**p.model_dump(), verdict=verdict.kind, reason=verdict.reason, by=who.label or who.kind),
+            STORE_KIND, StorePayload(**p.model_dump(), verdict=verdict.kind, reason=verdict.reason, by=who.label or who.kind,
+                                     routes=list(dict.fromkeys(r for _, a in said for r in a.route))),
             subject=p.subject_id, queue=STORE, actor=who,
         )  # fmt: skip
         return IntakeResult(verdict=verdict.kind)
@@ -356,6 +361,10 @@ class Intake:
                 EMBED_KIND, EmbedPayload(subject_id=real, text=item_text(item), confidential=p.labels.get("confidential") == "true"),
                 subject=real, queue=EMBED, actor=Actor("system", p.by),
             )  # fmt: skip
+        if self.on_stored is not None:
+            from oaken_core.stagerun import StagePayload
+
+            await self.on_stored(StagePayload(**{**p.model_dump(include=set(StagePayload.model_fields)), "subject_id": real}))
         return IntakeResult(verdict=p.verdict, subject_id=real)
 
     async def _embed_job(self, p: EmbedPayload, job: Job) -> None:

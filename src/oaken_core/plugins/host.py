@@ -252,6 +252,7 @@ class PluginHost:
             None  # attach with ``attach_labels`` before ``start``
         )
         self.label_store: LabelStore | None = None
+        self.store: Any = None  # the active store plugin, set by ``start_store``
         self.relations: set[str] = set(RELATIONS)
         self._records: dict[tuple[str, str], _Record] = {}
         self._migrated: set[tuple[str, str]] = set()
@@ -781,7 +782,7 @@ class PluginHost:
         except BaseException:
             await db.close()
             raise
-        self.db = db
+        self.db, self.store = db, rec.instance
         return db
 
     async def start(self) -> None:
@@ -954,7 +955,7 @@ class PluginHost:
         ctx = PluginContext(
             name=rec.name, kind=rec.kind, plugin=rec.plugin, clock=self.clock,
             log=get_logger(f"oaken_core.plugin.{rec.kind}.{rec.name}"), config=config, bus=self.bus,
-            db=None if spec.first else self.db, labels=labels, router=self.router, submit=self._submitter(rec),
+            db=None if spec.first else self.db, store=self.store, labels=labels, router=self.router, submit=self._submitter(rec),
             secrets=PluginSecrets(self.secrets, rec.kind, rec.name) if self.secrets is not None else None,
             route=dict(self.effective(rec.kind, rec.name).get("route") or {}), **self._trace_hooks(),
             prompt=str(self.effective(rec.kind, rec.name).get("prompt") or ""),

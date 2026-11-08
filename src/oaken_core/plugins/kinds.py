@@ -74,7 +74,7 @@ def check_queue_kind(kinds: "KindRegistry", queue: str, kind: str) -> None:
 
 
 SHIPPED = (
-    KindSpec("store", "oaken_core.stores", ("open",), exclusive=True, first=True),
+    KindSpec("store", "oaken_core.stores", ("open", "create", "get", "list", "count", "update", "delete"), exclusive=True, first=True),
     KindSpec("auth", "oaken_core.auth", ("authenticate", "authorize"), exclusive=True),
     KindSpec("gateway", "oaken_core.gateways", ("serve",)),
     KindSpec("provider", "oaken_core.providers"),

@@ -52,6 +52,8 @@ from oaken_core.plugins.contracts import (
 
 if TYPE_CHECKING:
     from oaken_core.router.router import Route
+    from oaken_core.plugins.contracts import Query, Record
+    from oaken_core.stages import ActionResult, ActionTarget, EnrichTarget, Enrichment
 
 F = TypeVar("F", bound=Callable[..., Any])
 M = TypeVar("M", bound=BaseModel)
@@ -65,7 +67,7 @@ def _default(fn: F) -> F:
 
 # The calls a plugin author implements and core makes: what is asked of it, and what it answers. Every one a
 # plugin class defines is traced by ``BasePlugin`` with no code in the plugin (see ``_traced``).
-TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest", "read", "split")
+TRACED = ("generate", "embed", "upsert", "delete", "query", "get", "put", "clear", "triage", "enrich", "act", "ingest", "read", "split", "create", "update")
 _TRACE_KIND = {"generate": "llm.call"}  # the kind the trace file already knows a model call by
 
 
@@ -287,12 +289,45 @@ class BaseProvider(BasePlugin):
 
 
 class BaseStore(BasePlugin):
-    """A store hands core a ``Database``. Core and plugins write portable SQL against it."""
+    """A store hands core a ``Database`` (``open``) and keeps records: JSON objects under (collection, id).
+
+    - ``create(collection, data, id=None)``: a new record; a given ``id`` that exists raises ``Conflict``.
+    - ``get(collection, id)``: the record, or ``NotFound``.
+    - ``list(collection, query=None)`` and ``count(collection, query=None)``: the records a ``Query`` means (and how many).
+    - ``update(collection, id, data, rev=None)``: merge ``data`` into the record (a ``None`` value removes the
+      key); ``NotFound`` if absent, ``Conflict`` if ``rev`` is given and is not the current one.
+    - ``delete(collection, id)``: ``NotFound`` if absent.
+    """
     kind: ClassVar[str] = "store"
 
     @_default
     async def open(self) -> Database:
         raise NotImplementedError("a store must implement open()")
+
+    @_default
+    async def create(self, collection: str, data: dict[str, Any], id: str | None = None) -> "Record":
+        raise NotImplementedError("this store cannot create records")
+
+    @_default
+    async def get(self, collection: str, id: str) -> "Record":
+        raise NotImplementedError("this store cannot get records")
+
+    @_default
+    async def list(self, collection: str, query: "Query | None" = None) -> "list[Record]":
+        raise NotImplementedError("this store cannot list records")
+
+    @_default
+    async def count(self, collection: str, query: "Query | None" = None) -> int:
+        """How many records match, ignoring ``limit`` and ``offset``."""
+        raise NotImplementedError("this store cannot count records")
+
+    @_default
+    async def update(self, collection: str, id: str, data: dict[str, Any], rev: int | None = None) -> "Record":
+        raise NotImplementedError("this store cannot update records")
+
+    @_default
+    async def delete(self, collection: str, id: str) -> None:
+        raise NotImplementedError("this store cannot delete records")
 
 
 class BaseMultitenant:
@@ -568,7 +603,7 @@ class BaseEnricher(BaseAnalyzer):
     kind: ClassVar[str] = "enricher"
 
     @_default
-    async def enrich(self, target: Any) -> Any:
+    async def enrich(self, target: "EnrichTarget") -> "Enrichment | None":
         raise NotImplementedError("an enricher must implement enrich()")
 
 
@@ -578,5 +613,5 @@ class BaseAction(BaseAnalyzer):
     routes: ClassVar[tuple[str, ...]] = ()
 
     @_default
-    async def act(self, target: Any) -> Any:
+    async def act(self, target: "ActionTarget") -> "ActionResult":
         raise NotImplementedError("an action must implement act()")

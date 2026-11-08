@@ -48,6 +48,7 @@ from oaken_core.logstore import LogTable, LogToBus
 from oaken_core.queues import DEFAULT, Queues
 from oaken_core.router import HostDirectory, Router
 from oaken_core.scheduler import Scheduler
+from oaken_core.stagerun import StageRunner
 from oaken_core.settings import Settings
 from oaken_core.trace import Tracer
 
@@ -196,6 +197,10 @@ class Core:
             router=self.router,
         )
         self.intake.register(self.runner)
+        self.stages = StageRunner(jobs, labels, enrichers_for=lambda st: self._in_stage("enricher", st),
+                                  actions_for=self._actions_for, store=lambda: self.host.store)  # fmt: skip
+        self.stages.register(self.runner)
+        self.intake.on_stored = self.stages.begin
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, labels=labels, changelog=changelog,
                        bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, intake=self.intake, queues_from_config=self.queues_from_config, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
@@ -271,6 +276,23 @@ class Core:
         )
         return [_Triager(name, plugin) for name, plugin in self.host.named_triagers().items()
                 if name not in off and (self.host.tables.table("triager", name).get("stage") or first) in (stage, None)]  # fmt: skip
+
+    def _in_stage(self, kind: str, stage: str) -> list[tuple[str, Any]]:
+        """The healthy plugins of an analyzer ``kind`` that run in ``stage`` (their ``stage`` setting, else the first
+        stage of that kind), by name, minus any switched off there."""
+        queues = self.runner.jobs.queues
+        first = next((q.name for q in queues.all() if q.kind == kind), None)
+        off = queues.get(stage).disabled if stage in [q.name for q in queues.all()] else ()
+        return [(n, p) for n, p in self.host.usable(kind).items()
+                if n not in off and (self.host.tables.table(kind, n).get("stage") or first) in (stage, None)]  # fmt: skip
+
+    def _actions_for(self, route: str) -> list[tuple[str, Any, str | None]]:
+        """The healthy actions answering ``route``, each with the stage it runs in (None: no action stage made)."""
+        queues = self.runner.jobs.queues
+        first = next((q.name for q in queues.all() if q.kind == "action"), None)
+        return [(n, p, self.host.tables.table("action", n).get("stage") or first)
+                for n, p in self.host.usable("action").items() if route in getattr(p, "routes", ())
+                and n not in (queues.get(st).disabled if (st := self.host.tables.table("action", n).get("stage") or first) else ())]  # fmt: skip
 
     def _formatter(self, fmt: str | None) -> Any:
         """The healthy formatter for an item's ``format`` (a format it declares, or its own name), or None."""

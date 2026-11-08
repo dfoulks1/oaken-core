@@ -274,6 +274,13 @@ bases = ["BaseFormatter"]
 doc = "A JSON object becomes one part per top-level key (the value is the part's content). Anything else"
 
 [[classes]]
+name = "IntakeItem"
+module = "oaken_core.intake"
+path = "src/oaken_core/intake.py"
+bases = []
+doc = "IntakeItem(subject_id: str, source: str, body: Any, labels: dict[str, str], key: str | None = None, parts: dict[str, oaken_core.parts.Part] = <factory>, verdicts: 'dict[str, Verdict]' = <factory>)"
+
+[[classes]]
 name = "IntakePayload"
 module = "oaken_core.intake"
 path = "src/oaken_core/intake.py"
@@ -502,7 +509,7 @@ name = "BaseStore"
 module = "oaken_core.plugins.base"
 path = "src/oaken_core/plugins/base.py"
 bases = ["BasePlugin"]
-doc = "A store hands core a ``Database``. Core and plugins write portable SQL against it."
+doc = "A store hands core a ``Database`` (``open``) and keeps records: JSON objects under (collection, id)."
 
 [[classes]]
 name = "BaseTemplatePlugin"
@@ -566,6 +573,34 @@ module = "oaken_core.router.stub"
 path = "src/oaken_core/router"
 bases = ["BasePlugin"]
 doc = "A bag-of-words hash into ``dimensions`` buckets: texts that share words are close."
+
+[[classes]]
+name = "ActPayload"
+module = "oaken_core.stagerun"
+path = ""
+bases = ["StagePayload"]
+doc = ""
+
+[[classes]]
+name = "StagePayload"
+module = "oaken_core.stagerun"
+path = ""
+bases = ["BaseModel"]
+doc = ""
+
+[[classes]]
+name = "ActionTarget"
+module = "oaken_core.stages"
+path = ""
+bases = ["EnrichTarget"]
+doc = "A subject routed to an action. ``route`` is the name the triager set on its verdict."
+
+[[classes]]
+name = "EnrichTarget"
+module = "oaken_core.stages"
+path = ""
+bases = ["IntakeItem"]
+doc = "A stored subject, for an enricher or an action."
 
 [[classes]]
 name = "SqliteStore"

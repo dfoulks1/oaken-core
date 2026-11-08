@@ -79,6 +79,8 @@ class PluginContext:
     # facade if untrusted plugins ever matter.
     db: Database | None = None
     labels: PluginLabels | None = None
+    # The active store (``BaseStore``): records by create, get, list, count, update, delete. A plugin that keeps data uses this, not SQL.
+    store: Any = None
     trace: Callable[..., None] = _no_trace
     tracing: Callable[[], bool] = _not_tracing
     folders: Mapping[str, Path] = field(default_factory=dict)
@@ -143,6 +145,8 @@ class PluginOpContext:
     clock: Clock
     log: Any
     labels: PluginLabels | None = None
+    # The active store (``BaseStore``): records by create, get, list, count, update, delete. A plugin that keeps data uses this, not SQL.
+    store: Any = None
 
 
 @dataclass(frozen=True)
@@ -459,3 +463,39 @@ class Plugin(Protocol):
     async def health(self) -> Health:
         """A cheap liveness check, polled periodically by the host."""
         ...
+
+
+# -- Records ------------------------------------------------------------------------------------
+# What a store's ``create``, ``get``, ``list``, ``update`` and ``delete`` work on: a JSON object
+# filed under (collection, id). Core has no nouns; a product decides what its collections are.
+
+
+@dataclass(frozen=True)
+class Record:
+    """``data`` is a JSON object. ``rev`` is 1 at create and +1 on every update."""
+
+    collection: str
+    id: str
+    data: dict[str, Any]
+    rev: int
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class Query:
+    """Which records ``list`` and ``count`` mean. All conditions must hold.
+
+    ``where`` matches top-level keys by equality; ``has`` needs these keys present in ``data`` (a dotted key reaches inside: ``parts.headers``); ``labels`` needs
+    the record's id (a subject) to carry each label (``None`` value: any value); ``since`` and ``until`` bound
+    ``created_at`` (``until`` excluded). Oldest first unless ``newest_first``.
+    """
+
+    where: dict[str, Any] = field(default_factory=dict)
+    has: tuple[str, ...] = ()
+    labels: tuple[tuple[str, str | None], ...] = ()  # (key, value) pairs; a None value means any value
+    since: str | None = None
+    until: str | None = None
+    newest_first: bool = False
+    limit: int = 100
+    offset: int = 0

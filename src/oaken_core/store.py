@@ -9,13 +9,20 @@ be another plugin.
 shortcut: the contract is SQL, so a non-SQL store is out; upgrade if one ever appears.
 """
 
+import json
+import re
+import sqlite3
 from pathlib import Path
-from typing import ClassVar, Protocol
+from typing import Any, ClassVar, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from oaken_core import paths
+from oaken_core.clock import SystemClock, fmt_ts
 from oaken_core.db import Database, migrate
+from oaken_core.errors import Conflict, InvalidInput, NotFound, PluginError, StorageError
+from oaken_core.ids import new_subject_id
+from oaken_core.plugins.contracts import Query, Record
 from oaken_core.plugins.base import BaseStore
 
 MIGRATIONS = Path(__file__).resolve().parent / "migrations"
@@ -59,7 +66,109 @@ class SqliteStore(BaseStore):
 
     async def open(self) -> Database:
         path, pool, busy = self._settings()
-        return await Database.open(path, read_pool_size=pool, busy_timeout_ms=busy)
+        self._db = await Database.open(path, read_pool_size=pool, busy_timeout_ms=busy)
+        return self._db
+
+    # -- records (the CRUD + GET contract of ``BaseStore``) -------------------------------------
+
+    def _database(self) -> Database:
+        db = getattr(self, "_db", None)
+        if db is None:
+            raise PluginError("sqlite: the store is not open")
+        return db
+
+    def _now(self) -> str:
+        ctx = getattr(self, "ctx", None)
+        return fmt_ts((ctx.clock if ctx else SystemClock()).now())
+
+    @staticmethod
+    def _record(row: sqlite3.Row) -> Record:
+        return Record(row["collection"], row["id"], json.loads(row["data_json"]), int(row["rev"]), row["created_at"], row["updated_at"])
+
+    async def create(self, collection: str, data: dict[str, Any], id: str | None = None) -> Record:
+        rid, now = id or str(new_subject_id()), self._now()
+        try:
+            await self._database().execute(
+                "INSERT INTO records (collection, id, data_json, rev, created_at, updated_at) VALUES (?,?,?,1,?,?)",
+                (collection, rid, json.dumps(data, default=str), now, now),
+            )
+        except StorageError as exc:
+            if "UNIQUE" not in str(exc):
+                raise
+            raise Conflict(f"{collection}/{rid} already exists") from exc
+        return Record(collection, rid, json.loads(json.dumps(data, default=str)), 1, now, now)
+
+    async def get(self, collection: str, id: str) -> Record:
+        row = await self._database().fetchone("SELECT * FROM records WHERE collection = ? AND id = ?", (collection, id))
+        if row is None:
+            raise NotFound(f"no record {collection}/{id}")
+        return self._record(row)
+
+    @staticmethod
+    def _key(key: str) -> str:
+        if not re.fullmatch(r"\w+", key):
+            raise InvalidInput(f"not a usable record key: {key!r}")
+        return key
+
+    @staticmethod
+    def _path(key: str) -> str:
+        """A dotted key (``parts.headers``) as a quoted JSON path, so a segment may hold any character but a quote."""
+        if '"' in key or not key:
+            raise InvalidInput(f"not a usable record key: {key!r}")
+        return "$" + "".join(f'."{seg}"' for seg in key.split("."))
+
+    def _conditions(self, collection: str, q: Query) -> tuple[str, list[Any]]:
+        cond, args = ["collection = ?"], [collection]
+        for key, value in q.where.items():
+            cond.append(f"json_extract(data_json, '$.{self._key(key)}') = ?")
+            args.append(value)
+        for key in q.has:
+            cond.append("json_type(data_json, ?) IS NOT NULL")
+            args.append(self._path(key))
+        for key, value in q.labels:  # the id is a subject; labels are core's own table
+            cond.append("EXISTS (SELECT 1 FROM labels l WHERE l.subject_id = records.id AND l.key = ?" + ("" if value is None else " AND l.value = ?") + ")")
+            args += [key] if value is None else [key, value]
+        if q.since:
+            cond.append("created_at >= ?")
+            args.append(q.since)
+        if q.until:
+            cond.append("created_at < ?")
+            args.append(q.until)
+        return " WHERE " + " AND ".join(cond), args
+
+    async def list(self, collection: str, query: Query | None = None) -> "list[Record]":
+        q = query or Query()
+        sql, args = self._conditions(collection, q)
+        order = "DESC" if q.newest_first else "ASC"
+        rows = await self._database().fetchall(
+            f"SELECT * FROM records{sql} ORDER BY created_at {order}, id {order} LIMIT ? OFFSET ?", (*args, q.limit, q.offset)
+        )
+        return [self._record(r) for r in rows]
+
+    async def count(self, collection: str, query: Query | None = None) -> int:
+        sql, args = self._conditions(collection, query or Query())
+        row = await self._database().fetchone(f"SELECT COUNT(*) AS n FROM records{sql}", tuple(args))
+        return int(row["n"]) if row else 0
+
+    async def update(self, collection: str, id: str, data: dict[str, Any], rev: int | None = None) -> Record:
+        async with self._database().transaction() as tx:
+            row = await tx.fetchone("SELECT * FROM records WHERE collection = ? AND id = ?", (collection, id))
+            if row is None:
+                raise NotFound(f"no record {collection}/{id}")
+            if rev is not None and rev != row["rev"]:
+                raise Conflict(f"{collection}/{id} is at rev {row['rev']}, not {rev}")
+            merged = {**json.loads(row["data_json"]), **json.loads(json.dumps(data, default=str))}
+            merged = {k: v for k, v in merged.items() if v is not None}  # a None in ``data`` removes the key
+            now = self._now()
+            await tx.execute(
+                "UPDATE records SET data_json = ?, rev = rev + 1, updated_at = ? WHERE collection = ? AND id = ?",
+                (json.dumps(merged), now, collection, id),
+            )
+            return Record(collection, id, merged, int(row["rev"]) + 1, row["created_at"], now)
+
+    async def delete(self, collection: str, id: str) -> None:
+        if not await self._database().execute("DELETE FROM records WHERE collection = ? AND id = ?", (collection, id)):
+            raise NotFound(f"no record {collection}/{id}")
 
 
 async def open_core(store: Store) -> Database:

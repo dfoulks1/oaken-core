@@ -7,17 +7,18 @@ an item submitted with ``oaken intake submit`` has somewhere to land and can be 
 It is a fallback: the moment a product installs an ingestor of its own, this one steps aside.
 """
 
-import json
 from pathlib import Path
 from typing import Any, ClassVar
 
 from pydantic import BaseModel, Field
 
-from oaken_core.clock import fmt_ts
 from oaken_core.errors import NotFound, PluginError
 from oaken_core.ids import SubjectId, new_subject_id
 from oaken_core.plugins.base import BaseIngestor, command
-from oaken_core.plugins.contracts import PluginContext, PluginOpContext
+from oaken_core.plugins.contracts import PluginContext, PluginOpContext, Query
+
+
+COLLECTION = "items"
 
 
 class ListIn(BaseModel):
@@ -41,24 +42,10 @@ class ListOut(BaseModel):
     items: list[ItemRow]
 
 
-def where(inp: ListIn) -> tuple[str, list[Any]]:
-    """The SQL conditions for a filter (empty when it has none) and their parameters. Values only ever travel as parameters."""
-    cond: list[str] = []
-    args: list[Any] = []
-    for lab in inp.label:
-        key, eq, value = lab.partition("=")
-        cond.append("EXISTS (SELECT 1 FROM labels l WHERE l.subject_id = items_rows.subject_id AND l.key = ?" + (" AND l.value = ?" if eq else "") + ")")  # either layer: human or machine
-        args += [key, value] if eq else [key]
-    for name in inp.part:
-        cond.append("(EXISTS (SELECT 1 FROM json_each(parts_json) WHERE key = ?) OR (? = 'body' AND parts_json = '{}'))")  # an item stored before parts: its body is its one part
-        args += [name, name]
-    if inp.since:
-        cond.append("created_at >= ?")
-        args.append(inp.since)
-    if inp.until:
-        cond.append("created_at < ?")
-        args.append(inp.until)
-    return (" WHERE " + " AND ".join(cond)) if cond else "", args
+def query(inp: ListIn) -> Query:
+    return Query(has=tuple(f"parts.{n}" for n in inp.part),
+                 labels=tuple((k, v if eq else None) for k, eq, v in (lab.partition("=") for lab in inp.label)),
+                 since=inp.since, until=inp.until, newest_first=True, limit=inp.limit)  # fmt: skip
 
 
 class ItemsIngestor(BaseIngestor):
@@ -66,28 +53,24 @@ class ItemsIngestor(BaseIngestor):
     requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"
     fallback: ClassVar[bool] = True
-    migrations_dir: ClassVar[Path | None] = Path(__file__).parent / "items_migrations"
+    migrations_dir: ClassVar[Path | None] = Path(__file__).parent / "items_migrations"  # only moves old rows into the store
 
     async def start(self, ctx: PluginContext) -> None:
         await super().start(ctx)
-        if ctx.db is None:
-            raise PluginError("items: no database to store into")
+        if ctx.store is None:
+            raise PluginError("items: no store to keep items in")
 
     async def ingest(self, item: Any) -> SubjectId:
-        subject = new_subject_id()
-        await self.ctx.db.execute(  # type: ignore[union-attr]
-            "INSERT INTO items_rows (subject_id, source, body_json, parts_json, created_at) VALUES (?,?,?,?,?)",
-            (subject, item.source, json.dumps(item.body, default=str),
-             json.dumps({n: p.content for n, p in item.parts.items()}, default=str), fmt_ts(self.ctx.clock.now())),
-        )
-        return subject
+        parts = {n: p.content for n, p in item.parts.items()} or {"body": item.body}  # no formatter: the body is the one part
+        rec = await self.ctx.store.create(COLLECTION, {"source": item.source, "body": item.body, "parts": parts}, id=new_subject_id())
+        return SubjectId(rec.id)
 
     async def read(self, subject_id: str, part: str | None = None) -> dict[str, Any]:
-        row = await self.ctx.db.fetchone("SELECT body_json, parts_json FROM items_rows WHERE subject_id = ?", (subject_id,))  # type: ignore[union-attr]
-        if row is None:
-            raise NotFound(f"no item {subject_id!r} in the items ingestor")
-        parts: dict[str, Any] = json.loads(row["parts_json"])
-        parts = parts or {"body": json.loads(row["body_json"])}  # stored before there were parts: the body is the one part
+        try:
+            rec = await self.ctx.store.get(COLLECTION, subject_id)
+        except NotFound:
+            raise NotFound(f"no item {subject_id!r} in the items ingestor") from None
+        parts: dict[str, Any] = rec.data["parts"]
         if part is not None:
             if part not in parts:
                 raise NotFound(f"item {subject_id!r} has no part {part!r} (it has: {', '.join(parts)})")
@@ -96,11 +79,8 @@ class ItemsIngestor(BaseIngestor):
 
     @command("list", "The newest items this ingestor stored, optionally only those with a label, a part, or stored in a date range.", input=ListIn, output=ListOut)
     async def list(self, ctx: PluginOpContext, inp: ListIn) -> ListOut:
-        db = self.ctx.db
-        assert db is not None
-        cond, args = where(inp)
-        total = await db.fetchone("SELECT COUNT(*) AS n FROM items_rows" + cond, tuple(args))
-        rows = await db.fetchall("SELECT subject_id, source, body_json, parts_json, created_at FROM items_rows" + cond + " ORDER BY created_at DESC, subject_id DESC LIMIT ?", (*args, inp.limit))
-        return ListOut(total=int(total["n"]) if total else 0,
-                       items=[ItemRow(subject_id=r["subject_id"], source=r["source"], created_at=r["created_at"],
-                                      preview=str(json.loads(r["body_json"]))[:80], parts=list(json.loads(r["parts_json"]))) for r in rows])  # fmt: skip
+        store, q = self.ctx.store, query(inp)
+        recs = await store.list(COLLECTION, q)
+        return ListOut(total=await store.count(COLLECTION, q),
+                       items=[ItemRow(subject_id=r.id, source=r.data["source"], created_at=r.created_at,
+                                      preview=str(r.data["body"])[:80], parts=list(r.data["parts"])) for r in recs])  # fmt: skip
