@@ -18,6 +18,15 @@ rule matches passes to the next triager.
     when = { field_contains = { company = "test" } }
     action = "reject"
 
+A rule can also look inside what a formatter made of the item: ``parts.<name>.<path>``. For mail (the ``rfc822`` formatter) that is
+``parts.headers.subject.0`` (a header's values are a list, the first is ``.0``), ``parts.text``, ``parts.html`` and ``parts.clean``:
+
+    [[plugins.triager.rules.rules]]
+    name = "invoices"
+    when = { field_contains = { "parts.headers.subject" = "invoice" } }
+    action = "accept"
+    labels = { queue = "finance" }
+
 Try a rule without a daemon trial: ``oaken rules test --source voltpop --body '{"signal": "hiring"}'``.
 
 shortcut: rules are edited in ``config.toml`` (or its page in the console), not by commands, because a plugin
@@ -28,7 +37,9 @@ import json
 from fnmatch import fnmatchcase
 from typing import Any, ClassVar, Literal
 
+from oaken_core.errors import InvalidInput
 from oaken_core.intake import IntakeItem, Verdict, item_text
+from oaken_core.parts import Part
 from oaken_core.plugins.base import BaseTriager, command
 from oaken_core.plugins.contracts import PluginOpContext, UiField, UiPage, UiSpec
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
@@ -43,9 +54,9 @@ class When(BaseModel):
 
     source: str | None = Field(default=None, description="The source contains this text, or matches a glob such as voltpop*.")
     body_contains: str | None = Field(default=None, description="The body's text contains this (a JSON body is searched as text).")
-    field_equals: dict[str, Scalar] | None = Field(default=None, description="JSON body fields that equal these values, by dotted path (company.size).")
-    field_contains: dict[str, str] | None = Field(default=None, description="JSON body fields whose text contains these.")
-    field_present: list[str] | None = Field(default=None, description="JSON body fields that exist, by dotted path.")
+    field_equals: dict[str, Scalar] | None = Field(default=None, description="JSON body fields that equal these values, by dotted path (company.size). parts.<name>.<path> reaches a formatter part (parts.headers.subject.0).")
+    field_contains: dict[str, str] | None = Field(default=None, description="JSON body fields whose text contains these. parts.<name>.<path> reaches a formatter part (parts.text, parts.headers.from.0).")
+    field_present: list[str] | None = Field(default=None, description="JSON body fields that exist, by dotted path. parts.<name> reaches a formatter part (parts.headers.list-unsubscribe).")
     has_label: str | None = Field(default=None, description="The item carries this label: a key, or key=value.")
 
     @model_validator(mode="after")
@@ -98,6 +109,13 @@ def _dig(body: Any, path: str) -> tuple[bool, Any]:
     return True, cur
 
 
+def _dig_item(item: IntakeItem, path: str) -> tuple[bool, Any]:
+    """``parts.<name>.<path>`` reaches inside what the formatter made (``parts.headers.subject.0``, ``parts.text``); any other path is the body's."""
+    if path.startswith("parts."):
+        return _dig({name: part.content for name, part in item.parts.items()}, path.removeprefix("parts."))
+    return _dig(item.body, path)
+
+
 def explain(item: IntakeItem, when: When) -> list[tuple[str, bool]]:
     """Each condition of ``when``, as a short line, with whether it holds for ``item``."""
     out: list[tuple[str, bool]] = []
@@ -106,13 +124,13 @@ def explain(item: IntakeItem, when: When) -> list[tuple[str, bool]]:
     if when.body_contains is not None:
         out.append((f"body contains {when.body_contains!r}", when.body_contains.lower() in item_text(item).lower()))
     for path, want in (when.field_equals or {}).items():
-        found, got = _dig(item.body, path)
+        found, got = _dig_item(item, path)
         out.append((f"{path} == {want!r}" + ("" if found else " (no such field)"), found and got == want and type(got) is type(want)))  # 1 is not True, "1" is not 1
     for path, text in (when.field_contains or {}).items():
-        found, got = _dig(item.body, path)
+        found, got = _dig_item(item, path)
         out.append((f"{path} contains {text!r}" + ("" if found else " (no such field)"), found and text.lower() in str(got).lower()))
     for path in when.field_present or []:
-        out.append((f"{path} is present", _dig(item.body, path)[0]))
+        out.append((f"{path} is present", _dig_item(item, path)[0]))
     if when.has_label is not None:
         key, _, value = when.has_label.partition("=")
         out.append((f"has label {when.has_label}", key in item.labels and (not value or item.labels[key] == value)))
@@ -153,6 +171,7 @@ class TryIn(BaseModel):
     source: str = Field(default="test", description="The source the item would come from.")
     body: str = Field(description="The body: JSON if it parses, else text.")
     labels: dict[str, str] = Field(default_factory=dict, description="Labels the item would carry.")
+    parts: str = Field(default="", description="What a formatter made of it, as JSON {part name: content}; rules reach it as parts.<name>.")
 
 
 class TryOut(BaseModel):
@@ -174,6 +193,7 @@ class CheckIn(BaseModel):
     item_source: str = "test"
     item_labels: list[str] = Field(default_factory=list)
     payload: str = ""
+    parts: str = ""
 
 
 class Check(BaseModel):
@@ -187,6 +207,19 @@ class CheckOut(BaseModel):
     problem: str = ""
     toml: str = ""  # the rule, ready to paste under [[plugins.triager.rules.rules]]
     saved: TryOut | None = None  # what the rules in config.toml would do with the payload
+
+
+def _parts(text: str) -> dict[str, Part]:
+    """The tester's pasted JSON {name: content} as the parts a formatter would have made. Empty means none."""
+    if not text.strip():
+        return {}
+    try:
+        made = json.loads(text)
+    except ValueError as exc:
+        raise InvalidInput(f"parts is not valid JSON: {exc}") from None
+    if not isinstance(made, dict):
+        raise InvalidInput("parts must be a JSON object: {part name: content}")
+    return {str(k): Part(name=str(k), content=v) for k, v in made.items()}
 
 
 def _pairs(lines: list[str]) -> dict[str, str]:
@@ -214,6 +247,7 @@ TESTER = UiPage(
         UiField("item_source", "item source", help="The source the pasted item came from."),
         UiField("item_labels", "item labels", "list", help="One key=value per line."),
         UiField("payload", "payload", "textarea", help="The item's body: paste JSON, or plain text."),
+        UiField("parts", "parts", "textarea", help="What a formatter made of it, as JSON {part name: content}, e.g. {\"headers\": {\"subject\": [\"Hi\"]}, \"text\": \"...\"}. Rules reach it as parts.headers.subject.0, parts.text."),
     ),
 )  # fmt: skip
 
@@ -244,8 +278,8 @@ class RulesTriager(BaseTriager):
             body: Any = json.loads(inp.payload)
         except ValueError:
             body = inp.payload
-        item = IntakeItem("test", inp.item_source, body, _pairs(inp.item_labels))
-        saved = await self.try_item(ctx, TryIn(source=inp.item_source, body=inp.payload, labels=_pairs(inp.item_labels))) if inp.payload.strip() else None
+        item = IntakeItem("test", inp.item_source, body, _pairs(inp.item_labels), parts=_parts(inp.parts))
+        saved = await self.try_item(ctx, TryIn(source=inp.item_source, body=inp.payload, labels=_pairs(inp.item_labels), parts=inp.parts)) if inp.payload.strip() or inp.parts.strip() else None
         if not when and saved is not None:  # no rule typed: just the saved ones
             return CheckOut(matches=False, checks=[], saved=saved)
         try:
@@ -267,7 +301,7 @@ class RulesTriager(BaseTriager):
             body: Any = json.loads(inp.body)
         except ValueError:
             body = inp.body
-        item = IntakeItem("test", inp.source, body, dict(inp.labels))
+        item = IntakeItem("test", inp.source, body, dict(inp.labels), parts=_parts(inp.parts))
         rule = first_match(item, self.config.rules)
         if rule is None:
             return TryOut(matched=None, verdict=None, labels={}, reason="no rule matches: the next triager decides")

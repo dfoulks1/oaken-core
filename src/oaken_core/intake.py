@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from oaken_core.actors import SYSTEM, Actor
 from oaken_core.changelog import ChangeLog
 from oaken_core.db import Database
-from oaken_core.errors import Unavailable
+from oaken_core.errors import InvalidInput, Unavailable
 from oaken_core.ids import SubjectId, new_subject_id
 from oaken_core.jobs import Job, Jobs, JobRunner, PermanentJobError
 from oaken_core.labels import LabelError, LabelStore
@@ -41,6 +41,7 @@ log = get_logger("oaken_core.intake")
 
 FORMAT_KIND = "intake.format"  # in ``default``: split the raw item into parts
 ENVELOPE = "oaken"  # the key that marks an envelope: ``{"oaken": 1, "body": ...}``
+RERUN_STAGES = ("enrich", "act")  # the stages a stored message can be sent back to; triage needs the raw message, which is not kept
 KIND = "intake.triage"  # in a triager stage: judge the parts
 STORE_KIND = "intake.store"
 EMBED_KIND = "intake.embed"
@@ -142,6 +143,7 @@ class Intake:
         formatter_for: Callable[[str | None], Any] | None = None,
         on_stored: Callable[[Any], Awaitable[None]] | None = None,
     ) -> None:
+        self.rerun_hook: Callable[[str, str, str, list[str]], Awaitable[None]] | None = None  # (subject, source, stage, routes): the host rebuilds a stored item and runs a later stage
         self.on_stored = on_stored  # called with a ``StagePayload`` once an item is stored: the enrich and act loops
         self.router = router  # the model router, for ``Verdict.learn``
         self.jobs, self.labels, self.db, self.changelog = jobs, labels, db, changelog
@@ -193,6 +195,8 @@ class Intake:
             if trusted:  # only from inside core: an outsider's labels, parent and hops could steer an item or dodge a loop guard
                 labels = {**{str(k): str(v) for k, v in dict(env.get("labels") or {}).items()}, **(labels or {})}
                 parent, hops = env.get("parent"), max(0, int(env.get("hops") or 0))
+                if env.get("rerun") is not None:  # not a new item: a stored one is sent on to a later stage, bypassing the ones between
+                    return await self.rerun(parent, env["rerun"])
         subject = new_subject_id()
         for label, value in (
             labels or {}
@@ -212,6 +216,25 @@ class Intake:
             FORMAT_KIND, payload, subject=subject, queue=DEFAULT, actor=actor
         )
         return subject
+
+    async def rerun(self, subject: Any, spec: Any) -> SubjectId:
+        """The one door for a rerun: the ``item_rerun`` operation calls it directly, and a trusted envelope reaches it through ``submit``.
+        ``rerun`` = ``{"stage": "enrich"|"act", "routes": [...], "source": "..."}`` on a trusted envelope whose ``parent`` is the
+        stored message. Intake and triage are skipped: the message is rebuilt from what the ingestor kept and handed to that stage.
+        shortcut: runs every enricher of the stage (no ``plugin`` or ``fresh`` yet), and act needs its routes named, since a stored
+        message does not keep what its triagers asked for."""
+        stage = spec.get("stage") if isinstance(spec, dict) else None
+        if stage not in RERUN_STAGES:
+            raise InvalidInput(f"rerun.stage must be one of {', '.join(RERUN_STAGES)}")
+        if not isinstance(subject, str) or not subject:
+            raise InvalidInput("a rerun names the stored message in the envelope's parent")
+        routes = [str(r) for r in spec.get("routes") or []]
+        if stage == "act" and not routes:
+            raise InvalidInput("rerun.routes: name the routes an act rerun answers")
+        if self.rerun_hook is None:
+            raise Unavailable("nothing can rebuild a stored item yet")
+        await self.rerun_hook(subject, str(spec.get("source") or "rerun"), stage, routes)
+        return SubjectId(subject)
 
     def _order(self, stage: str) -> list[Triager]:
         found = self.triager_source(stage) if self.triager_source else self.triagers

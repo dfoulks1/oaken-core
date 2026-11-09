@@ -35,7 +35,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest", "pytest-asyncio", "openapi-spec-validator"]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "openapi-spec-validator",
+    "sqlc-bin>=1.31.1.post1",
+]
 # Site tooling (docs/tools). The core runtime must not depend on it.
 docs = ["markdown-it-py", "mdit-py-plugins", "pygments"]
 

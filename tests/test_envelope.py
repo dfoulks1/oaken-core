@@ -46,3 +46,44 @@ async def test_an_inside_envelope_carries_parent_hops_and_labels(tmp_path: Path)
 async def test_a_bare_body_or_another_version_is_left_alone(tmp_path: Path) -> None:
     assert (await payload(tmp_path, {"x": 1}))["body"] == {"x": 1}
     assert (await payload(tmp_path, {"oaken": 2, "body": 1}))["body"] == {"oaken": 2, "body": 1}
+
+
+async def _core(tmp_path: Path) -> Core:
+    found = {"oaken_core.stores": [EP("sqlite", SqliteStore)], "oaken_core.ingestors": [EP("items", ItemsIngestor)]}
+    tables = {"store": {"sqlite": {"path": str(tmp_path / "core.db")}}}
+    core = Core(Settings(plugins=PluginTables(tables=tables)), clock=FakeClock(), discover=lambda g: found.get(g, []))
+    await core.open()
+    return core
+
+
+async def test_a_trusted_rerun_goes_to_the_hook_and_skips_intake(tmp_path: Path) -> None:
+    import pytest
+
+    from oaken_core.errors import InvalidInput
+
+    core = await _core(tmp_path)
+    seen: list[tuple[str, str, str, list[str]]] = []
+
+    async def hook(*a: object) -> None:
+        seen.append(a)  # type: ignore[arg-type]
+
+    core.intake.rerun_hook = hook
+    env = {"oaken": 1, "body": "", "parent": "s-1", "rerun": {"stage": "act", "routes": ["notify"], "source": "gmail:me"}}
+    assert str(await core.intake.submit("ui", env, trusted=True)) == "s-1"
+    assert seen == [("s-1", "gmail:me", "act", ["notify"])]
+    assert not await core.runner.jobs.query(kind="intake.format")  # no new item was made
+    with pytest.raises(InvalidInput):
+        await core.intake.submit("ui", {**env, "rerun": {"stage": "triage"}}, trusted=True)
+    with pytest.raises(InvalidInput):
+        await core.intake.submit("ui", {**env, "rerun": {"stage": "act"}}, trusted=True)  # act needs routes
+
+
+async def test_an_outside_rerun_is_ignored_and_the_item_is_an_ordinary_arrival(tmp_path: Path) -> None:
+    core = await _core(tmp_path)
+
+    async def hook(*a: object) -> None:
+        raise AssertionError("an untrusted envelope must not reach the rerun hook")
+
+    core.intake.rerun_hook = hook
+    await core.intake.submit("socket", {"oaken": 1, "body": "x", "parent": "s-1", "rerun": {"stage": "enrich"}})
+    assert len(await core.runner.jobs.query(kind="intake.format")) == 1

@@ -31,9 +31,10 @@ def scope_of(kind: str, name: str) -> str:
 
 class ExposureStore:
     def __init__(
-        self, db: Database, clock: Clock, changelog: ChangeLog, lifted: Collection[str] = ()
+        self, db: Database, clock: Clock, changelog: ChangeLog, lifted: Collection[str] = (), override: bool = False
     ) -> None:
         self.db, self.clock, self.changelog = db, clock, changelog
+        self.override = override  # every ``never`` lifted; the console flips it live
         self.lifted = frozenset(lifted)  # operations whose ``never`` the config file lifted
 
     async def settings(self) -> dict[str, bool]:
@@ -42,7 +43,7 @@ class ExposureStore:
 
     def allowed(self, op: AnyOperation) -> bool:
         """The ceiling: may anything turn this on for MCP? ``never`` unless the config lifted it."""
-        return op.mcp_allowed or op.name in self.lifted
+        return op.mcp_allowed or op.name in self.lifted or self.override
 
     async def seed(self, allowed: Mapping[str, bool], registry: OperationRegistry) -> None:
         """Make the config-derived rows match ``[mcp.allowed]`` exactly: the file is the source of

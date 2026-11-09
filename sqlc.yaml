@@ -1,0 +1,20 @@
+# Generates typed Python from core's migrations (the schema) and src/oaken_core/queries/*.sql.
+# Regenerate: uv run sqlc generate   (a test fails when the checked-in code is stale)
+version: "2"
+plugins:
+  - name: python
+    wasm:
+      url: https://github.com/rayakame/sqlc-gen-better-python/releases/download/v0.9.0/sqlc-gen-better-python.wasm
+      sha256: d1787aa32e61f2e73c81a4f93b3e5a9beeec918952cff3183fb96313057f58a8
+sql:
+  - engine: sqlite
+    schema: src/oaken_core/migrations
+    queries: src/oaken_core/queries
+    codegen:
+      - out: src/oaken_core/dbgen/sqlite
+        plugin: python
+        options:
+          package: oaken_core.dbgen.sqlite
+          emit_init_file: true
+          sql_driver: aiosqlite
+          model_type: dataclass

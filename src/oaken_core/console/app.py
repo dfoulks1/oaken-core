@@ -35,6 +35,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from oaken_core import identity, paths
+from oaken_core.cron import parse_cron
 from oaken_core.api.errors import status_for
 from oaken_core.config_edit import get_table, refuse_secrets, save_table, set_table
 from oaken_core.console import forms
@@ -207,6 +208,7 @@ class Console:
             ),
             Route("/ui/expose", self.post(self.expose), methods=["POST"]),
             Route("/ui/mcp-power", self.post(self.mcp_power), methods=["POST"]),
+            Route("/ui/mcp-override", self.post(self.mcp_override), methods=["POST"]),
             Route(
                 "/ui/config-file/test",
                 self.post(self.config_file_test),
@@ -714,8 +716,9 @@ class Console:
             for p in every
             if p.enabled and home[p.name] == name and p.name not in spec.disabled
         )  # a worker count means something only to these
-        return self.render("stage.html", stage=spec, parallel=parallel, bases=bases, workers=workers, active=active, available=available, why=why, stages=stages, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
-                           plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins))  # fmt: skip
+        ingestors = [p for p in self._host().statuses() if p.kind == "ingestor"] if name == "default" else []  # Intake ends in the store step: its ingestor lives here
+        return self.render("stage.html", stage=spec, parallel=parallel, bases=bases, workers=workers, active=active, available=available, why=why, stages=stages, ingestors=ingestors, jobs=[j for j in jobs if j["status"] != "failed"], failed=failed, row=rows.get(name, {"queued": 0, "running": 0, "failed": 0, "paused": False, "oldest_queued_seconds": None, "last_error": None}),
+                           plugins=(plugins := [p for p in self._host().statuses() if p.kind == spec.kind]), modals=await self._modals(plugins + ingestors))  # fmt: skip
 
     async def capabilities(self, request: Request) -> Response:
         """Every operation (the registry the CLI lists), by the part that offers it, with its MCP switch."""
@@ -740,7 +743,8 @@ class Console:
             if t in core
         ] + [(f"{k} plugins", plugin[k]) for k in sorted(plugin)]
         return self.render(
-            "capabilities.html", groups=groups, power=self.svc.settings.api.mcp_enabled
+            "capabilities.html", groups=groups, power=self.svc.settings.api.mcp_enabled,
+            override=self.client.exposure.override,
         )
 
     async def expose(self, request: Request, form: dict[str, str]) -> Response:
@@ -757,6 +761,15 @@ class Console:
         await self.client.call(
             "mcp_power", {"enabled": form.get("mcp") == "on"}, UI, confirm=True
         )
+        return RedirectResponse("/capabilities", 303)
+
+    async def mcp_override(self, request: Request, form: dict[str, str]) -> Response:
+        """DANGER: lift every code ceiling on MCP, or put them back. Saved to config.toml and live at once. Not an operation, so an agent cannot call it."""
+        on = form.get("mcp") == "on"
+        have = get_table(self.config_path.read_text(encoding="utf-8") if self.config_path.exists() else "", ["operations"])
+        save_table(self.config_path, ["operations"], {**have, "override_never": on})
+        self.svc.settings.operations.override_never = self.client.exposure.override = on
+        log.warning("mcp_override_%s", "on" if on else "off")
         return RedirectResponse("/capabilities", 303)
 
     @staticmethod
@@ -925,6 +938,8 @@ class Console:
             ).lower(),
         ).strip("_")
         keys = [k.strip() for k in form.get("key_fields", "").split(",") if k.strip()]
+        if form.get("cron", "").strip():
+            parse_cron(form["cron"].strip())  # a bad one would be written, then refused silently at seed time
         config = {
             "command": form.get("command", "").strip(),
             **{
@@ -1141,7 +1156,7 @@ class Console:
     async def plugin_page(self, request: Request) -> Response:
         kind, name, page = (request.path_params[k] for k in ("kind", "name", "page"))
         p = self._page(kind, name, page)
-        loaded = await self._op(f"{name}{PLUGIN_SEP}{p.load}")
+        loaded = await self._op(f"{name}{PLUGIN_SEP}{p.load}") if p.load else {}
         return self.render("page.html", kind=kind, name=name, p=p, fields=[forms.from_ui(f) for f in p.fields],
                            values=loaded.get("values") or {}, messages=loaded.get("messages") or [],
                            rows=loaded.get("rows") or [], display=forms.display, result=None)  # fmt: skip
@@ -1239,7 +1254,7 @@ class Console:
         if (
             action == "test"
         ):  # keep the form (and a pasted payload) in front of the person, result below it
-            loaded = await self._op(f"{name}{PLUGIN_SEP}{p.load}")
+            loaded = await self._op(f"{name}{PLUGIN_SEP}{p.load}") if p.load else {}
             return self.render("page.html", kind=kind, name=name, p=p, fields=[forms.from_ui(f) for f in p.fields], values=payload, messages=[],
                                rows=loaded.get("rows") or [], display=forms.display, result=result)  # fmt: skip
         return self.render("result.html", title=p.title, back=back, result=result)

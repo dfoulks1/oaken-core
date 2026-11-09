@@ -20,7 +20,7 @@ import os
 import re
 import sqlite3
 from collections.abc import AsyncIterator, Sequence
-from contextlib import asynccontextmanager, suppress
+from contextlib import AbstractAsyncContextManager, asynccontextmanager, suppress
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Self
@@ -39,6 +39,11 @@ class Tx:
 
     def __init__(self, conn: aiosqlite.Connection) -> None:
         self._conn = conn
+
+    @property
+    def conn(self) -> aiosqlite.Connection:
+        """For the generated queries (``oaken_core.dbgen``), which take a connection. Valid until the transaction ends."""
+        return self._conn
 
     async def execute(self, sql: str, params: Params = ()) -> int:
         """Run one statement; returns the number of rows changed."""
@@ -71,6 +76,8 @@ class Tx:
 
 class Database:
     """One SQLite file: a write broker plus a pool of read-only connections."""
+
+    engine: str = "sqlite"  # the sqlc engine this speaks; a plugin loads the generated queries built for it (dbgen/<engine>). A non-SQLite store sets its own.
 
     def __init__(
         self,
@@ -171,6 +178,10 @@ class Database:
                 raise StorageError(f"vacuum failed: {exc}") from exc
 
     # -- reads ------------------------------------------------------------------------------
+    def reading(self) -> AbstractAsyncContextManager[aiosqlite.Connection]:
+        """A reader connection for the generated queries (``oaken_core.dbgen``): ``async with db.reading() as conn``."""
+        return self._reader()
+
     @asynccontextmanager
     async def _reader(self) -> AsyncIterator[aiosqlite.Connection]:
         conn = await self._pool.get()

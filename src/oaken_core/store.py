@@ -20,7 +20,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from oaken_core import paths
 from oaken_core.clock import SystemClock, fmt_ts
 from oaken_core.db import Database, migrate
-from oaken_core.errors import Conflict, InvalidInput, NotFound, PluginError, StorageError
+from oaken_core.dbgen.sqlite import models as rows
+from oaken_core.dbgen.sqlite import records as q
+from oaken_core.errors import Conflict, InvalidInput, NotFound, PluginError
 from oaken_core.ids import new_subject_id
 from oaken_core.plugins.contracts import Query, Record
 from oaken_core.plugins.base import BaseStore
@@ -82,27 +84,27 @@ class SqliteStore(BaseStore):
         return fmt_ts((ctx.clock if ctx else SystemClock()).now())
 
     @staticmethod
-    def _record(row: sqlite3.Row) -> Record:
+    def _record(row: sqlite3.Row | rows.Record) -> Record:
+        if isinstance(row, rows.Record):  # from the generated queries
+            return Record(row.collection, row.id_, json.loads(row.data_json), row.rev, row.created_at, row.updated_at)
         return Record(row["collection"], row["id"], json.loads(row["data_json"]), int(row["rev"]), row["created_at"], row["updated_at"])
 
     async def create(self, collection: str, data: dict[str, Any], id: str | None = None) -> Record:
         rid, now = id or str(new_subject_id()), self._now()
+        text = json.dumps(data, default=str)
         try:
-            await self._database().execute(
-                "INSERT INTO records (collection, id, data_json, rev, created_at, updated_at) VALUES (?,?,?,1,?,?)",
-                (collection, rid, json.dumps(data, default=str), now, now),
-            )
-        except StorageError as exc:
-            if "UNIQUE" not in str(exc):
-                raise
+            async with self._database().transaction() as tx:
+                await q.create_record(tx.conn, collection=collection, id_=rid, data_json=text, created_at=now, updated_at=now)
+        except sqlite3.IntegrityError as exc:
             raise Conflict(f"{collection}/{rid} already exists") from exc
-        return Record(collection, rid, json.loads(json.dumps(data, default=str)), 1, now, now)
+        return Record(collection, rid, json.loads(text), 1, now, now)
 
     async def get(self, collection: str, id: str) -> Record:
-        row = await self._database().fetchone("SELECT * FROM records WHERE collection = ? AND id = ?", (collection, id))
-        if row is None:
+        async with self._database().reading() as conn:
+            found = await q.get_record(conn, collection=collection, id_=id)
+        if found is None:
             raise NotFound(f"no record {collection}/{id}")
-        return self._record(row)
+        return self._record(found)
 
     @staticmethod
     def _key(key: str) -> str:
@@ -153,22 +155,21 @@ class SqliteStore(BaseStore):
 
     async def update(self, collection: str, id: str, data: dict[str, Any], rev: int | None = None) -> Record:
         async with self._database().transaction() as tx:
-            row = await tx.fetchone("SELECT * FROM records WHERE collection = ? AND id = ?", (collection, id))
-            if row is None:
+            found = await q.get_record(tx.conn, collection=collection, id_=id)
+            if found is None:
                 raise NotFound(f"no record {collection}/{id}")
-            if rev is not None and rev != row["rev"]:
-                raise Conflict(f"{collection}/{id} is at rev {row['rev']}, not {rev}")
-            merged = {**json.loads(row["data_json"]), **json.loads(json.dumps(data, default=str))}
+            if rev is not None and rev != found.rev:
+                raise Conflict(f"{collection}/{id} is at rev {found.rev}, not {rev}")
+            merged = {**json.loads(found.data_json), **json.loads(json.dumps(data, default=str))}
             merged = {k: v for k, v in merged.items() if v is not None}  # a None in ``data`` removes the key
             now = self._now()
-            await tx.execute(
-                "UPDATE records SET data_json = ?, rev = rev + 1, updated_at = ? WHERE collection = ? AND id = ?",
-                (json.dumps(merged), now, collection, id),
-            )
-            return Record(collection, id, merged, int(row["rev"]) + 1, row["created_at"], now)
+            await q.update_record(tx.conn, data_json=json.dumps(merged), updated_at=now, collection=collection, id_=id)
+            return Record(collection, id, merged, found.rev + 1, found.created_at, now)
 
     async def delete(self, collection: str, id: str) -> None:
-        if not await self._database().execute("DELETE FROM records WHERE collection = ? AND id = ?", (collection, id)):
+        async with self._database().transaction() as tx:
+            gone = await q.delete_record(tx.conn, collection=collection, id_=id)
+        if not gone:
             raise NotFound(f"no record {collection}/{id}")
 
 

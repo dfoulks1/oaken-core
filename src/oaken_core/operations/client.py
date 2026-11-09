@@ -67,7 +67,7 @@ class CoreClient:
             services.clock, cfg.confirm_ttl_seconds, cfg.max_pending_confirmations
         )
         self.exposure = exposure or ExposureStore(
-            services.db, services.clock, services.changelog, cfg.lift_never
+            services.db, services.clock, services.changelog, cfg.lift_never, cfg.override_never
         )
 
     def context(self, caller: CallerContext) -> OpContext:

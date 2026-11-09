@@ -9,6 +9,13 @@
     <span class="muted">{% if power %}AI clients can reach the operations switched on below.{% else %}Switched off: the door answers 503 and offers no tools.{% endif %}</span>
   </div>
 </div>
+<div class="card mcp-override{{ ' is-on' if override }}">
+  <div class="card-body row">
+    <strong>Override code limits</strong> <span class="badge badge-danger">DANGER</span>
+    {{ m.switch("mcp-override", "/capabilities", override, "Override code limits", {}, "mcp", "on", "off", false, "", false) }}
+    <span class="muted small">{% if override %}Locked operations (keys, doors, secrets) can be switched on below. An AI client could then change its own reach.{% else %}Operations closed in code stay locked. Turn this on to switch them on below.{% endif %}</span>
+  </div>
+</div>
 {% for title, rows in groups %}
 <details class="card fold" id="fold-{{ loop.index }}"{% if rows|selectattr("exposed")|list %} open{% endif %}>
   <summary class="card-head">{{ title }} <span class="muted small">{{ rows|length }}</span></summary>
@@ -19,7 +26,7 @@
       <td class="mono nowrap">{{ o.name }}</td>
       <td class="mono small">{{ o.provider }}</td>
       <td>{% if o.permission == "mutate" %}<span class="badge badge-warn">mutate</span>{% elif o.permission == "send" %}<span class="badge badge-danger">send</span>{% else %}<span class="badge badge-ok">read</span>{% endif %}</td>
-      <td>{{ m.switch("expose", "/capabilities", o.exposed, "Expose " ~ o.name ~ " over MCP", {"name": o.name}, "mcp", "on", "off", not o.allowed, "Never offered over MCP: no setting can change that", false) }}</td>
+      <td>{{ m.switch("expose", "/capabilities", o.exposed, "Expose " ~ o.name ~ " over MCP", {"name": o.name}, "mcp", "on", "off", not o.allowed, "Closed in code. Turn on the override above to change it.", false) }}</td>
       <td class="muted">{{ o.summary }}</td>
     </tr>{% endfor %}
     </tbody>

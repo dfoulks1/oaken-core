@@ -31,7 +31,7 @@ def check_ui(spec: object) -> list[str]:
         seen.add(page.name)
         for role, op in (("load", page.load), ("submit", page.submit), ("test", page.test),
                          ("order", page.order)):  # fmt: skip
-            if (role == "load" or op) and not _OP.match(op or ""):
+            if op and not _OP.match(op):
                 problems.append(
                     f"page {page.name}: {role} must name one of the plugin's operations"
                 )

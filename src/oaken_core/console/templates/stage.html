@@ -37,6 +37,8 @@
 {% if bases %}{{ plugin_table(workers, "/stage/" ~ stage.name, "No instance yet: the + makes one.", "Workers", False, "w-", True, False, false, stage.name) }}{% endif %}
 {{ plugin_table(active, "/stage/" ~ stage.name, "No " ~ stage.kind ~ " plugin is active in this stage.", "Active plugins", False, "", False, True, false, stage.name) }}
 {{ inactive_table(available, "/stage/" ~ stage.name, "avail-", stage.name, why) }}
+{% if stage.name == "default" %}<p class="muted">Intake ends in the <strong>store</strong> step: the ingestor below keeps what the formatters and triagers let through.</p>
+{{ plugin_table(ingestors, "/stage/" ~ stage.name, "No ingestor is active: nothing is stored.", "Ingestor (stores what Intake takes in)", False, "ing-", False, False) }}{% endif %}
 <details class="card fold" id="fold-failed">
 <summary class="card-head">Failed jobs <span class="muted small{{ ' bad' if failed }}">{{ failed|length }}</span></summary>
 <div class="table-wrap"><table class="table"><tr><th>Kind</th><th>Subject</th><th>Tries</th><th>Why it failed</th><th></th></tr>

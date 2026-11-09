@@ -79,6 +79,15 @@ async def test_the_config_file_can_lift_one_never(ops: Ops) -> None:
     assert res.proposal is not None  # lifted to a gated, previewed, owner-enabled, agent-granted call
 
 
+async def test_the_override_lifts_every_never_and_putting_it_back_closes_them(ops: Ops) -> None:
+    ops.client.exposure.override = True
+    await ops.client.call("exposure_set", {"name": "queue_requeue", "enabled": True}, CLI, confirm=True)
+    assert (await ops.client.call("queue_requeue", {"status": "failed"}, await mcp_agent(ops, "queue_requeue"))).proposal is not None
+    ops.client.exposure.override = False
+    with pytest.raises(InvalidInput, match="never offered over MCP"):
+        await ops.client.call("exposure_set", {"name": "queue_requeue", "enabled": True}, CLI, confirm=True)
+
+
 async def test_an_agent_without_a_grant_gets_the_job_protocol_and_nothing_else(ops: Ops) -> None:
     bare = await mcp_agent(ops)
     assert {o.name for o in await ops.client.visible(bare)} == {"job_claim", "job_heartbeat", "job_complete", "job_fail"}

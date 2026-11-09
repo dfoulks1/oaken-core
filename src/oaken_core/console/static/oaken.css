@@ -214,6 +214,9 @@ small, .small { font-size: .85rem; }
 .mcp-power { border-width: 2px; }
 .mcp-power.is-on { border-color: var(--ok); }
 .mcp-power.is-off { border-color: var(--danger); }
+.mcp-override { border-color: var(--border-strong); }
+.mcp-override.is-on { border-color: var(--danger); }
+.mcp-override strong { font-size: 1rem; }
 .mcp-state { font-size: 1.8rem; font-weight: 700; letter-spacing: .02em; }
 .mcp-power.is-on .mcp-state { color: var(--ok); }
 .mcp-power.is-off .mcp-state { color: var(--danger); }

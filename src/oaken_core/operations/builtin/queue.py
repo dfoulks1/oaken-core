@@ -137,12 +137,13 @@ class JobRow(BaseModel):
     max_attempts: int
     last_error: str | None
     created_at: str
+    updated_at: str  # when it last changed: for a failed job, when it failed
 
 
 def _row(j: Job) -> JobRow:
     return JobRow(id=j.id, kind=j.kind, queue=j.queue, subject=j.subject, status=j.status,
                   priority=j.priority, attempts=j.attempts, max_attempts=j.max_attempts,
-                  last_error=j.last_error, created_at=j.created_at.isoformat())  # fmt: skip
+                  last_error=j.last_error, created_at=j.created_at.isoformat(), updated_at=j.updated_at.isoformat())  # fmt: skip
 
 
 class JobListIn(BaseModel):

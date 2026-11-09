@@ -154,6 +154,9 @@ class OperationsSettings(BaseModel):
     # exposure setting or an agent grant can turn them on). Logged at start. Only a person who can
     # edit the file can do this; no operation can.
     lift_never: list[str] = Field(default_factory=list)
+    # DANGER: lifts every ``never`` ceiling at once (each operation then starts off, and the owner turns on what they want). Set from the
+    # console's Capabilities page or by hand; no operation can set it, so an agent cannot widen its own reach.
+    override_never: bool = False
 
 
 class QueueTable(BaseModel):

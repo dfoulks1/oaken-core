@@ -48,7 +48,8 @@ from oaken_core.logstore import LogTable, LogToBus
 from oaken_core.queues import DEFAULT, Queues
 from oaken_core.router import HostDirectory, Router
 from oaken_core.scheduler import Scheduler
-from oaken_core.stagerun import StageRunner
+from oaken_core.parts import Part
+from oaken_core.stagerun import StagePayload, StageRunner
 from oaken_core.settings import Settings
 from oaken_core.trace import Tracer
 
@@ -201,6 +202,7 @@ class Core:
                                   actions_for=self._actions_for, store=lambda: self.host.store)  # fmt: skip
         self.stages.register(self.runner)
         self.intake.on_stored = self.stages.begin
+        self.intake.rerun_hook = self._rerun
         self.host.intake = self.intake
         svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, labels=labels, changelog=changelog,
                        bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, intake=self.intake, queues_from_config=self.queues_from_config, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
@@ -308,6 +310,17 @@ class Core:
             ),
             None,
         )
+
+    async def _rerun(self, subject: str, source: str, stage: str, routes: list[str]) -> None:
+        """Rebuild a stored item from what its ingestor kept, and hand it to a later stage."""
+        try:
+            ingestor = self.host.get("ingestor")
+            parts = await ingestor.read(subject)
+        except (PluginError, NotFound, AttributeError) as exc:
+            raise Unavailable(f"cannot read {subject!r} back from the ingestor ({exc})") from None
+        p = StagePayload(subject_id=subject, source=source, labels=await self.intake.labels.all(subject),
+                         parts={n: Part(name=n, content=c) for n, c in parts.items()})  # fmt: skip
+        await self.stages.rerun(p, stage, routes)
 
     async def _ingest(self, item: IntakeItem) -> SubjectId:
         """Hand an accepted item to the active ingestor. With none, the item waits in intake (it is

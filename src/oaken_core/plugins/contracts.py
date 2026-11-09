@@ -77,6 +77,9 @@ class PluginContext:
     # The database, for a plugin that declares ``migrations_dir`` and owns tables. None for the
     # store itself. shortcut: plugins run in-process and are not sandboxed; upgrade to a table
     # facade if untrusted plugins ever matter.
+    # TODO(db-passthrough): LOOK AT THIS REALLY HARD — possibly remove entirely. A plugin should keep
+    # its data in the record store (see ``store`` below), never its own SQL. This handle is the one
+    # way around that; providers no longer use it. If only the store needs raw SQL, delete this field.
     db: Database | None = None
     labels: PluginLabels | None = None
     # The active store (``BaseStore``): records by create, get, list, count, update, delete. A plugin that keeps data uses this, not SQL.
@@ -234,7 +237,7 @@ class UiSection:
 class UiPage:
     """A page core serves at ``/plugins/<plugin>/<name>`` and renders as a form.
 
-    ``load`` is a read operation of the plugin with no input; it returns
+    ``load`` (optional) is a read operation of the plugin with no input; it returns
     ``{"values": {field: value}, "messages": [str], "rows": [{"id", "label"}]}`` (each part
     optional). ``test`` (read) and ``submit`` (the plugin's own, a mutate is confirmed) take the
     typed fields as input. With ``order`` set, the page lists ``rows`` in order, each with a
@@ -244,7 +247,7 @@ class UiPage:
 
     name: str
     title: str
-    load: str
+    load: str = ""  # optional: without it the page opens as an empty form
     submit: str = ""
     fields: tuple[UiField, ...] = ()
     test: str = ""

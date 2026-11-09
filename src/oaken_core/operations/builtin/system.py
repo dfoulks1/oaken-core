@@ -341,6 +341,63 @@ class ReloadOut(BaseModel):
     note: str
 
 
+class PluginConfigGetOut(BaseModel):
+    plugin: str
+    config: dict[str, Any] = Field(description="The instance's table in config.toml, as written (the host's own keys included). Empty if it has none.")
+
+
+@operation("plugin_config_get", "An instance's settings as written in config.toml.",
+           permission="read", input=PluginRef, output=PluginConfigGetOut, mcp="never", group="plugin")  # fmt: skip
+async def plugin_config_get(ctx: OpContext, inp: PluginRef) -> PluginConfigGetOut:
+    kind, name = plugin_ref(inp.plugin)
+    path = paths.config_dir() / "config.toml"
+    text = path.read_text(encoding="utf-8") if path.exists() else ""
+    return PluginConfigGetOut(plugin=f"{kind}.{name}", config=get_table(text, ["plugins", kind, name]))
+
+
+class PluginChoicesOut(BaseModel):
+    plugin: str
+    choices: dict[str, list[str]] = Field(description="Per setting, what the plugin offers to pick from (an LLM backend lists the models it has). Empty: nothing offered, use a plain box.")
+
+
+@operation("plugin_choices", "What an instance offers as choices for its settings, such as the models a backend has. Empty when it offers none or cannot answer.",
+           permission="read", input=PluginRef, output=PluginChoicesOut, mcp="never", group="plugin")  # fmt: skip
+async def plugin_choices(ctx: OpContext, inp: PluginRef) -> PluginChoicesOut:
+    kind, name = plugin_ref(inp.plugin)
+    host = need(ctx.svc.host, "the plugin host")
+    return PluginChoicesOut(plugin=f"{kind}.{name}", choices=await host.setting_choices(kind, name))
+
+
+class PluginConfigSetIn(BaseModel):
+    plugin: str = Field(json_schema_extra={"positional": True}, description=f"The instance, {KIND_NAME}.")
+    config: dict[str, Any] = Field(description="Settings to change. Each key given replaces its value; keys not given stay. A secret is refused: use `secret set`.")
+
+
+async def _config_set_preview(ctx: OpContext, inp: PluginConfigSetIn) -> Preview:
+    kind, name = plugin_ref(inp.plugin)
+    path = paths.config_dir() / "config.toml"
+    have = get_table(path.read_text(encoding="utf-8") if path.exists() else "", ["plugins", kind, name])
+    changes = [Change(target=f"{kind}.{name}", field=k, before=have.get(k), after=v) for k, v in inp.config.items() if have.get(k) != v]
+    return Preview(summary=f"Change {len(changes)} setting(s) of {kind}.{name} and reload core", changes=changes, total_changes=len(changes))
+
+
+@operation("plugin_config_set", "Change settings of an instance in config.toml, then core reloads. The old file is not kept: `config save` keeps a .bak, this does not.",
+           permission="mutate", input=PluginConfigSetIn, output=ReloadOut, mcp="never", group="plugin",
+           preview=_config_set_preview)  # fmt: skip
+async def plugin_config_set(ctx: OpContext, inp: PluginConfigSetIn) -> ReloadOut:
+    kind, name = plugin_ref(inp.plugin)
+    path = paths.config_dir() / "config.toml"
+    have = get_table(path.read_text(encoding="utf-8") if path.exists() else "", ["plugins", kind, name])
+    if not have:
+        raise NotFound(f"no instance {kind}.{name} in config.toml: `plugin list` shows what runs")
+    try:
+        save_table(path, ["plugins", kind, name], {**have, **inp.config})  # refuses a secret first
+    except Exception as exc:  # noqa: BLE001 - ConfigError from the writer comes back as a plain refusal
+        raise InvalidInput(str(getattr(exc, "message", exc))) from None
+    reloading, note = reload_core(ctx, "the new settings apply in a moment")
+    return ReloadOut(reloading=reloading, note=note)
+
+
 async def _reload_preview(ctx: OpContext, inp: Empty) -> Preview:
     return Preview(summary="Reload core: re-read config.toml and restart every plugin on it. A file with a mistake changes nothing.", changes=[Change(target="core", field="config.toml")], total_changes=1)  # fmt: skip
 
@@ -511,4 +568,4 @@ async def mcp_power(ctx: OpContext, inp: McpPowerIn) -> McpPowerOut:
 
 
 OPERATIONS = (status, log_list, plugin_list, plugin_describe, plugin_enable, plugin_disable, plugin_reload,
-              exposure_list, exposure_set, mcp_power, ai_usage, plugin_add, plugin_remove, plugin_test, core_reload)  # fmt: skip
+              exposure_list, exposure_set, mcp_power, ai_usage, plugin_add, plugin_remove, plugin_config_get, plugin_choices, plugin_config_set, plugin_test, core_reload)  # fmt: skip

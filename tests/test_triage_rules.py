@@ -97,3 +97,14 @@ async def test_the_tester_checks_a_typed_rule_and_the_saved_rules_against_a_past
     assert (await t.check(None, CheckIn(payload=body))).saved is not None  # type: ignore[arg-type]  # no rule typed: just the saved ones
     assert "at least one condition" in (await t.check(None, CheckIn())).problem  # type: ignore[arg-type]
     assert t.ui().pages[0].test == "check"
+
+
+def test_a_rule_can_reach_into_a_formatter_part_with_parts_dot_name() -> None:
+    from oaken_core.parts import Part
+
+    mail = IntakeItem("s1", "gmail:me", "raw", {}, parts={
+        "headers": Part(name="headers", content={"subject": ["Your Invoice 42"]}), "text": Part(name="text", content="pay by Friday")})  # fmt: skip
+    assert matches(mail, When(field_contains={"parts.headers.subject": "invoice", "parts.text": "friday"}))
+    assert matches(mail, When(field_present=["parts.headers.subject"]))
+    assert not matches(mail, When(field_present=["parts.headers.list-unsubscribe"]))
+    assert not matches(mail, When(field_contains={"parts.nope": "x"}))  # no such part: the condition fails, it does not raise

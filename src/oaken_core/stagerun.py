@@ -101,10 +101,21 @@ class StageRunner:
         if nxt:
             await self.jobs.enqueue(ENRICH_KIND, p, subject=p.subject_id, queue=nxt[0], actor=SYSTEM)
             return
+        await self._acts(p)
+
+    async def _acts(self, p: StagePayload) -> None:
         for route in dict.fromkeys(p.routes):  # each once, in the order asked
             found = self.actions_for(route)
             stage = next((s for _, _, s in found if s), DEFAULT)
             await self.jobs.enqueue(ACT_KIND, ActPayload(**p.model_dump(), route=route), subject=p.subject_id, queue=stage, actor=SYSTEM)
+
+    async def rerun(self, p: StagePayload, stage: str, routes: list[str]) -> None:
+        """Send a stored item to one stage, skipping the ones before it. Enrich runs the enrichers and stops (no routes, so no actions
+        follow); act runs the named routes' actions only."""
+        if stage == "enrich":
+            await self._onward(p.model_copy(update={"routes": []}), None)
+        else:
+            await self._acts(p.model_copy(update={"routes": routes}))
 
     async def _keep(self, subject: str, name: str, e: Enrichment) -> None:
         store, rid, data = self.store(), f"{subject}:{name}", {"data": e.data, "labels": e.labels}

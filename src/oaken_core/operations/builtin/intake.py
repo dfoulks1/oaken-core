@@ -37,6 +37,31 @@ async def intake_submit(ctx: OpContext, inp: IntakeSubmitIn) -> IntakeSubmitOut:
     return IntakeSubmitOut(subject_id=str(subject), note="queued in Intake (default): it is split into parts, then triaged")
 
 
+class ItemRerunIn(BaseModel):
+    id: str = Field(description="The stored message's subject id.")
+    stage: str = Field(description="enrich or act. The stages between are skipped.")
+    routes: list[str] = Field(default_factory=list, description="act only: the routes whose actions run again.")
+    source: str = Field(default="rerun", description="The message's source, for enrichers that read it.")
+
+
+class ItemRerunOut(BaseModel):
+    subject_id: str
+    note: str
+
+
+async def _preview_rerun(ctx: OpContext, inp: ItemRerunIn) -> Preview:
+    return Preview(summary=f"Run {inp.id} through {inp.stage} again, skipping the stages before it",
+                   changes=[Change(target=inp.id, field="rerun", after=inp.stage)], total_changes=1)  # fmt: skip
+
+
+@operation("item_rerun", "Send a stored message back to one later stage (enrich or act). Intake and triage are skipped.",
+           permission="mutate", input=ItemRerunIn, output=ItemRerunOut, mcp="never", group="item", preview=_preview_rerun)  # fmt: skip
+async def item_rerun(ctx: OpContext, inp: ItemRerunIn) -> ItemRerunOut:
+    # In-process, so no envelope round trip: the operation is the gate (confirm, audit) and calls intake's rerun directly.
+    await need(ctx.svc.intake, "intake").rerun(inp.id, {"stage": inp.stage, "routes": inp.routes, "source": inp.source})
+    return ItemRerunOut(subject_id=inp.id, note=f"queued in {inp.stage}")
+
+
 class ItemShowIn(BaseModel):
     id: str = Field(description="The item's subject id (``oaken items list`` shows them).")
     part: str | None = Field(default=None, description="Only this part (headers, text, body...). Empty: every part.")
