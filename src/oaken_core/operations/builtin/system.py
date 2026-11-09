@@ -116,6 +116,7 @@ class PluginDocs(BaseModel):
     config_example: str
     contextual: list[str]  # what an instance must be given (a template)
     tags: list[str]  # what it says it is for: the domain, beyond its kind
+    icon: str = ""  # a Bootstrap Icons name the plugin picks for itself (bi-google); empty: none declared
     template_note: str  # core's own account of what a template is, for a plugin that is one
     settings: list[SettingDoc]
     commands: list[CommandDoc]
@@ -164,7 +165,7 @@ def _docs(ctx: OpContext, host: Any, s: Any) -> PluginDocs:
     rest = "\n".join(d["doc"].strip().splitlines()[1:]).strip()
     more = bool(rest or d["setup_help"] or d["config_example"] or settings or commands or d["contextual"])
     return PluginDocs(kind=s.kind, name=s.name, plugin=s.plugin, version=s.version, summary=(d["doc"].strip().splitlines() or [""])[0].replace("``", ""), more=more, doc=d["doc"].replace("``", "`"),
-                      setup_help=d["setup_help"], config_example=d["config_example"], contextual=list(d["contextual"]), tags=list(d["tags"]), template_note=d["template_note"], settings=settings, commands=commands,
+                      setup_help=d["setup_help"], config_example=d["config_example"], contextual=list(d["contextual"]), tags=list(d["tags"]), icon=d.get("icon", ""), template_note=d["template_note"], settings=settings, commands=commands,
                       template=s.template, enabled=s.enabled, started=s.started, healthy=s.healthy, warning=s.warning, hint=s.hint)  # fmt: skip
 
 

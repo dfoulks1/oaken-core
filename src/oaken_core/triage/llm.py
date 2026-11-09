@@ -73,6 +73,7 @@ class TryOut(BaseModel):
 
 
 class LlmTriager(BaseMultitenant, BaseTemplatePlugin, BaseLLMAnalyzer, BaseTriager):
+    icon = "bi-robot"  # asks a model
     api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
     requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"

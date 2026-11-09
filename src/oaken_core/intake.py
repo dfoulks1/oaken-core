@@ -31,7 +31,7 @@ from oaken_core.changelog import ChangeLog
 from oaken_core.db import Database
 from oaken_core.errors import InvalidInput, Unavailable
 from oaken_core.ids import SubjectId, new_subject_id
-from oaken_core.jobs import Job, Jobs, JobRunner, PermanentJobError
+from oaken_core.jobs import PRIORITY_INGEST, Job, Jobs, JobRunner, PermanentJobError
 from oaken_core.labels import LabelError, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.parts import Part, whole
@@ -143,7 +143,7 @@ class Intake:
         formatter_for: Callable[[str | None], Any] | None = None,
         on_stored: Callable[[Any], Awaitable[None]] | None = None,
     ) -> None:
-        self.rerun_hook: Callable[[str, str, str, list[str]], Awaitable[None]] | None = None  # (subject, source, stage, routes): the host rebuilds a stored item and runs a later stage
+        self.rerun_hook: Callable[[str, str, str, list[str], int], Awaitable[None]] | None = None  # (subject, source, stage, routes, priority): the host rebuilds a stored item and runs a later stage
         self.on_stored = on_stored  # called with a ``StagePayload`` once an item is stored: the enrich and act loops
         self.router = router  # the model router, for ``Verdict.learn``
         self.jobs, self.labels, self.db, self.changelog = jobs, labels, db, changelog
@@ -219,7 +219,7 @@ class Intake:
 
     async def rerun(self, subject: Any, spec: Any) -> SubjectId:
         """The one door for a rerun: the ``item_rerun`` operation calls it directly, and a trusted envelope reaches it through ``submit``.
-        ``rerun`` = ``{"stage": "enrich"|"act", "routes": [...], "source": "..."}`` on a trusted envelope whose ``parent`` is the
+        ``rerun`` = ``{"stage": "enrich"|"act", "routes": [...], "source": "...", "priority": 0..100}`` (default ``PRIORITY_INGEST``) on a trusted envelope whose ``parent`` is the
         stored message. Intake and triage are skipped: the message is rebuilt from what the ingestor kept and handed to that stage.
         shortcut: runs every enricher of the stage (no ``plugin`` or ``fresh`` yet), and act needs its routes named, since a stored
         message does not keep what its triagers asked for."""
@@ -233,7 +233,10 @@ class Intake:
             raise InvalidInput("rerun.routes: name the routes an act rerun answers")
         if self.rerun_hook is None:
             raise Unavailable("nothing can rebuild a stored item yet")
-        await self.rerun_hook(subject, str(spec.get("source") or "rerun"), stage, routes)
+        priority = int(spec.get("priority", PRIORITY_INGEST))
+        if not 0 <= priority <= 100:
+            raise InvalidInput("rerun.priority must be 0 to 100")
+        await self.rerun_hook(subject, str(spec.get("source") or "rerun"), stage, routes, priority)
         return SubjectId(subject)
 
     def _order(self, stage: str) -> list[Triager]:

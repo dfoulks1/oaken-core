@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 from oaken_core.actors import SYSTEM, USER
 from oaken_core.errors import Deferred, InvalidInput, InvalidResult
-from oaken_core.jobs import PermanentJobError
+from oaken_core.jobs import PRIORITY_USER, PermanentJobError
 
 from .conftest import Kit
 
@@ -84,6 +84,15 @@ async def test_a_paused_queue_yields_nothing_until_resumed(kit: Kit) -> None:
     assert (await kit.jobs.stats())[0].paused is True
     await kit.jobs.resume("default")
     assert await kit.jobs.claim("w", "default", ["k"]) is not None
+
+
+async def test_a_paused_queue_still_hands_out_what_the_user_asked_for_and_it_goes_first(kit: Kit) -> None:
+    await kit.jobs.enqueue("k", Ping())
+    mine = await kit.jobs.enqueue("k", Ping(), priority=PRIORITY_USER)
+    await kit.jobs.pause("default")
+    got = await kit.jobs.claim("w", "default", ["k"])
+    assert got is not None and got.id == mine.job_id
+    assert await kit.jobs.claim("w", "default", ["k"]) is None  # the ordinary job still waits for the resume
 
 
 async def test_failures_retry_with_backoff_then_fail(kit: Kit) -> None:

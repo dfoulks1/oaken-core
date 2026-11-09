@@ -193,6 +193,7 @@ class BasePlugin:
     # What the plugin is for, beyond its kind: the domain (``("mail",)``, ``("signal",)``). ``kind`` says the role. A product that wraps core
     # decides what it allows by kind and tag. Written in the class body so ``oaken plugins`` can read it without importing.
     tags: ClassVar[tuple[str, ...]] = ()
+    icon: ClassVar[str] = ""  # how a UI marks it: a Bootstrap Icons name such as ``bi-envelope``. Empty: the UI uses its generic one
 
     ctx: PluginContext  # set by start()
     config: Any = None  # the parsed config_model instance, set by start() when config_model is set

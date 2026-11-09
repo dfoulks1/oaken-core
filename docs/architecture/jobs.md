@@ -31,7 +31,9 @@ label change does not move jobs already queued: use `requeue` with a target queu
 **Pause.** `oaken queue pause NAME` stops a queue handing out jobs. Running jobs finish. The switch
 is a row in `queue_state`, so it survives a restart. `oaken queue resume NAME` undoes it. Pausing is
 how you free a GPU or stop a stage while you fix a plugin. Each change is published as a
-`QueueStateChanged` event.
+`QueueStateChanged` event. A paused queue still hands out jobs at `PRIORITY_USER` (100) or above: a user's own
+request (such as `item_rerun`, which defaults to that priority) runs next, even with the queue closed. Everything
+else waits for the resume.
 
 ## The job lifecycle
 

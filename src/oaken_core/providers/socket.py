@@ -104,6 +104,7 @@ def _records(text: str, *, whole: bool) -> list[Any] | None:
 class SocketProvider(BaseTemplatePlugin, BaseProvider):
     """A door for the machine: whatever is written to its Unix socket (or loopback port) is submitted to intake. A template: make an
     instance per door, each with its own path or port, source and format."""
+    icon = "bi-plug"  # a socket door
 
     api_version = (
         1  # the plugin API this was written against (core's PLUGIN_API_VERSION)

@@ -58,6 +58,7 @@ def key_of(item: IntakeItem, field: str | None) -> str:
 
 
 class DedupeTriager(BaseTriager):
+    icon = "bi-files"  # duplicates
     api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
     requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"

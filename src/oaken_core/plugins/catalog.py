@@ -30,6 +30,7 @@ class Entry:
     api: str = ""  # the plugin API version it declares, if its source says one: blank means whatever core speaks
     requires: str = ""  # the core it says it needs (``requires_core``), if it says
     tags: tuple[str, ...] = ()  # what it says it is for (``tags``), if it says
+    icon: str = ""  # the Bootstrap Icons name it picks for itself (``icon``), if it says
 
 
 def declared(path: Path) -> dict[str, str]:
@@ -46,7 +47,7 @@ def declared(path: Path) -> dict[str, str]:
             for st in cls.body:
                 target = st.target if isinstance(st, ast.AnnAssign) else (st.targets[0] if isinstance(st, ast.Assign) and len(st.targets) == 1 else None)
                 value = getattr(st, "value", None)
-                if isinstance(target, ast.Name) and target.id in ("api_version", "requires_core") and isinstance(value, ast.Constant) and value.value not in ("", None):
+                if isinstance(target, ast.Name) and target.id in ("api_version", "requires_core", "icon") and isinstance(value, ast.Constant) and value.value not in ("", None):
                     found.setdefault(target.id, str(value.value))
                 elif isinstance(target, ast.Name) and target.id == "tags" and isinstance(value, ast.Tuple | ast.List):
                     names = [e.value for e in value.elts if isinstance(e, ast.Constant) and isinstance(e.value, str) and e.value]
@@ -79,7 +80,7 @@ def entries(kinds: Iterable[str]) -> list[Entry]:
         where = root / mod.name if (root / mod.name).is_dir() else root / f"{mod.name}.py"
         decl = declared(where)
         found.append(Entry(mod.name[len(kind) + 1:].replace("_", "-"), kind, f"{PACKAGE}.{mod.name}", _summary(source if source.is_file() else root / f"{mod.name}.py"),
-                           decl.get("api_version", ""), decl.get("requires_core", ""), tuple(decl["tags"].split(",")) if decl.get("tags") else ()))  # fmt: skip
+                           decl.get("api_version", ""), decl.get("requires_core", ""), tuple(decl["tags"].split(",")) if decl.get("tags") else (), decl.get("icon", "")))  # fmt: skip
     return sorted(found, key=lambda e: (e.kind, e.name))
 
 

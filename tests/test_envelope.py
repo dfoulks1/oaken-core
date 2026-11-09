@@ -70,7 +70,7 @@ async def test_a_trusted_rerun_goes_to_the_hook_and_skips_intake(tmp_path: Path)
     core.intake.rerun_hook = hook
     env = {"oaken": 1, "body": "", "parent": "s-1", "rerun": {"stage": "act", "routes": ["notify"], "source": "gmail:me"}}
     assert str(await core.intake.submit("ui", env, trusted=True)) == "s-1"
-    assert seen == [("s-1", "gmail:me", "act", ["notify"])]
+    assert seen == [("s-1", "gmail:me", "act", ["notify"], 50)]  # an envelope names no priority: the ingest default
     assert not await core.runner.jobs.query(kind="intake.format")  # no new item was made
     with pytest.raises(InvalidInput):
         await core.intake.submit("ui", {**env, "rerun": {"stage": "triage"}}, trusted=True)

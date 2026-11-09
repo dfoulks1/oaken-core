@@ -27,7 +27,7 @@ from pydantic import BaseModel, Field
 
 from oaken_core.actors import SYSTEM, Actor
 from oaken_core.errors import Conflict
-from oaken_core.jobs import Job, JobRunner, Jobs, PermanentJobError
+from oaken_core.jobs import PRIORITY_INGEST, PRIORITY_USER, Job, JobRunner, Jobs, PermanentJobError
 from oaken_core.labels import LabelError, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.parts import Part
@@ -94,28 +94,28 @@ class StageRunner:
         """An item was stored: enrich it, then act on its routes."""
         await self._onward(p, None)
 
-    async def _onward(self, p: StagePayload, after: str | None) -> None:
+    async def _onward(self, p: StagePayload, after: str | None, priority: int = PRIORITY_INGEST) -> None:
         """Queue the enricher stage after ``after`` (the first when None); with none left, the actions."""
         stages = self._stages("enricher")
         nxt = stages if after is None else stages[stages.index(after) + 1 :]
         if nxt:
-            await self.jobs.enqueue(ENRICH_KIND, p, subject=p.subject_id, queue=nxt[0], actor=SYSTEM)
+            await self.jobs.enqueue(ENRICH_KIND, p, subject=p.subject_id, queue=nxt[0], actor=SYSTEM, priority=priority)
             return
-        await self._acts(p)
+        await self._acts(p, priority)
 
-    async def _acts(self, p: StagePayload) -> None:
+    async def _acts(self, p: StagePayload, priority: int = PRIORITY_INGEST) -> None:
         for route in dict.fromkeys(p.routes):  # each once, in the order asked
             found = self.actions_for(route)
             stage = next((s for _, _, s in found if s), DEFAULT)
-            await self.jobs.enqueue(ACT_KIND, ActPayload(**p.model_dump(), route=route), subject=p.subject_id, queue=stage, actor=SYSTEM)
+            await self.jobs.enqueue(ACT_KIND, ActPayload(**p.model_dump(), route=route), subject=p.subject_id, queue=stage, actor=SYSTEM, priority=priority)
 
-    async def rerun(self, p: StagePayload, stage: str, routes: list[str]) -> None:
+    async def rerun(self, p: StagePayload, stage: str, routes: list[str], priority: int = PRIORITY_INGEST) -> None:
         """Send a stored item to one stage, skipping the ones before it. Enrich runs the enrichers and stops (no routes, so no actions
         follow); act runs the named routes' actions only."""
         if stage == "enrich":
-            await self._onward(p.model_copy(update={"routes": []}), None)
+            await self._onward(p.model_copy(update={"routes": []}), None, priority)
         else:
-            await self._acts(p.model_copy(update={"routes": routes}))
+            await self._acts(p.model_copy(update={"routes": routes}), priority)
 
     async def _keep(self, subject: str, name: str, e: Enrichment) -> None:
         store, rid, data = self.store(), f"{subject}:{name}", {"data": e.data, "labels": e.labels}
@@ -140,7 +140,8 @@ class StageRunner:
             except LabelError as exc:  # an enricher bug: a retry would repeat it
                 raise PermanentJobError(str(exc)) from exc
             p = p.model_copy(update={"enrichments": {**p.enrichments, name: {"data": e.data, "labels": e.labels}}})
-        await self._onward(p, job.queue)
+        # a user's request keeps its priority down the later enrich stages; anything else resets to the default, as before
+        await self._onward(p, job.queue, job.priority if job.priority >= PRIORITY_USER else PRIORITY_INGEST)
         return StageResult(ran=ran)
 
     async def _act_job(self, p: ActPayload, job: Job) -> StageResult:

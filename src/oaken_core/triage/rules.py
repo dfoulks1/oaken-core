@@ -254,6 +254,7 @@ TESTER = UiPage(
 
 class RulesTriager(BaseTriager):
     """Runs before the models (rank 5): an item you have a rule for is never sent to one."""
+    icon = "bi-list-check"  # header and field rules
 
     api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
     requires_core = ">=0.0.0"  # the oaken-core versions it works with

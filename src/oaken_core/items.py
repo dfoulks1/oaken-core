@@ -49,6 +49,7 @@ def query(inp: ListIn) -> Query:
 
 
 class ItemsIngestor(BaseIngestor):
+    icon = "bi-box-seam"  # plain items
     api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
     requires_core = ">=0.0.0"  # the oaken-core versions it works with
     version: ClassVar[str] = "1"

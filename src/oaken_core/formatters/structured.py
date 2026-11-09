@@ -15,6 +15,7 @@ def _text(raw: Any) -> str:
 class JsonFormatter(BaseFormatter):
     """A JSON object becomes one part per top-level key (the value is the part's content). Anything else
     (a list, a number) stays one ``body`` part. Text that is not JSON raises, and intake keeps the item whole."""
+    icon = "bi-braces"  # JSON
 
     api_version = 1  # the plugin API this was written against (core's PLUGIN_API_VERSION)
     requires_core = ">=0.0.0"  # the oaken-core versions it works with

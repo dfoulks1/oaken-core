@@ -7,6 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from oaken_core.errors import NotFound, PluginError, Unavailable
+from oaken_core.jobs import PRIORITY_USER
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.registry import Change, Preview, operation
 from oaken_core.operations.services import need
@@ -42,6 +43,7 @@ class ItemRerunIn(BaseModel):
     stage: str = Field(description="enrich or act. The stages between are skipped.")
     routes: list[str] = Field(default_factory=list, description="act only: the routes whose actions run again.")
     source: str = Field(default="rerun", description="The message's source, for enrichers that read it.")
+    priority: int = Field(default=PRIORITY_USER, ge=0, le=100, description="Queue priority. The default is the user's own: it runs next, and runs even if the queue is paused.")
 
 
 class ItemRerunOut(BaseModel):
@@ -58,7 +60,7 @@ async def _preview_rerun(ctx: OpContext, inp: ItemRerunIn) -> Preview:
            permission="mutate", input=ItemRerunIn, output=ItemRerunOut, mcp="never", group="item", preview=_preview_rerun)  # fmt: skip
 async def item_rerun(ctx: OpContext, inp: ItemRerunIn) -> ItemRerunOut:
     # In-process, so no envelope round trip: the operation is the gate (confirm, audit) and calls intake's rerun directly.
-    await need(ctx.svc.intake, "intake").rerun(inp.id, {"stage": inp.stage, "routes": inp.routes, "source": inp.source})
+    await need(ctx.svc.intake, "intake").rerun(inp.id, {"stage": inp.stage, "routes": inp.routes, "source": inp.source, "priority": inp.priority})
     return ItemRerunOut(subject_id=inp.id, note=f"queued in {inp.stage}")
 
 

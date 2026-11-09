@@ -1540,6 +1540,7 @@ class PluginHost:
             "contextual": self.contextual(kind, name),
             "template_note": template,
             "tags": list(getattr(inst, "tags", ())),
+            "icon": str(getattr(inst, "icon", "")),
         }
 
     def contextual(self, kind: str, name: str) -> tuple[str, ...]:

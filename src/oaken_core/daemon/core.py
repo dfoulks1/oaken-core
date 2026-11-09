@@ -311,7 +311,7 @@ class Core:
             None,
         )
 
-    async def _rerun(self, subject: str, source: str, stage: str, routes: list[str]) -> None:
+    async def _rerun(self, subject: str, source: str, stage: str, routes: list[str], priority: int) -> None:
         """Rebuild a stored item from what its ingestor kept, and hand it to a later stage."""
         try:
             ingestor = self.host.get("ingestor")
@@ -320,7 +320,7 @@ class Core:
             raise Unavailable(f"cannot read {subject!r} back from the ingestor ({exc})") from None
         p = StagePayload(subject_id=subject, source=source, labels=await self.intake.labels.all(subject),
                          parts={n: Part(name=n, content=c) for n, c in parts.items()})  # fmt: skip
-        await self.stages.rerun(p, stage, routes)
+        await self.stages.rerun(p, stage, routes, priority)
 
     async def _ingest(self, item: IntakeItem) -> SubjectId:
         """Hand an accepted item to the active ingestor. With none, the item waits in intake (it is

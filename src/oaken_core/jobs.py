@@ -338,7 +338,8 @@ class Jobs:
     ) -> Job | None:
         """Atomically take the best runnable job of one of ``kinds`` in ``queue`` and lease it to
         ``worker``. Best = highest priority, then earliest ``run_after``. Kinds already running at
-        their ``limits`` cap are skipped. A paused queue yields nothing. Expired leases are
+        their ``limits`` cap are skipped. A paused queue yields only jobs at ``PRIORITY_USER`` or above (a user's own request
+        runs even with the queue closed). Expired leases are
         reclaimed first.
 
         With ``agent`` the claim is made for an external agent (``worker`` becomes
@@ -360,13 +361,14 @@ class Jobs:
             blocked = await self._blocked_kinds(tx, limits or {})
             allowed = [k for k in kinds if k not in blocked]
             row = None
-            if allowed and not (paused and paused["paused"]):
+            if allowed:
                 marks = ",".join("?" * len(allowed))
+                floor = PRIORITY_USER if paused and paused["paused"] else 0  # closed: only what the user asked for gets through
                 row = await tx.fetchone(
                     "SELECT * FROM jobs WHERE status = 'queued' AND queue = ? AND run_after <= ?"
-                    f" AND kind IN ({marks})"  # noqa: S608 (only "?" placeholders)
+                    f" AND kind IN ({marks}) AND priority >= ?"  # noqa: S608 (only "?" placeholders)
                     " ORDER BY priority DESC, run_after, created_at, id LIMIT 1",
-                    (queue, fmt_ts(now), *allowed),
+                    (queue, fmt_ts(now), *allowed, floor),
                 )
             if row is not None:
                 seconds = self.swarm.agent_lease_seconds if agent else self.settings.lease_seconds
