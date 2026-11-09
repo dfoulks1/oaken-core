@@ -150,4 +150,37 @@ async def item_get(ctx: OpContext, inp: ItemGetIn) -> ItemGetOut:
     return ItemGetOut(subject_id=inp.id, name=inp.name, value=value, text=value if isinstance(value, str) else json.dumps(value, indent=2, default=str))
 
 
-OPERATIONS = (intake_submit, item_rerun, item_show, item_get)
+class ItemEnrichmentsIn(BaseModel):
+    id: str = Field(description="The item's subject id.")
+
+
+class EnrichmentRow(BaseModel):
+    name: str  # the enricher instance
+    data: dict[str, Any]
+    labels: dict[str, str]
+    updated_at: str
+
+
+class ItemEnrichmentsOut(BaseModel):
+    subject_id: str
+    enrichments: list[EnrichmentRow]
+
+
+@operation("item_enrichments", "What each enricher stored for an item: its data and the labels it set. Enrichers that have not run on it are absent.",
+           permission="read", input=ItemEnrichmentsIn, output=ItemEnrichmentsOut, mcp="never", group="item")  # fmt: skip
+async def item_enrichments(ctx: OpContext, inp: ItemEnrichmentsIn) -> ItemEnrichmentsOut:
+    from oaken_core.stagerun import ENRICHMENTS
+
+    host = need(ctx.svc.host, "the plugin host")
+    store = need(host.store, "the store")
+    rows: list[EnrichmentRow] = []
+    for name in host.usable("enricher"):  # a record is kept per enricher instance, id ``<subject>:<name>``
+        try:
+            rec = await store.get(ENRICHMENTS, f"{inp.id}:{name}")
+        except NotFound:
+            continue
+        rows.append(EnrichmentRow(name=name, data=dict(rec.data.get("data") or {}), labels={k: str(v) for k, v in (rec.data.get("labels") or {}).items()}, updated_at=rec.updated_at))
+    return ItemEnrichmentsOut(subject_id=inp.id, enrichments=rows)
+
+
+OPERATIONS = (intake_submit, item_rerun, item_show, item_get, item_enrichments)

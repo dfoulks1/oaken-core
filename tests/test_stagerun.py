@@ -72,3 +72,11 @@ async def test_enrichers_run_in_a_stage_and_actions_run_per_route(tmp_path: Path
         assert [j.last_error for j in failed] == ["PermanentJobError: no action answers route 'ghost'"]  # parked, not lost
     finally:
         await core.host.stop()
+
+
+def test_a_rerun_gives_the_enricher_the_items_text_not_nothing() -> None:
+    from oaken_core.stagerun import body_from_parts
+
+    assert body_from_parts({"headers": {"a": 1}, "text": "hello", "body": "raw"}) == "hello"
+    assert body_from_parts({"text": "  ", "body": "raw"}) == "raw"
+    assert body_from_parts({"headers": {"a": 1}}) is None

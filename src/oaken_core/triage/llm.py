@@ -48,6 +48,7 @@ class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     criteria: str = Field(min_length=3, description="What you are looking for, in your own words: what makes an item worth keeping.")
+    think: bool = Field(default=False, description="Let the model reason before it answers. Off saves time and tokens; a backend's own think setting overrides this.")
 
 
 class Answer(BaseModel):
@@ -96,11 +97,11 @@ class LlmTriager(BaseMultitenant, BaseTemplatePlugin, BaseLLMAnalyzer, BaseTriag
     def _request(self, text: str, source: str) -> LLMRequest:
         system = f"{self.effective_prompt()}\n\nThe owner's criteria: {self.config.criteria}\n\n{self.effective_guard()}"
         return LLMRequest(system, (UntrustedText(source, "source"), UntrustedText(text, "item")),
-                          json_schema=Answer.model_json_schema(), max_output_tokens=200, think=False)  # fmt: skip
+                          json_schema=Answer.model_json_schema(), max_output_tokens=200, think=self.config.think)  # fmt: skip
 
     async def _ask(self, text: str, source: str, confidential: bool) -> Answer:
         # the criteria are in the key: change them and an old answer is no longer the answer
-        digest = hashlib.sha256(f"{self.config.criteria}\0{source}\0{text}".encode()).hexdigest()
+        digest = hashlib.sha256(f"{self.config.criteria}\0{self.config.think}\0{source}\0{text}".encode()).hexdigest()
         return await self.ask(self._request(text, source), Answer, content_hash=digest, confidential=confidential)
 
     async def triage(self, item: IntakeItem) -> Verdict | None:

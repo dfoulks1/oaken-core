@@ -49,7 +49,7 @@ from oaken_core.queues import DEFAULT, Queues
 from oaken_core.router import HostDirectory, Router
 from oaken_core.scheduler import Scheduler
 from oaken_core.parts import Part
-from oaken_core.stagerun import StagePayload, StageRunner
+from oaken_core.stagerun import StagePayload, StageRunner, body_from_parts
 from oaken_core.settings import Settings
 from oaken_core.trace import Tracer
 
@@ -318,7 +318,7 @@ class Core:
             parts = await ingestor.read(subject)
         except (PluginError, NotFound, AttributeError) as exc:
             raise Unavailable(f"cannot read {subject!r} back from the ingestor ({exc})") from None
-        p = StagePayload(subject_id=subject, source=source, labels=await self.intake.labels.all(subject),
+        p = StagePayload(subject_id=subject, source=source, body=body_from_parts(parts), labels=await self.intake.labels.all(subject),
                          parts={n: Part(name=n, content=c) for n, c in parts.items()})  # fmt: skip
         await self.stages.rerun(p, stage, routes, priority)
 

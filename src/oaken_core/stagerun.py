@@ -61,6 +61,12 @@ class StageResult(BaseModel):
     ran: list[str] = Field(default_factory=list)  # the plugins that ran, by name
 
 
+def body_from_parts(parts: dict[str, Any]) -> str | None:
+    """A stored item has its parts but not the body it arrived as. An enricher reads ``body``, so a rerun gives it the item's own text:
+    the ``text`` part, else the ``body`` part (the names ``item get`` documents). None when there is neither."""
+    return next((c for name in ("text", "body") if isinstance(c := parts.get(name), str) and c.strip()), None)
+
+
 def _target(p: StagePayload) -> EnrichTarget:
     return EnrichTarget(p.subject_id, p.source, p.body, p.labels, p.key, p.parts,
                         enrichments={n: Enrichment(**e) for n, e in p.enrichments.items()})  # fmt: skip

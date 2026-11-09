@@ -301,6 +301,7 @@ class BaseStore(BasePlugin):
     - ``delete(collection, id)``: ``NotFound`` if absent.
     """
     kind: ClassVar[str] = "store"
+    icon: ClassVar[str] = "bi-database"  # every store looks like one
 
     @_default
     async def open(self) -> Database:
@@ -533,6 +534,7 @@ class BaseVectorStore(BasePlugin):
     """Stores vectors under a collection and a key, and finds the nearest. A collection never mixes
     vector sizes, and one collection never sees another's vectors. ``score`` is cosine similarity."""
     kind: ClassVar[str] = "vector_store"
+    icon: ClassVar[str] = "bi-database"  # every store looks like one
 
     @_default
     async def upsert(self, collection: str, items: Sequence[VectorItem]) -> None:

@@ -54,6 +54,7 @@ class EnrichConfig(BaseModel):
         min_length=3,
         description="What to derive from each item, in your own words.",
     )
+    think: bool = Field(default=False, description="Let the model reason before it answers. Off saves time and tokens; a backend's own think setting overrides this.")
 
 
 class Answer(BaseModel):
@@ -107,12 +108,12 @@ class LlmEnricher(BaseMultitenant, BaseTemplatePlugin, BaseLLMAnalyzer, BaseEnri
     def _request(self, text: str, source: str) -> LLMRequest:
         system = f"{self.effective_prompt()}\n\nThe owner's instructions: {self.config.instructions}\n\n{self.effective_guard()}"
         return LLMRequest(system, (UntrustedText(source, "source"), UntrustedText(text, "item")),
-                          json_schema=Answer.model_json_schema(), max_output_tokens=400, think=False)  # fmt: skip
+                          json_schema=Answer.model_json_schema(), max_output_tokens=400, think=self.config.think)  # fmt: skip
 
     async def _ask(self, text: str, source: str, confidential: bool) -> Answer:
         # the instructions are in the key: change them and an old answer is no longer the answer
         digest = hashlib.sha256(
-            f"{self.config.instructions}\0{source}\0{text}".encode()
+            f"{self.config.instructions}\0{self.config.think}\0{source}\0{text}".encode()
         ).hexdigest()
         return await self.ask(
             self._request(text, source),
