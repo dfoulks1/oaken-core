@@ -144,3 +144,25 @@ async def test_a_settings_check_with_no_field_still_says_what_is_wrong() -> None
 
     with pytest.raises(PluginError, match=r"settings \(set a or b\)"):
         await P().start(PluginContext(name="p", kind="provider", clock=FakeClock(), log=None))  # type: ignore[arg-type]
+
+
+async def test_llm_backend_offers_its_available_models_as_the_model_choices() -> None:
+    class Lists(BaseLLMBackend):
+        async def available_models(self) -> list[str]:
+            return ["a", "b"]
+
+    class Silent(BaseLLMBackend):
+        pass
+
+    assert await Lists().setting_choices({}) == {"model": ["a", "b"]}
+    assert await Silent().setting_choices({}) == {}
+
+
+async def test_every_llm_backend_has_a_models_command_from_available_models() -> None:
+    class Lists(BaseLLMBackend):
+        async def available_models(self) -> list[str]:
+            return ["a"]
+
+    ops = {o.name: o for o in Lists().operations()}
+    assert "models" in ops
+    assert (await ops["models"].handler(None, None)).models == ["a"]

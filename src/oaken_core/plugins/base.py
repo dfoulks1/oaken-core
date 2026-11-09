@@ -40,6 +40,7 @@ from oaken_core.plugins.contracts import (
     LLMResponse,
     PluginContext,
     PluginJobHandler,
+    PluginOpContext,
     PluginOperation,
     PluginScheduledTask,
     UiAction,
@@ -474,6 +475,14 @@ class BaseEmbedder(BasePlugin):
         raise NotImplementedError("an embedder must implement embed()")
 
 
+class NoInput(BaseModel):
+    pass
+
+
+class ModelsOut(BaseModel):
+    models: list[str]
+
+
 class BaseLLMBackend(BasePlugin):
     """Runs a chat model. The router calls ``generate``; where the model runs (``locality``) is the
     instance's table, not the class, so the owner decides who may send it what."""
@@ -496,6 +505,17 @@ class BaseLLMBackend(BasePlugin):
         """The model ids it can run right now, for a picker to offer. The default is the one it started
         with; a backend that can enumerate its models overrides this."""
         return [self.model_id] if self.model_id else []
+
+    async def setting_choices(self, config: dict[str, Any]) -> dict[str, list[str]]:
+        """The ``model`` dropdown, from ``available_models()``: a backend that lists its models overrides that one method and every
+        settings form (and ``plugin_choices``) offers them. A backend with nothing to offer gives ``{}``, a plain box."""
+        models = await self.available_models()
+        return {"model": models} if models else {}
+
+    @command("models", "The models this backend can run right now.", input=NoInput, output=ModelsOut)
+    async def _cmd_models(self, ctx: PluginOpContext, inp: NoInput) -> ModelsOut:
+        """Every backend answers under its own name (``oknpost ollama models``, ``oknpost lmstudio models``), from ``available_models()``."""
+        return ModelsOut(models=await self.available_models())
 
 
 @dataclass(frozen=True)
