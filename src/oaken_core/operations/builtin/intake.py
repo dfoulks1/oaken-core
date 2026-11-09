@@ -148,4 +148,4 @@ async def item_get(ctx: OpContext, inp: ItemGetIn) -> ItemGetOut:
     return ItemGetOut(subject_id=inp.id, name=inp.name, value=value, text=value if isinstance(value, str) else json.dumps(value, indent=2, default=str))
 
 
-OPERATIONS = (intake_submit, item_show, item_get)
+OPERATIONS = (intake_submit, item_rerun, item_show, item_get)
