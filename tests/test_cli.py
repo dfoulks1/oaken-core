@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import os
 from typing import Any
 
 import httpx2
 import pytest
 from pydantic import BaseModel
 
+from oaken_core import identity
 from oaken_core.api import Api
 from oaken_core.cli.client import ApiClient
 from oaken_core.cli.commands import amain
@@ -202,3 +204,12 @@ def test_the_three_level_template_tree_routes_to_the_right_leaf() -> None:
     assert getattr(args, "_op").name == "dfoulks.auth"
     args = parser.parse_args(["crm", "scan"])  # plain plugin unchanged
     assert getattr(args, "_op").name == "crm.scan"
+
+
+def test_oaken_home_flag_sets_the_home_variable_and_leaves_the_rest(monkeypatch, tmp_path) -> None:
+    from oaken_core.cli.commands import take_home
+
+    monkeypatch.setenv(identity.home_env(), "/somewhere/else")
+    assert take_home(["operations", "--oaken-home", str(tmp_path)]) == ["operations"]
+    assert os.environ[identity.home_env()] == str(tmp_path.resolve())
+    assert take_home([f"--oaken-home={tmp_path}", "status"]) == ["status"]

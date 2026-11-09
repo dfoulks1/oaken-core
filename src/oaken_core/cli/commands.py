@@ -20,8 +20,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from oaken_core import identity
@@ -333,8 +335,27 @@ def _catalog(args: list[str]) -> int:
     return int(ExitCode.OK)
 
 
+def take_home(args: list[str]) -> list[str]:
+    """Remove ``--oaken-home PATH`` (or ``--oaken-home=PATH``) from ``args`` and point this app's home variable at it
+    (``identity.home_env()``: ``OAKEN_HOME`` for plain core, a product's own otherwise). The flag wins over the variable, so a test
+    run pins its home whatever the shell exports; a daemon this command starts inherits it."""
+    out, i = [], 0
+    while i < len(args):
+        a = args[i]
+        if a == "--oaken-home" or a.startswith("--oaken-home="):
+            value = a.partition("=")[2] if "=" in a else (args[i + 1] if i + 1 < len(args) else "")
+            if not value:
+                raise SystemExit("--oaken-home needs a folder")
+            os.environ[identity.home_env()] = str(Path(value).expanduser().resolve())
+            i += 1 if "=" in a else 2
+            continue
+        out.append(a)
+        i += 1
+    return out
+
+
 def main(argv: list[str] | None = None, *, prog: str | None = None, client_factory: ClientFactory | None = None, make: Any = None) -> int:
-    args = list(sys.argv[1:] if argv is None else argv)
+    args = take_home(list(sys.argv[1:] if argv is None else argv))
     if args and args[0] == "plugins":  # a catalog on disk: no core to ask
         return _catalog(args[1:])
     if args and args[0] in ("start", "stop", "restart", "reload"):  # these run with no core to ask
