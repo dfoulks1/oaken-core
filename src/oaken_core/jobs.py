@@ -631,10 +631,14 @@ class Jobs:
         )
         return [Job.from_row(r) for r in rows]
 
-    async def next_due(self) -> datetime | None:
+    async def next_due(self, queue: str | None = None) -> datetime | None:
+        """When a queued job falls due or a running lease runs out (in ``queue``, or anywhere). Two index-only reads: a
+        ``CASE`` over both would read every job row, and a queued job's payload sits before the columns it needs."""
+        scope, args = (" AND queue = ?", (queue,)) if queue else ("", ())
         row = await self.db.fetchone(
-            "SELECT MIN(CASE WHEN status = 'queued' THEN run_after ELSE locked_until END) AS t"
-            " FROM jobs WHERE status IN ('queued', 'running')"
+            "SELECT MIN(t) AS t FROM (SELECT MIN(run_after) AS t FROM jobs WHERE status = 'queued'" + scope  # noqa: S608 (fixed text)
+            + " UNION ALL SELECT MIN(locked_until) FROM jobs WHERE status = 'running'" + scope + ")",
+            args * 2,
         )
         return parse_ts(row["t"]) if row and row["t"] else None
 
@@ -920,15 +924,15 @@ class JobRunner:
             if job is None:
                 if idle_exit:
                     return
-                await self._idle_wait()
+                await self._idle_wait(queue)
                 continue
             await self._execute(job, name)
             self.processed += 1
             self.jobs.wake.set()  # a finished job may free a concurrency slot
 
-    async def _idle_wait(self) -> None:
+    async def _idle_wait(self, queue: str) -> None:
         cap = min(self.jobs.settings.lease_seconds / 2, 30.0)
-        due = await self.jobs.next_due()
+        due = await self.jobs.next_due(queue)  # this queue's: another queue's backlog is not this worker's to wake for
         timeout = cap
         if due is not None:
             timeout = min(cap, max((due - self.jobs.clock.now()).total_seconds(), 0.25))

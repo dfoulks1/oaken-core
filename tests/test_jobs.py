@@ -205,3 +205,31 @@ async def test_an_idle_runner_does_not_spin(kit: Kit) -> None:
     await asyncio.sleep(0.5)
     await kit.runner.stop()
     assert claims <= 3 * len(kit.jobs.queues.all()), claims  # a few at start, then it waits
+
+
+async def test_next_due_is_the_soonest_queued_job_or_lease_and_can_be_asked_of_one_queue(kit: Kit) -> None:
+    kit.runner.register("k", Ping, ok, result_model=Pong)
+    kit.queues.new_queue("enrichers")
+    assert await kit.jobs.next_due() is None
+    soon, later = kit.clock.now() + timedelta(minutes=1), kit.clock.now() + timedelta(hours=1)
+    await kit.jobs.enqueue("k", Ping(), run_after=later)
+    await kit.jobs.enqueue("k", Ping(), queue="enrichers", run_after=soon)
+    assert await kit.jobs.next_due() == soon
+    assert await kit.jobs.next_due("default") == later  # the other queue's sooner job is not this queue's due time
+    assert await kit.jobs.next_due("enrichers") == soon
+    job = await kit.jobs.claim("w", "default", ["k"], None)  # a running job: its lease is a due time too
+    assert job is None  # (not due yet: nothing runs, so the lease side is empty)
+    await kit.jobs.enqueue("k", Ping(), queue="enrichers")
+    running = await kit.jobs.claim("w", "enrichers", ["k"], None)
+    assert running and await kit.jobs.next_due("enrichers") == running.locked_until
+
+
+async def test_the_idle_wait_queries_never_scan_the_jobs_table(kit: Kit) -> None:
+    # A queued job's payload sits before the columns these read, so a scan reads every payload: with a deep backlog, a gigabyte a call.
+    for sql in (
+        "SELECT MIN(run_after) FROM jobs WHERE status = 'queued' AND queue = ?",
+        "SELECT MIN(locked_until) FROM jobs WHERE status = 'running' AND queue = ?",
+        "SELECT kind, COUNT(*) FROM jobs WHERE status = 'running' GROUP BY kind",
+    ):
+        plan = " ".join(r["detail"] for r in await kit.db.fetchall("EXPLAIN QUERY PLAN " + sql, ("default",) if "?" in sql else ()))
+        assert "SCAN jobs" not in plan.replace("SCAN jobs USING", "") and "USING" in plan, f"{sql}: {plan}"
