@@ -80,3 +80,14 @@ def test_a_rerun_gives_the_enricher_the_items_text_not_nothing() -> None:
     assert body_from_parts({"headers": {"a": 1}, "text": "hello", "body": "raw"}) == "hello"
     assert body_from_parts({"text": "  ", "body": "raw"}) == "raw"
     assert body_from_parts({"headers": {"a": 1}}) is None
+
+
+def test_a_rerun_batch_names_each_message_once_and_needs_at_least_one() -> None:
+    import pytest
+
+    from oaken_core.errors import InvalidInput
+    from oaken_core.operations.builtin.intake import ItemRerunIn, _rerun_targets
+
+    assert _rerun_targets(ItemRerunIn(id="a", ids=["b", "a", "c"], stage="enrich")) == ["a", "b", "c"]
+    with pytest.raises(InvalidInput):
+        _rerun_targets(ItemRerunIn(stage="enrich"))

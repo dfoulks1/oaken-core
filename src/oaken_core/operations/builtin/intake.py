@@ -6,7 +6,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from oaken_core.errors import NotFound, PluginError, Unavailable
+from oaken_core.errors import InvalidInput, NotFound, PluginError, Unavailable
 from oaken_core.jobs import PRIORITY_USER
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.registry import Change, Preview, operation
@@ -38,8 +38,12 @@ async def intake_submit(ctx: OpContext, inp: IntakeSubmitIn) -> IntakeSubmitOut:
     return IntakeSubmitOut(subject_id=str(subject), note="queued in Intake (default): it is split into parts, then triaged")
 
 
+MAX_RERUN_BATCH = 500
+
+
 class ItemRerunIn(BaseModel):
-    id: str = Field(description="The stored message's subject id.")
+    id: str = Field(default="", description="The stored message's subject id. For many at once, give ``ids``.")
+    ids: list[str] = Field(default_factory=list, max_length=MAX_RERUN_BATCH, description=f"A batch: every subject here is sent through the stage, one job each (at most {MAX_RERUN_BATCH}). What a group of messages is, such as a thread, is the product's to say.")
     stage: str = Field(description="enrich or act. The stages between are skipped.")
     routes: list[str] = Field(default_factory=list, description="act only: the routes whose actions run again.")
     source: str = Field(default="rerun", description="The message's source, for enrichers that read it.")
@@ -47,21 +51,32 @@ class ItemRerunIn(BaseModel):
 
 
 class ItemRerunOut(BaseModel):
-    subject_id: str
+    subject_id: str  # the first one, when several were sent
     note: str
+    queued: int = 1
+
+
+def _rerun_targets(inp: ItemRerunIn) -> list[str]:
+    targets = list(dict.fromkeys([*([inp.id] if inp.id else []), *inp.ids]))
+    if not targets:
+        raise InvalidInput("name the message to run again: id, or ids for a batch")
+    return targets
 
 
 async def _preview_rerun(ctx: OpContext, inp: ItemRerunIn) -> Preview:
-    return Preview(summary=f"Run {inp.id} through {inp.stage} again, skipping the stages before it",
-                   changes=[Change(target=inp.id, field="rerun", after=inp.stage)], total_changes=1)  # fmt: skip
+    targets = _rerun_targets(inp)
+    return Preview(summary=f"Run {len(targets)} message(s) through {inp.stage} again, skipping the stages before it",
+                   changes=[Change(target=t, field="rerun", after=inp.stage) for t in targets[:20]], total_changes=len(targets))  # fmt: skip
 
 
 @operation("item_rerun", "Send a stored message back to one later stage (enrich or act). Intake and triage are skipped.",
            permission="mutate", input=ItemRerunIn, output=ItemRerunOut, mcp="never", group="item", preview=_preview_rerun)  # fmt: skip
 async def item_rerun(ctx: OpContext, inp: ItemRerunIn) -> ItemRerunOut:
     # In-process, so no envelope round trip: the operation is the gate (confirm, audit) and calls intake's rerun directly.
-    await need(ctx.svc.intake, "intake").rerun(inp.id, {"stage": inp.stage, "routes": inp.routes, "source": inp.source, "priority": inp.priority})
-    return ItemRerunOut(subject_id=inp.id, note=f"queued in {inp.stage}")
+    intake, targets = need(ctx.svc.intake, "intake"), _rerun_targets(inp)
+    for subject in targets:  # a batch is one gate decision (one confirm, one audit entry) and one job per message
+        await intake.rerun(subject, {"stage": inp.stage, "routes": inp.routes, "source": inp.source, "priority": inp.priority})
+    return ItemRerunOut(subject_id=targets[0], note=f"queued in {inp.stage}" + (f": {len(targets)} messages" if len(targets) > 1 else ""), queued=len(targets))
 
 
 class ItemShowIn(BaseModel):
@@ -159,6 +174,7 @@ class EnrichmentRow(BaseModel):
     data: dict[str, Any]
     labels: dict[str, str]
     updated_at: str
+    duration_ms: int | None = None  # how long the enricher took on this item (wall clock); absent for older records
 
 
 class ItemEnrichmentsOut(BaseModel):
@@ -179,7 +195,8 @@ async def item_enrichments(ctx: OpContext, inp: ItemEnrichmentsIn) -> ItemEnrich
             rec = await store.get(ENRICHMENTS, f"{inp.id}:{name}")
         except NotFound:
             continue
-        rows.append(EnrichmentRow(name=name, data=dict(rec.data.get("data") or {}), labels={k: str(v) for k, v in (rec.data.get("labels") or {}).items()}, updated_at=rec.updated_at))
+        rows.append(EnrichmentRow(name=name, data=dict(rec.data.get("data") or {}), labels={k: str(v) for k, v in (rec.data.get("labels") or {}).items()}, updated_at=rec.updated_at,
+                              duration_ms=rec.data.get("ms") if isinstance(rec.data.get("ms"), int) else None))
     return ItemEnrichmentsOut(subject_id=inp.id, enrichments=rows)
 
 

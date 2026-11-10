@@ -21,6 +21,7 @@ action ships.
 """
 
 from collections.abc import Callable, Sequence
+import time
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -123,8 +124,8 @@ class StageRunner:
         else:
             await self._acts(p.model_copy(update={"routes": routes}), priority)
 
-    async def _keep(self, subject: str, name: str, e: Enrichment) -> None:
-        store, rid, data = self.store(), f"{subject}:{name}", {"data": e.data, "labels": e.labels}
+    async def _keep(self, subject: str, name: str, e: Enrichment, ms: int | None = None) -> None:
+        store, rid, data = self.store(), f"{subject}:{name}", {"data": e.data, "labels": e.labels, **({"ms": ms} if ms is not None else {})}
         if store is None:
             return
         try:
@@ -135,11 +136,13 @@ class StageRunner:
     async def _enrich_job(self, p: StagePayload, job: Job) -> StageResult:
         ran: list[str] = []
         for name, plugin in self.enrichers_for(job.queue):
+            started = time.monotonic()
             e = await plugin.enrich(_target(p))
+            ms = int((time.monotonic() - started) * 1000)  # wall clock for this enricher on this item; a cached answer is near zero
             ran.append(name)
             if e is None:
                 continue
-            await self._keep(p.subject_id, name, e)
+            await self._keep(p.subject_id, name, e, ms)
             try:
                 for k, v in e.labels.items():
                     await self.labels.set(p.subject_id, k, v, Actor("system", name))
