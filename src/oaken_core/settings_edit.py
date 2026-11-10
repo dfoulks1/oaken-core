@@ -71,10 +71,10 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         "swarm",
         "External workers (agents) that lease jobs. Turning them on, and which kinds they may take, hand "
-        "job text to outside models, so those two are set by hand.",
+        "job text to outside models.",
         {
             **_keys("max_agents", "default_max_leases", "default_max_per_hour", "agent_lease_seconds"),
-            **_by_hand("enabled", "allowed_kinds", why="it hands job text to an outside worker"),
+            **_keys("enabled", "allowed_kinds", "allowed_queues"),  # hands job text to an outside worker: the UI says so before it saves
         },
     ),
     Section(
@@ -92,8 +92,8 @@ SECTIONS: tuple[Section, ...] = (
     ),  # fmt: skip
     Section(
         "console",
-        "How the console looks. It always binds 127.0.0.1; its port is set by hand.",
-        {**_keys("palette", "mode"), **_by_hand("port")},
+        "How the console looks, and whether it is served at all. It always binds 127.0.0.1; its port is set by hand.",
+        {**_keys("enabled", "palette", "mode"), **_by_hand("port")},
     ),
 )
 

@@ -354,7 +354,7 @@ class Jobs:
                 scoped = await self._agent_scope(tx, agent, now)
                 if scoped.queues is not None and queue not in scoped.queues:
                     return None
-                kinds = [k for k in kinds if k in scoped.kinds]
+                kinds = [k for k in kinds if not scoped.kinds or k in scoped.kinds]  # no kinds named: the queue is the scope
                 worker = scoped.worker
             changes += await self._reclaim_expired(tx, now)
             paused = await tx.fetchone("SELECT paused FROM queue_state WHERE queue = ?", (queue,))
@@ -364,9 +364,11 @@ class Jobs:
             if allowed:
                 marks = ",".join("?" * len(allowed))
                 floor = PRIORITY_USER if paused and paused["paused"] else 0  # closed: only what the user asked for gets through
+                # a confidential item never goes to an outside worker, as it never goes to a hosted model backend
+                private = " AND COALESCE(json_extract(payload_json, '$.labels.confidential'), '') != 'true'" if agent is not None else ""
                 row = await tx.fetchone(
                     "SELECT * FROM jobs WHERE status = 'queued' AND queue = ? AND run_after <= ?"
-                    f" AND kind IN ({marks}) AND priority >= ?"  # noqa: S608 (only "?" placeholders)
+                    f" AND kind IN ({marks}) AND priority >= ?{private}"  # noqa: S608 (only "?" placeholders)
                     " ORDER BY priority DESC, run_after, created_at, id LIMIT 1",
                     (queue, fmt_ts(now), *allowed, floor),
                 )
@@ -817,6 +819,7 @@ class _Registration:
     concurrency: int | None
     timeout: float | None = None  # seconds; None uses the jobs setting
     scrub_payload: bool = False
+    adopt: "Callable[[BaseModel, Job, BaseModel], Awaitable[None]] | None" = None
 
 
 @dataclass
@@ -853,6 +856,7 @@ class JobRunner:
         result_model: type[BaseModel] | None = None,
         timeout: float | None = None,
         scrub_payload: bool = False,
+        adopt: "Callable[[M, Job, BaseModel], Awaitable[None]] | None" = None,
     ) -> None:
         """Run ``handler(payload, job)`` for jobs of ``kind``. The payload is validated against
         ``model``; one that does not validate fails at once. ``concurrency`` caps how many of this
@@ -860,9 +864,23 @@ class JobRunner:
         payload when the job succeeds."""
         if kind in self._registry:
             raise ValueError(f"a handler for {kind!r} is already registered")
-        self._registry[kind] = _Registration(model, handler, concurrency, timeout, scrub_payload)
+        self._registry[kind] = _Registration(model, handler, concurrency, timeout, scrub_payload, adopt)  # type: ignore[arg-type]
         if result_model is not None:
             self.jobs.register_result(kind, result_model)
+
+    async def adopt(self, job_id: JobId, worker: str, result: Mapping[str, Any] | None) -> None:
+        """Do what the kind's own handler would have done after its work, for a result an agent made. The result is
+        checked against the kind's schema first; a kind that gave no ``adopt`` has nothing to do."""
+        job = await self.jobs.get(job_id)
+        reg = self._registry.get(job.kind) if job is not None else None
+        model = self.jobs.result_models.get(job.kind) if job is not None else None
+        if job is None or reg is None or reg.adopt is None or model is None or result is None:
+            return
+        try:
+            checked = model.model_validate(dict(result))
+        except ValueError as exc:
+            raise InvalidResult(f"result does not match the schema for {job.kind!r}: {exc}") from exc
+        await reg.adopt(reg.model.model_validate_json(job.payload_json or "{}"), job, checked)
 
     def _limits(self) -> dict[str, int]:
         limits = {k: r.concurrency for k, r in self._registry.items() if r.concurrency}

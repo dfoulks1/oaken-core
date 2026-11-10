@@ -108,7 +108,7 @@ class Core:
 
     @property
     def console_port(self) -> int:
-        return self.console_server.port
+        return self.console_server.port if self.settings.console.enabled else 0
 
     async def open(self) -> None:
         """Build the graph. Opens the database; ``stop`` closes it."""
@@ -199,12 +199,13 @@ class Core:
         )
         self.intake.register(self.runner)
         self.stages = StageRunner(jobs, labels, enrichers_for=lambda st: self._in_stage("enricher", st),
-                                  actions_for=self._actions_for, store=lambda: self.host.store)  # fmt: skip
+                                  actions_for=self._actions_for, store=lambda: self.host.store,
+                                  selector_of=self._selector_of)  # fmt: skip
         self.stages.register(self.runner)
         self.intake.on_stored = self.stages.begin
         self.intake.rerun_hook = self._rerun
         self.host.intake = self.intake
-        svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, labels=labels, changelog=changelog,
+        svc = Services(db=db, clock=clock, settings=s, queues=queues, jobs=jobs, runner=self.runner, labels=labels, changelog=changelog,
                        bus=self.bus, agents=self.agents, host=self.host, secrets=self.secrets, intake=self.intake, queues_from_config=self.queues_from_config, eventlog=self.eventlog, scheduler=self.scheduler, tracer=self.tracer, router=self.router, reload=self.request_reload)  # fmt: skip
         self.registry = core_registry()
         self.registry.attach_plugins(lambda: plugin_operations(self.host))
@@ -287,6 +288,12 @@ class Core:
         off = queues.get(stage).disabled if stage in [q.name for q in queues.all()] else ()
         return [(n, p) for n, p in self.host.usable(kind).items()
                 if n not in off and (self.host.tables.table(kind, n).get("stage") or first) in (stage, None)]  # fmt: skip
+
+    def _selector_of(self, name: str) -> tuple[list[str], list[str]]:
+        """An enricher's ``when`` and ``unless`` from its config table: a string is one entry."""
+        t = self.host.tables.table("enricher", name)
+        one = lambda v: [v] if isinstance(v, str) else [str(x) for x in v or ()]  # noqa: E731
+        return one(t.get("when")), one(t.get("unless"))
 
     def _actions_for(self, route: str) -> list[tuple[str, Any, str | None]]:
         """The healthy actions answering ``route``, each with the stage it runs in (None: no action stage made)."""
@@ -418,8 +425,10 @@ class Core:
                 "events", start_events, stop_events
             ),  # first, so the plugins' start-up is in the record
             unit("trace", none, stop_trace),
-            unit(
-                "console", start_console, stop_console
+            *(
+                [unit("console", start_console, stop_console)]
+                if self.settings.console.enabled
+                else []
             ),  # before the host: a plugin that fails to start cannot take it down
             unit(
                 "host", start_host, self.host.stop

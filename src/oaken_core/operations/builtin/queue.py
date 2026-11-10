@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 
 from oaken_core import paths
 from oaken_core.config_edit import get_table, remove_table, save_table, set_table
-from oaken_core.errors import Conflict, ConfigError, InvalidInput, PermissionDenied, Unavailable
+from oaken_core.errors import Conflict, ConfigError, InvalidInput, NotFound, PermissionDenied, Unavailable
 from oaken_core.ids import AgentId, JobId
 from oaken_core.jobs import Job, JobSpec, Selector
 from oaken_core.queues import DEFAULT
@@ -203,6 +203,8 @@ class ClaimIn(BaseModel):
     queue: str = Field(default="default", description="The queue to take a job from.")
     kinds: list[str] | None = Field(default=None, max_length=64,
                                     description="Job kinds to take; default: all of the agent's.")  # fmt: skip
+    fields: list[str] | None = Field(default=None, max_length=32,
+                                     description="Payload keys to return; default: all. A payload can carry the same text more than once, so a worker with a small window asks for just what it needs.")  # fmt: skip
 
 
 class JobLease(BaseModel):
@@ -227,7 +229,7 @@ class ClaimOut(BaseModel):
            audit="always")  # fmt: skip
 async def job_claim(ctx: OpContext, inp: ClaimIn) -> ClaimOut:
     agent = await _agent(ctx)
-    kinds = [k for k in (inp.kinds or agent.kinds) if k in agent.kinds]
+    kinds = [k for k in (inp.kinds or agent.kinds or ctx.svc.jobs.result_models) if not agent.kinds or k in agent.kinds]  # an agent can only finish a kind that has a result model
     job = await ctx.svc.jobs.claim(agent.worker, inp.queue, kinds, agent=agent)
     if job is None:
         return ClaimOut(job=None)
@@ -235,7 +237,7 @@ async def job_claim(ctx: OpContext, inp: ClaimIn) -> ClaimOut:
 
     return ClaimOut(job=JobLease(
         id=job.id, kind=job.kind, queue=job.queue, subject=job.subject,
-        payload=json.loads(job.payload_json or "{}"), attempts=job.attempts,
+        payload={k: v for k, v in json.loads(job.payload_json or "{}").items() if not inp.fields or k in inp.fields}, attempts=job.attempts,
         max_attempts=job.max_attempts,
         lease_expires_at=job.locked_until.isoformat() if job.locked_until else None,
     ))  # fmt: skip
@@ -269,6 +271,11 @@ class OkOut(BaseModel):
            audit="always")  # fmt: skip
 async def job_complete(ctx: OpContext, inp: CompleteIn) -> OkOut:
     agent = await _agent(ctx)
+    owner, _ = await ctx.svc.jobs.heartbeat(JobId(inp.job_id), agent.worker)  # the lease is checked before anything is applied
+    if not owner:
+        raise Conflict("lease_lost: this agent no longer holds the job")
+    if ctx.svc.runner is not None:
+        await ctx.svc.runner.adopt(JobId(inp.job_id), agent.worker, inp.result)
     ok = await ctx.svc.jobs.complete(JobId(inp.job_id), agent.worker, inp.result, produced_by=inp.produced_by)
     if not ok:
         raise Conflict("lease_lost: this agent no longer holds the job")
@@ -590,5 +597,28 @@ async def queue_submit(ctx: OpContext, inp: QueueSubmitIn) -> QueueSubmitOut:
     return QueueSubmitOut(job_id=str(res.job_id), created=res.created)
 
 
-OPERATIONS = (queue_list, queue_get, queue_pause, queue_resume, queue_requeue, queue_new, queue_edit, queue_rename, queue_delete, queue_submit, job_list, job_cancel,
+class JobGetIn(JobRef):
+    payload: bool = Field(default=False, description="Also return the payload (it can be large).")
+
+
+class JobGetOut(BaseModel):
+    job: JobRow
+    result: dict[str, Any] | None = None
+    completed_by: str | None = None
+    payload: dict[str, Any] | None = None
+
+
+@operation("job_get", "One job: its state and, when it succeeded, the result it was handed.",
+           permission="read", input=JobGetIn, output=JobGetOut, mcp="never", group="job")  # fmt: skip
+async def job_get(ctx: OpContext, inp: JobGetIn) -> JobGetOut:
+    import json
+
+    job = await ctx.svc.jobs.get(JobId(inp.job_id))
+    if job is None:
+        raise NotFound(f"no job {inp.job_id!r}")
+    return JobGetOut(job=_row(job), result=json.loads(job.result_json) if job.result_json else None, completed_by=job.completed_by,
+                     payload=json.loads(job.payload_json or "{}") if inp.payload else None)
+
+
+OPERATIONS = (job_get, queue_list, queue_get, queue_pause, queue_resume, queue_requeue, queue_new, queue_edit, queue_rename, queue_delete, queue_submit, job_list, job_cancel,
               job_claim, job_heartbeat, job_complete, job_fail)  # fmt: skip

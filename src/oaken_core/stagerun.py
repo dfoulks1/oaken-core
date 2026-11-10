@@ -27,7 +27,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from oaken_core.actors import SYSTEM, Actor
-from oaken_core.errors import Conflict
+from oaken_core.errors import Conflict, InvalidResult
 from oaken_core.jobs import PRIORITY_INGEST, PRIORITY_USER, Job, JobRunner, Jobs, PermanentJobError
 from oaken_core.labels import LabelError, LabelStore
 from oaken_core.logging import get_logger
@@ -58,8 +58,14 @@ class ActPayload(StagePayload):
     route: str
 
 
+class Produced(BaseModel):
+    data: dict[str, Any] = Field(default_factory=dict)
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
 class StageResult(BaseModel):
     ran: list[str] = Field(default_factory=list)  # the plugins that ran, by name
+    enrichments: dict[str, Produced] = Field(default_factory=dict)  # an agent's: what each plugin made, by name
 
 
 def body_from_parts(parts: dict[str, Any]) -> str | None:
@@ -71,6 +77,30 @@ def body_from_parts(parts: dict[str, Any]) -> str | None:
 def _target(p: StagePayload) -> EnrichTarget:
     return EnrichTarget(p.subject_id, p.source, p.body, p.labels, p.key, p.parts,
                         enrichments={n: Enrichment(**e) for n, e in p.enrichments.items()})  # fmt: skip
+
+
+TAG_KEYS = ("sieve.labels", "filters.labels")  # comma lists of tags a filter added
+
+
+def _has(labels: dict[str, str], spec: str) -> bool:
+    """``key=value`` is an exact label; a bare name is a label that is set (not empty or false) or a tag in a filter's list."""
+    if "=" in spec:
+        key, _, value = spec.partition("=")
+        return labels.get(key) == value
+    if labels.get(spec) not in (None, "", "false"):
+        return True
+    return any(spec in (t.strip() for t in labels.get(k, "").split(",")) for k in TAG_KEYS)
+
+
+def _has_content(data: dict[str, Any]) -> bool:
+    """Whether an answer says anything: some text, list or object that is not empty. Numbers alone do not count (a model's default confidence is 1.0).
+    shortcut: an enricher whose answer is only numbers is never told apart from a blank one; add a per-enricher test if one appears."""
+    return any(isinstance(v, (str, list, dict)) and bool(v) for v in data.values())
+
+
+def selected(labels: dict[str, str], when: Sequence[str] = (), unless: Sequence[str] = ()) -> bool:
+    """An enricher's ``when`` (every one must hold) and ``unless`` (none may) over the labels the item carries."""
+    return all(_has(labels, w) for w in when) and not any(_has(labels, u) for u in unless)
 
 
 class StageRunner:
@@ -86,12 +116,14 @@ class StageRunner:
         enrichers_for: Callable[[str], Sequence[tuple[str, Any]]],
         actions_for: Callable[[str], Sequence[tuple[str, Any, str | None]]],
         store: Callable[[], Any] = lambda: None,
+        selector_of: Callable[[str], tuple[Sequence[str], Sequence[str]]] = lambda name: ((), ()),
     ) -> None:
+        self.selector_of = selector_of  # an enricher's (when, unless): which messages it runs on
         self.jobs, self.labels = jobs, labels
         self.enrichers_for, self.actions_for, self.store = enrichers_for, actions_for, store
 
     def register(self, runner: JobRunner) -> None:
-        runner.register(ENRICH_KIND, StagePayload, self._enrich_job, result_model=StageResult, scrub_payload=True)
+        runner.register(ENRICH_KIND, StagePayload, self._enrich_job, result_model=StageResult, scrub_payload=True, adopt=self._adopt_enrich)
         runner.register(ACT_KIND, ActPayload, self._act_job, result_model=StageResult, scrub_payload=True)
 
     def _stages(self, kind: str) -> list[str]:
@@ -105,9 +137,10 @@ class StageRunner:
         """Queue the enricher stage after ``after`` (the first when None); with none left, the actions."""
         stages = self._stages("enricher")
         nxt = stages if after is None else stages[stages.index(after) + 1 :]
-        if nxt:
-            await self.jobs.enqueue(ENRICH_KIND, p, subject=p.subject_id, queue=nxt[0], actor=SYSTEM, priority=priority)
-            return
+        for stage in nxt:  # a stage nobody in it selects for this item gets no job: nothing to lease, nothing to skip later
+            if any(selected(p.labels, *self.selector_of(name)) for name, _ in self.enrichers_for(stage)):
+                await self.jobs.enqueue(ENRICH_KIND, p, subject=p.subject_id, queue=stage, actor=SYSTEM, priority=priority)
+                return
         await self._acts(p, priority)
 
     async def _acts(self, p: StagePayload, priority: int = PRIORITY_INGEST) -> None:
@@ -131,27 +164,56 @@ class StageRunner:
         try:
             await store.create(ENRICHMENTS, data, id=rid)
         except Conflict:  # a rerun: the newest answer replaces the old
+            if not _has_content(e.data) and not e.labels:  # unless it is blank and the old one is not: a failed run must not erase a good answer
+                old = await store.get(ENRICHMENTS, rid)
+                if _has_content((old.data or {}).get("data") or {}):
+                    log.warning("blank enrichment kept out", subject_id=subject, enricher=name)
+                    return
             await store.update(ENRICHMENTS, rid, data)
 
-    async def _enrich_job(self, p: StagePayload, job: Job) -> StageResult:
+    async def _run_enrichers(self, p: StagePayload, stage: str, skip: frozenset[str] = frozenset()) -> tuple[StagePayload, list[str]]:
+        """Run the stage's healthy enrichers that select this item, in order, each seeing what the ones before added.
+        ``skip`` names ones already answered (by an agent)."""
         ran: list[str] = []
-        for name, plugin in self.enrichers_for(job.queue):
+        for name, plugin in self.enrichers_for(stage):
+            if name in skip or not selected(p.labels, *self.selector_of(name)):
+                continue
             started = time.monotonic()
             e = await plugin.enrich(_target(p))
             ms = int((time.monotonic() - started) * 1000)  # wall clock for this enricher on this item; a cached answer is near zero
             ran.append(name)
             if e is None:
                 continue
-            await self._keep(p.subject_id, name, e, ms)
-            try:
-                for k, v in e.labels.items():
-                    await self.labels.set(p.subject_id, k, v, Actor("system", name))
-            except LabelError as exc:  # an enricher bug: a retry would repeat it
-                raise PermanentJobError(str(exc)) from exc
-            p = p.model_copy(update={"enrichments": {**p.enrichments, name: {"data": e.data, "labels": e.labels}}})
+            p = await self._record(p, name, e, Actor("system", name), ms)
+        return p, ran
+
+    async def _enrich_job(self, p: StagePayload, job: Job) -> StageResult:
+        p, ran = await self._run_enrichers(p, job.queue)
         # a user's request keeps its priority down the later enrich stages; anything else resets to the default, as before
         await self._onward(p, job.queue, job.priority if job.priority >= PRIORITY_USER else PRIORITY_INGEST)
         return StageResult(ran=ran)
+
+    async def _record(self, p: StagePayload, name: str, e: Enrichment, actor: Actor, ms: int | None = None) -> StagePayload:
+        """Keep one plugin's answer, put its labels on the subject, and return the payload that carries it onward."""
+        await self._keep(p.subject_id, name, e, ms)
+        try:
+            for k, v in e.labels.items():
+                await self.labels.set(p.subject_id, k, v, actor)
+        except LabelError as exc:  # an enricher bug: a retry would repeat it
+            raise PermanentJobError(str(exc)) from exc
+        return p.model_copy(update={"enrichments": {**p.enrichments, name: {"data": e.data, "labels": e.labels}}})
+
+    async def _adopt_enrich(self, p: StagePayload, job: Job, result: StageResult) -> None:
+        """An agent did this stage's work: take its answers as the handler would have, then send the item on. An answer is
+        accepted only from a plugin that is in this stage (an agent is untrusted data, and a name is a claim)."""
+        stage = {name for name, _ in self.enrichers_for(job.queue)}
+        unknown = sorted(set(result.enrichments) - stage)
+        if unknown:
+            raise InvalidResult(f"not in the {job.queue!r} stage: {', '.join(unknown)}")
+        for name, made in result.enrichments.items():
+            p = await self._record(p, name, Enrichment(data=made.data, labels=made.labels), Actor("agent", name))
+        p, _ = await self._run_enrichers(p, job.queue, frozenset(result.enrichments))  # what the agent did not answer, core does itself
+        await self._onward(p, job.queue, job.priority if job.priority >= PRIORITY_USER else PRIORITY_INGEST)
 
     async def _act_job(self, p: ActPayload, job: Job) -> StageResult:
         found = self.actions_for(p.route)

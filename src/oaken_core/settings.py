@@ -97,6 +97,7 @@ class SwarmSettings(BaseModel):
 
     enabled: bool = False
     allowed_kinds: list[str] = Field(default_factory=list)
+    allowed_queues: list[str] = Field(default_factory=list)  # queues an agent may take any job from (one that has a result model)
     max_agents: int = Field(default=8, ge=1, le=256)  # active (unrevoked) agents
     default_max_leases: int = Field(default=2, ge=1)  # jobs one agent may hold at once
     default_max_per_hour: int = Field(
@@ -224,6 +225,7 @@ class ConsoleSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    enabled: bool = True  # false: the console is not served at all
     port: int = Field(
         default=62536, ge=0, le=65535
     )  # OAKEN on a phone keypad; 0 picks a free one

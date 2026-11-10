@@ -78,6 +78,8 @@ HOST_KEYS = (
     "route",
     "prompt",
     "guard",
+    "when",
+    "unless",
 )  # the host's settings, never the plugin's
 RELATIONS = frozenset(
     {"self", "parent", "children"}

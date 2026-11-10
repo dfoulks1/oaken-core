@@ -33,7 +33,7 @@ def _row(a) -> AgentRow:  # type: ignore[no-untyped-def]
 
 class AgentCreateIn(BaseModel):
     label: str = Field(min_length=1, max_length=64)
-    kinds: list[str] = Field(min_length=1, description="Job kinds it may lease (opted in under [swarm]).")
+    kinds: list[str] = Field(default_factory=list, description="Job kinds it may lease (opted in under [swarm]); none: any job in its queues that takes a result.")
     queues: list[str] | None = Field(default=None, description="Queues it may lease from; default all.")
     operations: list[str] = Field(default_factory=list, description="Operations it may call beyond the job protocol.")
     max_leases: int | None = Field(default=None, ge=1)
@@ -83,13 +83,14 @@ class AgentListIn(BaseModel):
 
 class AgentListOut(BaseModel):
     agents: list[AgentRow]
+    queues: list[dict[str, str]] = Field(default_factory=list, description="The queues, for [swarm] allowed_queues: name, label, kind.")
 
 
 @operation("agent_list", "The agents and what each may do. Tokens are never shown.", permission="read",
            input=AgentListIn, output=AgentListOut, mcp="never", group="agent")  # fmt: skip
 async def agent_list(ctx: OpContext, inp: AgentListIn) -> AgentListOut:
     found = await need(ctx.svc.agents, "the agent registry").list(include_revoked=inp.include_revoked)
-    return AgentListOut(agents=[_row(a) for a in found])
+    return AgentListOut(agents=[_row(a) for a in found], queues=[{"name": q.name, "label": q.label or q.name, "kind": q.kind} for q in ctx.svc.queues.all() if not q.hidden])
 
 
 class AgentRef(BaseModel):

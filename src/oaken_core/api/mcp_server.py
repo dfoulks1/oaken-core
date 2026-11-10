@@ -33,6 +33,7 @@ from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
 from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
+from oaken_core import identity
 from oaken_core.api.guard import Surface
 from oaken_core.api.runtime import same_secret
 from oaken_core.agents import TOKEN_PREFIX, Agent, AgentRegistry
@@ -148,7 +149,7 @@ class McpServer:
         cfg = client.svc.settings.api
         self._cfg = cfg
         self.server: Server[Any] = Server(
-            "oaken-core-agent" if agents else "oaken-core",
+            f"{identity.app}-agent" if agents else identity.app,  # a product names its own server
             version=client.svc.version,
             instructions=AGENT_INSTRUCTIONS if agents else INSTRUCTIONS,
             on_list_tools=self._list_tools,

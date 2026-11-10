@@ -86,7 +86,7 @@ class AgentRegistry:
     async def create(
         self,
         label: str,
-        kinds: Collection[str],
+        kinds: Collection[str] = (),
         *,
         queues: Collection[str] | None = None,
         operations: Collection[str] = (),
@@ -101,13 +101,19 @@ class AgentRegistry:
         if not label or len(label) > MAX_LABEL_CHARS:
             raise ConfigError(f"an agent label is 1 to {MAX_LABEL_CHARS} characters")
         wanted = sorted(set(kinds))
-        if not wanted:
-            raise ConfigError("an agent needs at least one job kind")
+        if not wanted and not queues:
+            raise ConfigError("an agent needs at least one queue or job kind")  # no kinds: any job in its queues that takes a result
         refused = [k for k in wanted if k not in s.allowed_kinds]
         if refused:
             raise ConfigError(
                 f"job kinds not allowed for agents: {', '.join(refused)}"
                 " (add them to [swarm] allowed_kinds to opt in)"
+            )
+        closed = [q for q in sorted(set(queues or ())) if q not in s.allowed_queues]
+        if closed:
+            raise ConfigError(
+                f"queues not allowed for agents: {', '.join(closed)}"
+                " (add them to [swarm] allowed_queues to opt in)"
             )
         leases = max_leases or s.default_max_leases
         hourly = max_per_hour or s.default_max_per_hour
