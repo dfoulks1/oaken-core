@@ -1,6 +1,6 @@
 [project]
 name = "oaken-core"
-version = "1.0.0"
+version = "1.0.1"
 description = "Oaken Core: an async pipeline and plugin loader. Products (mail, grove) are plugins on it."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE*"]
