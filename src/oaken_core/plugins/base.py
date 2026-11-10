@@ -516,7 +516,7 @@ class BaseLLMBackend(BasePlugin):
 
     @command("models", "The models this backend can run right now.", input=NoInput, output=ModelsOut)
     async def _cmd_models(self, ctx: PluginOpContext, inp: NoInput) -> ModelsOut:
-        """Every backend answers under its own name (``oknpost ollama models``, ``oknpost lmstudio models``), from ``available_models()``."""
+        """Every backend answers under its own name (``oaken-mail ollama models``, ``oaken-mail lmstudio models``), from ``available_models()``."""
         return ModelsOut(models=await self.available_models())
 
 
