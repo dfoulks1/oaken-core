@@ -53,7 +53,7 @@ def remember_home() -> bool:
 
 def home_source() -> tuple[str, Path | None]:
     """How the home was chosen, in precedence order: ``env`` (this product's own var, e.g.
-    ``OAKEN_MAIL_HOME``, which for plain core is ``OAKEN_HOME``), ``remembered`` (the last known
+    ``<PRODUCT>_HOME``, which for plain core is ``OAKEN_HOME``), ``remembered`` (the last known
     good home), or ``default`` (the platform folders). A product never borrows another Oaken's
     home: its own var is the only env that selects it, so one product can be relocated without
     dragging the rest along."""

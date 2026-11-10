@@ -83,7 +83,7 @@ async def test_plugin_add_an_unloaded_plugin_in_an_extensions_directory_writes_t
     assert done.output.reloading and reloads == [1]  # type: ignore[union-attr]
     assert tomllib.loads((oaken_home / "config" / "config.toml").read_text())["plugins"]["enricher"]["shout"] == {"enabled": True}
     assert [ep.name for ep in extensions.entry_points(host.extensions_dirs, "oaken_core.enrichers")] == ["shout"]
-    assert extensions.entry_points(host.extensions_dirs, "oaken.providers") == []  # a plugin made for oaken-mail is not ours to load
+    assert extensions.entry_points(host.extensions_dirs, "oaken.providers") == []  # a plugin made for another product is not ours to load
 
 
 async def test_plugin_add_a_class_path_persists_as_a_class_and_the_host_loads_it_from_there(rig: Rig, oaken_home: Path) -> None:  # noqa: F811

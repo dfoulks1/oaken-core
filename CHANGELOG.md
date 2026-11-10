@@ -2,7 +2,7 @@
 
 ## 1.0.1 (alpha)
 
-What the Oaken Mail UI and the plugins needed, on top of 1.0.0.
+What a product with a browser UI, and the plugins, needed on top of 1.0.0.
 
 - **Operations:** `plugin_choices` (what an instance offers to pick from, such as a backend's models), `item_rerun` (now registered, and takes a batch),
   `item_enrichments`; an enrichment records how long its enricher took. A rerun gives enrichers the item's text.

@@ -1,7 +1,7 @@
 # Oaken Core
 
 An async pipeline and a plugin loader. It has no nouns: no message, no person, no file. What an item *is* comes from the plugins
-you load, so the same core runs a mail client ([Oaken Mail](https://github.com/dfoulks1/oaken-mail)), a CRM, or whatever you build.
+you load, so the same core runs a mail client, a CRM, or whatever you build.
 
 **Alpha.** It works and it is used, but expect rough edges and change.
 
@@ -28,8 +28,7 @@ more. Core ships the pipeline, the host, a console, a CLI (`oaken`), an HTTP API
 
 ## Building a product on it
 
-A product is a small package that imports `oaken_core`, names itself, and ships a command. See
-[Oaken Mail](https://github.com/dfoulks1/oaken-mail) (`oaken-mail`) for a complete one, about 200 lines.
+A product is a small package that imports `oaken_core`, names itself, and ships a command.
 
 ```python
 import sys
