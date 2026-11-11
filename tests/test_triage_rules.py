@@ -3,7 +3,7 @@ import pytest
 from oaken_core.clock import FakeClock
 from oaken_core.errors import PluginError
 from oaken_core.intake import IntakeItem
-from oaken_core.plugins.contracts import PluginContext
+from oaken_core.plugins.contracts import PluginContext, PluginOpContext
 from oaken_core.triage.rules import RulesTriager, TryIn, Nothing, When, matches
 
 RULES = {"rules": [
@@ -108,3 +108,17 @@ def test_a_rule_can_reach_into_a_formatter_part_with_parts_dot_name() -> None:
     assert matches(mail, When(field_present=["parts.headers.subject"]))
     assert not matches(mail, When(field_present=["parts.headers.list-unsubscribe"]))
     assert not matches(mail, When(field_contains={"parts.nope": "x"}))  # no such part: the condition fails, it does not raise
+
+
+async def test_a_rule_can_route_an_item_to_an_action_and_the_tools_say_so() -> None:
+    t = await started({"rules": [
+        {"name": "cve", "when": {"body_contains": "CVE-"}, "route": ["cve"]},
+        {"name": "plain", "when": {"body_contains": "hello"}},
+    ]})
+    v = await t.triage(item("see CVE-2026-1"))
+    assert v is not None and (v.kind, v.route) == ("accept", ("cve",))
+    v = await t.triage(item("hello there"))
+    assert v is not None and v.route == ()  # no route named: it routes nowhere
+    ctx = PluginOpContext(plugin="rules", client="cli", actor="test", config={}, clock=FakeClock(), log=None)
+    assert [r.route for r in (await t.list_rules(ctx, Nothing())).rules] == [["cve"], []]
+    assert (await t.try_item(ctx, TryIn(body="CVE-2026-1"))).route == ["cve"]

@@ -18,6 +18,8 @@ rule matches passes to the next triager.
     when = { field_contains = { company = "test" } }
     action = "reject"
 
+A rule may name ``route = ["name"]``: the item is then owed to the action plugin that answers that route.
+
 A rule can also look inside what a formatter made of the item: ``parts.<name>.<path>``. For mail (the ``rfc822`` formatter) that is
 ``parts.headers.subject.0`` (a header's values are a list, the first is ``.0``), ``parts.text``, ``parts.html`` and ``parts.clean``:
 
@@ -75,6 +77,7 @@ class Rule(BaseModel):
     action: Literal["accept", "reject", "unsure"] = Field(default="accept", description="What the rule decides. Reject drops the item; accept and unsure let it through.")
     labels: dict[str, str] = Field(default_factory=dict, description="Labels written to the item (priority=high, queue=triage).")
     reason: str = Field(default="", description="Said in the record. Empty: the rule's name.")
+    route: list[str] = Field(default_factory=list, description="Action routes this item is owed: the names an action plugin answers. Empty: none.")
     learn: bool = Field(default=False, description="For a reject: remember its fingerprint so near-copies are dropped without a model.")
 
 
@@ -146,7 +149,7 @@ def first_match(item: IntakeItem, rules: list[Rule]) -> Rule | None:
 
 
 def verdict_of(rule: Rule) -> Verdict:
-    return Verdict(rule.action, rule.reason or f"rule {rule.name}", dict(rule.labels), learn=rule.learn and rule.action == "reject")
+    return Verdict(rule.action, rule.reason or f"rule {rule.name}", dict(rule.labels), learn=rule.learn and rule.action == "reject", route=tuple(rule.route))
 
 
 # -- commands ------------------------------------------------------------------------------------
@@ -161,6 +164,7 @@ class RuleRow(BaseModel):
     action: str
     when: dict[str, Any]
     labels: dict[str, str]
+    route: list[str] = []
 
 
 class RulesOut(BaseModel):
@@ -179,6 +183,7 @@ class TryOut(BaseModel):
     verdict: str | None
     labels: dict[str, str]
     reason: str
+    route: list[str] = []
 
 
 class CheckIn(BaseModel):
@@ -293,7 +298,7 @@ class RulesTriager(BaseTriager):
     @command("list", "The rules, in the order they run.", input=Nothing, output=RulesOut)
     async def list_rules(self, ctx: PluginOpContext, inp: Nothing) -> RulesOut:
         return RulesOut(rules=[RuleRow(place=i, name=r.name, enabled=r.enabled, action=r.action,
-                                       when=r.when.model_dump(exclude_none=True), labels=r.labels)
+                                       when=r.when.model_dump(exclude_none=True), labels=r.labels, route=r.route)
                                for i, r in enumerate(self.config.rules, 1)])  # fmt: skip
 
     @command("test", "Say which rule an item would meet and what it would decide. Changes nothing.", input=TryIn, output=TryOut)
@@ -307,4 +312,4 @@ class RulesTriager(BaseTriager):
         if rule is None:
             return TryOut(matched=None, verdict=None, labels={}, reason="no rule matches: the next triager decides")
         v = verdict_of(rule)
-        return TryOut(matched=rule.name, verdict=v.kind, labels=v.labels, reason=v.reason)
+        return TryOut(matched=rule.name, verdict=v.kind, labels=v.labels, reason=v.reason, route=list(v.route))
