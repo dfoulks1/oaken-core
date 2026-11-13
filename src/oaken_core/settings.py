@@ -97,7 +97,7 @@ class SwarmSettings(BaseModel):
 
     enabled: bool = False
     allowed_kinds: list[str] = Field(default_factory=list)
-    allowed_queues: list[str] = Field(default_factory=list)  # queues an agent may take any job from (one that has a result model)
+    allowed_queues: list[str] = Field(default_factory=list)  # queues an agent with no kinds may work: it is offered the jobs whose result core can act on (an enrich stage's)
     max_agents: int = Field(default=8, ge=1, le=256)  # active (unrevoked) agents
     default_max_leases: int = Field(default=2, ge=1)  # jobs one agent may hold at once
     default_max_per_hour: int = Field(
@@ -299,6 +299,15 @@ class Settings(BaseModel):
     labels: dict[str, LabelTable] = Field(default_factory=dict)
     extensions: ExtensionsSettings = Field(default_factory=ExtensionsSettings)
     plugins: PluginTables = Field(default_factory=PluginTables)
+
+    @staticmethod
+    def write_starter(path: Path | None = None) -> bool:
+        """Write the commented starting config if there is no file yet. True if it wrote one; an existing file is never touched."""
+        path = path or paths.config_dir() / "config.toml"
+        if path.exists():
+            return False
+        path.write_bytes(Path(__file__).with_name("default.toml").read_bytes())
+        return True
 
     @classmethod
     def load(cls, path: Path | None = None) -> "Settings":

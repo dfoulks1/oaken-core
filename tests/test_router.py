@@ -1,17 +1,22 @@
 # SPDX-License-Identifier: Apache-2.0
 import asyncio
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, ClassVar
 
 import pytest
 from pydantic import BaseModel
 
-from oaken_core.actors import USER
 from oaken_core.clock import FakeClock
 from oaken_core.db import Database
-from oaken_core.errors import AIBackendError, ConfidentialRefused, ConfigError, Deferred, Unavailable
+from oaken_core.errors import (
+    AIBackendError,
+    ConfidentialRefused,
+    ConfigError,
+    Deferred,
+    Unavailable,
+)
 from oaken_core.ids import SubjectId
-from oaken_core.intake import KIND, Intake, IntakeItem, Verdict
+from oaken_core.intake import Intake, IntakeItem, Verdict
 from oaken_core.operations.caller import CallerContext
 from oaken_core.plugins.base import BaseEnricher, BaseLLMAnalyzer
 from oaken_core.plugins.contracts import LLMRequest, PluginContext
@@ -144,7 +149,7 @@ async def test_an_unset_model_is_the_backends_default_and_keys_on_it(core_db: Da
 
 async def test_a_near_duplicate_is_answered_from_its_neighbour_with_no_model_call(core_db: Database, clock: FakeClock) -> None:
     router, d = rig(core_db, clock, near_duplicate_score=0.9)
-    be, emb = d.add("desk", StubBackend(answer("scam"))), d.vec()
+    be, _emb = d.add("desk", StubBackend(answer("scam"))), d.vec()
     route = Route("desk", "m")
     first = await router.ask(route, call("h1", needs_vec=True, text=TEXT), req(TEXT), Answer)
     near = await router.ask(route, call("h2", needs_vec=True, text=TEXT + " thanks"), req(TEXT), Answer)
@@ -265,6 +270,8 @@ async def test_input_is_cut_to_the_budget_and_the_context_window(core_db: Databa
     small = d.add("tiny", StubBackend(answer(), context_window=20))
     await router.ask(Route("tiny", "m"), call("h2"), LLMRequest("s" * 40, (UntrustedText("y" * 500),)), Answer)
     assert len(small.calls[0][0].user[0].unwrap()) == 3 * 4  # window 20, less 7 out and 10 for the system text
+    await router.ask(Route("desk", "m", input_tokens=5), call("h3"), LLMRequest("sys", (UntrustedText("z" * 500),)), Answer)
+    assert len(be.calls[-1][0].user[0].unwrap()) == 5 * 4  # the route's own budget beats the default
 
 
 def test_a_route_reads_its_table_over_the_analyzers_defaults_and_rejects_bad_shapes() -> None:
@@ -284,7 +291,7 @@ async def test_an_analyzer_asks_through_ctx_router_with_its_route_and_its_own_na
 
     class Sum(BaseLLMAnalyzer, BaseEnricher):
         version = "7"
-        route = {"backend": "desk", "model": "m"}  # the default; the owner's table moves it to the laptop
+        route: ClassVar[dict[str, Any]] = {"backend": "desk", "model": "m"}  # the default; the owner's table moves it to the laptop
 
     sum_ = Sum()
     await sum_.start(PluginContext("summary", "enricher", clock, None, router=router, route={"backend": "laptop"}))

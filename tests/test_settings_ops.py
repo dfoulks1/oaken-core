@@ -26,7 +26,9 @@ async def test_settings_get_lists_each_section_with_what_can_be_changed_here(ops
     names = [s.name for s in out.sections]
     assert names == ["log", "jobs", "swarm", "router", "console"]
     swarm = {r.key: r for s in out.sections if s.name == "swarm" for r in s.settings}
-    assert swarm["max_agents"].editable and not swarm["enabled"].editable and "by hand" in swarm["enabled"].note
+    assert swarm["max_agents"].editable and swarm["enabled"].editable  # the console warns before it saves this one
+    port = next(r for s in out.sections if s.name == "console" for r in s.settings if r.key == "port")
+    assert not port.editable and "by hand" in port.note
     one = (await call(ops, "settings_get", {"section": "jobs"})).output
     assert [s.name for s in one.sections] == ["jobs"]
     with pytest.raises(NotFound):
@@ -55,7 +57,6 @@ async def test_settings_set_with_nothing_new_writes_nothing(ops: Ops, oaken_home
 @pytest.mark.parametrize(
     ("section", "values", "why"),
     [
-        ("swarm", {"enabled": True}, "cannot be changed here"),
         ("router", {"lan_allowlist": ["x"]}, "widens who may see confidential"),
         ("console", {"port": 9000}, "cannot be changed here"),
         ("jobs", {"nonsense": 1}, "not a setting of jobs"),

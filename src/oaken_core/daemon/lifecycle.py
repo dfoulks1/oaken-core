@@ -172,6 +172,8 @@ def run(settings: Settings | None = None, make: MakeCore = Core) -> int:
     """Foreground entry point: 0 for a clean stop, 1 if core is already running or the
     configuration is wrong."""
     try:
+        if settings is None:
+            Settings.write_starter()
         cfg = settings or Settings.load()
         configure_logging(cfg.log)
         paths.remember_home()

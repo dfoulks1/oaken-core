@@ -7,6 +7,7 @@ oaken-mail, these are ``read`` class and always audited). Everything else an age
 granted.
 """
 
+import json
 import os
 import re
 from typing import Any, Literal
@@ -15,13 +16,20 @@ from pydantic import BaseModel, Field
 
 from oaken_core import paths
 from oaken_core.config_edit import get_table, remove_table, save_table, set_table
-from oaken_core.errors import Conflict, ConfigError, InvalidInput, NotFound, PermissionDenied, Unavailable
+from oaken_core.errors import (
+    ConfigError,
+    Conflict,
+    InvalidInput,
+    NotFound,
+    PermissionDenied,
+    Unavailable,
+)
 from oaken_core.ids import AgentId, JobId
 from oaken_core.jobs import Job, JobSpec, Selector
-from oaken_core.queues import DEFAULT
 from oaken_core.operations.builtin.settings import _check_text
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.registry import Change, Preview, operation
+from oaken_core.queues import DEFAULT
 
 
 class Empty(BaseModel):
@@ -229,12 +237,10 @@ class ClaimOut(BaseModel):
            audit="always")  # fmt: skip
 async def job_claim(ctx: OpContext, inp: ClaimIn) -> ClaimOut:
     agent = await _agent(ctx)
-    kinds = [k for k in (inp.kinds or agent.kinds or ctx.svc.jobs.result_models) if not agent.kinds or k in agent.kinds]  # an agent can only finish a kind that has a result model
+    kinds = list(inp.kinds or agent.kinds or ctx.svc.jobs.adoptable)  # Jobs.claim holds them to the agent's scope
     job = await ctx.svc.jobs.claim(agent.worker, inp.queue, kinds, agent=agent)
     if job is None:
         return ClaimOut(job=None)
-    import json
-
     return ClaimOut(job=JobLease(
         id=job.id, kind=job.kind, queue=job.queue, subject=job.subject,
         payload={k: v for k, v in json.loads(job.payload_json or "{}").items() if not inp.fields or k in inp.fields}, attempts=job.attempts,
@@ -611,8 +617,6 @@ class JobGetOut(BaseModel):
 @operation("job_get", "One job: its state and, when it succeeded, the result it was handed.",
            permission="read", input=JobGetIn, output=JobGetOut, mcp="never", group="job")  # fmt: skip
 async def job_get(ctx: OpContext, inp: JobGetIn) -> JobGetOut:
-    import json
-
     job = await ctx.svc.jobs.get(JobId(inp.job_id))
     if job is None:
         raise NotFound(f"no job {inp.job_id!r}")

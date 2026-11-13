@@ -229,6 +229,7 @@ class Jobs:
         self.swarm = swarm or SwarmSettings()
         self.bus = bus
         self.result_models: dict[str, type[BaseModel]] = {}  # a job's result needs a schema
+        self.adoptable: set[str] = set()  # kinds whose follow-up core runs on an agent's result (``JobRunner.register(adopt=)``)
         self._rng = rng or random.Random()  # noqa: S311 (retry jitter, not security)
         self.wake = asyncio.Event()  # set whenever work may have become runnable
 
@@ -354,7 +355,9 @@ class Jobs:
                 scoped = await self._agent_scope(tx, agent, now)
                 if scoped.queues is not None and queue not in scoped.queues:
                     return None
-                kinds = [k for k in kinds if not scoped.kinds or k in scoped.kinds]  # no kinds named: the queue is the scope
+                # no kinds named: the queue is the scope, and only kinds whose follow-up core can run on the agent's result.
+                # Any other kind would be marked done with its handler's work (store, act) never happening.
+                kinds = [k for k in kinds if k in (scoped.kinds or self.adoptable)]
                 worker = scoped.worker
             changes += await self._reclaim_expired(tx, now)
             paused = await tx.fetchone("SELECT paused FROM queue_state WHERE queue = ?", (queue,))
@@ -365,7 +368,9 @@ class Jobs:
                 marks = ",".join("?" * len(allowed))
                 floor = PRIORITY_USER if paused and paused["paused"] else 0  # closed: only what the user asked for gets through
                 # a confidential item never goes to an outside worker, as it never goes to a hosted model backend
-                private = " AND COALESCE(json_extract(payload_json, '$.labels.confidential'), '') != 'true'" if agent is not None else ""
+                # (in the payload's labels, or as its own ``confidential`` flag: json true reads as 1)
+                private = (" AND COALESCE(json_extract(payload_json, '$.labels.confidential'), '') != 'true'"
+                           " AND COALESCE(json_extract(payload_json, '$.confidential'), 0) NOT IN (1, 'true')") if agent is not None else ""  # fmt: skip
                 row = await tx.fetchone(
                     "SELECT * FROM jobs WHERE status = 'queued' AND queue = ? AND run_after <= ?"
                     f" AND kind IN ({marks}) AND priority >= ?{private}"  # noqa: S608 (only "?" placeholders)
@@ -867,6 +872,8 @@ class JobRunner:
         self._registry[kind] = _Registration(model, handler, concurrency, timeout, scrub_payload, adopt)  # type: ignore[arg-type]
         if result_model is not None:
             self.jobs.register_result(kind, result_model)
+        if adopt is not None:
+            self.jobs.adoptable.add(kind)
 
     async def adopt(self, job_id: JobId, worker: str, result: Mapping[str, Any] | None) -> None:
         """Do what the kind's own handler would have done after its work, for a result an agent made. The result is
@@ -990,7 +997,7 @@ class JobRunner:
             await q.fail(job.id, worker, exc, permanent=True)
         except Deferred as exc:  # waiting, not failing
             await q.defer(job.id, worker, exc.message, exc.retry_after)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - a handler can raise anything: the job fails and is retried
             log.warning("job failed", job_id=job.id, kind=job.kind, attempt=job.attempts,
                         error=type(exc).__name__)  # fmt: skip
             await q.fail(job.id, worker, exc)

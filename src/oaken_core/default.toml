@@ -1,0 +1,23 @@
+# Oaken Core's starting config: written to your config folder the first time core runs, then yours to edit.
+# Everything here is a default, commented out. Uncomment a line to change it. A missing file means the same thing.
+# Secrets never go here: they live in the OS keyring.
+
+# [console]                # the console: a web page on loopback only
+# enabled = true
+# port = 62536             # 0 picks a free port
+# mode = "auto"            # auto, light or dark
+
+# [api]                    # the authenticated door (API, MCP)
+# host = "127.0.0.1"
+# port = 0                 # 0 picks a free port and publishes it
+
+# [log]
+# level = "INFO"
+# keep_days = 7
+
+# [extensions]             # folders of plugin folders (each holds oaken-<kind>-<name>/pyproject.toml), looked in before the oaken-plugins package
+# dirs = ["/path/to/plugins"]
+
+# Plugins load from the oaken-plugins package. Make an instance with `oaken plugin add KIND.NAME --name NAME`.
+# [plugins.formatter.rfc822]
+# strip_attachments = true

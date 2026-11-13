@@ -20,20 +20,27 @@ de-duplication on (subject, action, route), so an action must be idempotent itse
 action ships.
 """
 
-from collections.abc import Callable, Sequence
 import time
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from oaken_core.actors import SYSTEM, Actor
 from oaken_core.errors import Conflict, InvalidResult
-from oaken_core.jobs import PRIORITY_INGEST, PRIORITY_USER, Job, JobRunner, Jobs, PermanentJobError
+from oaken_core.jobs import (
+    PRIORITY_INGEST,
+    PRIORITY_USER,
+    Job,
+    JobRunner,
+    Jobs,
+    PermanentJobError,
+)
 from oaken_core.labels import LabelError, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.parts import Part
 from oaken_core.queues import DEFAULT
-from oaken_core.stages import ActionTarget, EnrichTarget, Enrichment
+from oaken_core.stages import ActionTarget, Enrichment, EnrichTarget
 
 log = get_logger("oaken_core.stages")
 
@@ -201,7 +208,8 @@ class StageRunner:
                 await self.labels.set(p.subject_id, k, v, actor)
         except LabelError as exc:  # an enricher bug: a retry would repeat it
             raise PermanentJobError(str(exc)) from exc
-        return p.model_copy(update={"enrichments": {**p.enrichments, name: {"data": e.data, "labels": e.labels}}})
+        # the labels travel too: a later enricher's when/unless, and the confidential check, read the payload's
+        return p.model_copy(update={"labels": {**p.labels, **e.labels}, "enrichments": {**p.enrichments, name: {"data": e.data, "labels": e.labels}}})
 
     async def _adopt_enrich(self, p: StagePayload, job: Job, result: StageResult) -> None:
         """An agent did this stage's work: take its answers as the handler would have, then send the item on. An answer is

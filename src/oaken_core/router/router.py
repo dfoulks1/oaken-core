@@ -393,7 +393,7 @@ class Router:
                     )
         error: Exception | None = None
         for cand in candidates:
-            req = self._shape(request, cand)
+            req = self._shape(request, cand, route)
             try:
                 async with self._gate(cand.entry):
                     resp = await asyncio.wait_for(
@@ -428,11 +428,11 @@ class Router:
             f"{call.analyzer}: every backend failed ({type(error).__name__ if error else 'none'})"
         )
 
-    def _shape(self, request: LLMRequest, cand: Resolved) -> LLMRequest:
+    def _shape(self, request: LLMRequest, cand: Resolved, route: Route) -> LLMRequest:
         """The request as this backend gets it: capped output, input cut to the context window."""
         out = request.max_output_tokens or self.settings.default_output_tokens
         window = int(getattr(cand.entry.plugin, "context_window", 0) or 0)
-        budget = self.settings.default_input_tokens
+        budget = route.input_tokens or self.settings.default_input_tokens
         if window:
             budget = min(budget, max(1, window - out - estimate(request.system)))
         return replace(

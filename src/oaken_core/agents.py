@@ -109,7 +109,8 @@ class AgentRegistry:
                 f"job kinds not allowed for agents: {', '.join(refused)}"
                 " (add them to [swarm] allowed_kinds to opt in)"
             )
-        closed = [q for q in sorted(set(queues or ())) if q not in s.allowed_queues]
+        # with kinds, queues only narrow what [swarm] allowed_kinds already opened; with none, the queues are the scope and are opted in themselves
+        closed = [] if wanted else [q for q in sorted(set(queues or ())) if q not in s.allowed_queues]
         if closed:
             raise ConfigError(
                 f"queues not allowed for agents: {', '.join(closed)}"

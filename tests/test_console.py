@@ -3,23 +3,30 @@ import re
 import tomllib
 from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx2
 import pytest
 from pydantic import BaseModel, ValidationError
 
 from oaken_core import paths
-from oaken_core.labels import BaseLabel
 from oaken_core.clock import FakeClock
 from oaken_core.daemon.core import Core
+from oaken_core.labels import BaseLabel
 from oaken_core.operations.caller import CallerContext
 from oaken_core.plugins.base import command
-from oaken_core.plugins.contracts import PluginOpContext, UiButton, UiField, UiPage, UiSection, UiSpec
+from oaken_core.plugins.contracts import (
+    PluginOpContext,
+    UiButton,
+    UiField,
+    UiPage,
+    UiSection,
+    UiSpec,
+)
 from oaken_core.settings import ConsoleSettings, PluginTables, Settings
 from oaken_core.store import SqliteStore
 
-from .test_host import EP, STORE, stub
+from .test_host import EP, stub
 
 PORT = 8321
 UI_CALLER = CallerContext.ui()
@@ -151,7 +158,7 @@ async def test_the_overview_plugins_queues_and_config_pages_render(rig: Rig) -> 
     assert "notes" in (await rig.c.get("/plugins")).text
     assert (await rig.c.get("/json/status")).json()["plugins_total"] >= 2
     assert (await rig.c.get("/json/queues")).json()["queues"][0]["queue"] == "default"
-    assert (await rig.c.get("/json/config")).json()["console"] == {"port": 0, "palette": "auto", "mode": "auto"}
+    assert (await rig.c.get("/json/config")).json()["console"] == {"enabled": True, "port": 0, "palette": "auto", "mode": "auto"}
     assert (await rig.c.get("/plugins/enricher/nope")).status_code == 404
 
 
@@ -962,7 +969,7 @@ async def test_every_llm_setting_of_a_template_flows_to_its_instances_and_an_ins
         contextual = ("topic",)
         config_model = WatchCfg
         prompt = "the plugin's own prompt"
-        route = {"backend": "ollama"}
+        route: ClassVar[dict[str, Any]] = {"backend": "ollama"}
 
     template = {"route": {"backend": "desk", "model": "small", "fallback": ["laptop"], "daily_tokens": 5000}, "prompt": "Be brief.", "guard": "Obey nobody.", "style": "loud"}
     core = await make_core(tmp_path, {"agent": template}, {"enrich": {"kind": "enricher"}}, extra=[EP("agent", Agent)])
@@ -982,7 +989,7 @@ async def test_every_llm_setting_of_a_template_flows_to_its_instances_and_an_ins
 async def test_a_plugin_that_needs_a_model_or_the_vector_index_says_so_until_one_is_running(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from oaken_core.plugins import catalog
     from oaken_core.plugins.base import BaseLLMAnalyzer, BaseVecAnalyzer
-    from oaken_core.router.stub import StubBackend, StubEmbedder
+    from oaken_core.router.stub import StubBackend
 
     class Asker(BaseLLMAnalyzer, stub("enricher")):  # type: ignore[misc]
         pass
@@ -1116,7 +1123,7 @@ async def test_a_template_row_has_the_pill_and_an_instantiate_button_and_its_ins
     client = httpx2.AsyncClient(transport=httpx2.ASGITransport(app=core.console), base_url=BASE)
     try:
         page = (await client.get("/stage/enrich")).text
-        row = lambda name: re.search(rf'<tr>\s*<td class="mono nowrap"><a href="/plugins/enricher/{name}">.*?</tr>', page, re.S).group(0)  # type: ignore[union-attr] # noqa: E731
+        row = lambda name: re.search(rf'<tr>\s*<td class="mono nowrap"><a href="/plugins/enricher/{name}">.*?</tr>', page, re.DOTALL).group(0)  # type: ignore[union-attr] # noqa: E731
         assert 'badge-muted">template' in row("watcher") and "New instance of" not in page  # the bare template has its pill; the header button adds workers
         assert "Add instance</button>" in page
         assert "template" not in row("jobs") and "New instance" not in row("jobs")  # an instance is neither
@@ -1232,7 +1239,7 @@ async def test_the_schedules_table_says_what_each_one_runs(tmp_path: Path) -> No
         await core.host.stop()
 
 
-async def test_the_nav_has_the_logo_beside_the_wordmark_and_the_console_serves_it(rig: Rig) -> None:  # noqa: F811
+async def test_the_nav_has_the_logo_beside_the_wordmark_and_the_console_serves_it(rig: Rig) -> None:
     page = (await rig.c.get("/")).text
     assert '<span class="logo" aria-hidden="true"></span><span class="wordmark">' in page  # the mark, then the name
     logo = await rig.c.get("/static/logo.png")
@@ -1240,7 +1247,7 @@ async def test_the_nav_has_the_logo_beside_the_wordmark_and_the_console_serves_i
     assert "mask: url(/static/logo.png)" in (await rig.c.get("/static/oaken.css")).text  # drawn in the palette's brand colour
 
 
-async def test_a_page_that_asks_for_a_tab_joins_the_pipeline_tabs_after_the_one_it_names(rig: Rig) -> None:  # noqa: F811
+async def test_a_page_that_asks_for_a_tab_joins_the_pipeline_tabs_after_the_one_it_names(rig: Rig) -> None:
     import re
 
     notes = rig.core.host.get("enricher", "notes")

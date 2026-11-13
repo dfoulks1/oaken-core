@@ -33,7 +33,7 @@ def _row(a) -> AgentRow:  # type: ignore[no-untyped-def]
 
 class AgentCreateIn(BaseModel):
     label: str = Field(min_length=1, max_length=64)
-    kinds: list[str] = Field(default_factory=list, description="Job kinds it may lease (opted in under [swarm]); none: any job in its queues that takes a result.")
+    kinds: list[str] = Field(default_factory=list, description="Job kinds it may lease (opted in under [swarm]); none: the jobs in its queues whose result core can act on (an enrich stage's).")
     queues: list[str] | None = Field(default=None, description="Queues it may lease from; default all.")
     operations: list[str] = Field(default_factory=list, description="Operations it may call beyond the job protocol.")
     max_leases: int | None = Field(default=None, ge=1)

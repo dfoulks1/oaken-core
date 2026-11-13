@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
+from pydantic import BaseModel
 
 from oaken_core.agents import AgentRegistry
 from oaken_core.errors import ConfigError, PermissionDenied, QuotaExceeded
@@ -11,9 +12,14 @@ from .conftest import Kit
 from .test_jobs import Ping, Pong
 
 
+class Private(BaseModel):
+    labels: dict[str, str] = {}
+    confidential: bool = False
+
+
 @pytest.fixture
 def swarm() -> SwarmSettings:
-    return SwarmSettings(enabled=True, allowed_kinds=["llm.summarize"], default_max_leases=1,
+    return SwarmSettings(enabled=True, allowed_kinds=["llm.summarize"], allowed_queues=["llm"], default_max_leases=1,
                          default_max_per_hour=2, agent_lease_seconds=300)  # fmt: skip
 
 
@@ -51,6 +57,22 @@ async def test_an_agent_claims_inside_its_scope_and_the_lease_is_longer(kit: Kit
     job = await kit.jobs.claim("x", "llm", ["llm.summarize", "other"], agent=wide)
     assert job and job.kind == "llm.summarize" and job.locked_by == wide.worker  # "other" was out of scope
     assert (job.locked_until - kit.clock.now()).total_seconds() == 300  # type: ignore[operator]
+
+
+async def test_a_queue_scoped_agent_gets_only_kinds_core_can_adopt_and_nothing_confidential(kit: Kit, agents: AgentRegistry) -> None:
+    kit.queues.new_queue("llm")
+    kit.jobs.adoptable.add("llm.summarize")  # what JobRunner.register(adopt=) records
+    with pytest.raises(ConfigError, match="allowed_queues"):
+        await agents.create("q", queues=["default"])  # with no kinds the queue is the scope, and it is opted in by name
+    agent, _ = await agents.create("q", queues=["llm"])
+    await kit.jobs.enqueue("other", Ping(), queue="llm")
+    assert await kit.jobs.claim("x", "llm", ["other"], agent=agent) is None  # naming a kind does not widen the scope
+    await kit.jobs.enqueue("llm.summarize", Private(labels={"confidential": "true"}), queue="llm")
+    await kit.jobs.enqueue("llm.summarize", Private(confidential=True), queue="llm")
+    assert await kit.jobs.claim("x", "llm", ["llm.summarize"], agent=agent) is None  # both are private, however the payload says so
+    await kit.jobs.enqueue("llm.summarize", Private(labels={"confidential": "false"}), queue="llm")
+    job = await kit.jobs.claim("x", "llm", ["llm.summarize"], agent=agent)
+    assert job and job.kind == "llm.summarize" and '"false"' in job.payload_json
 
 
 async def test_quotas_hold_inside_the_claim(kit: Kit, agents: AgentRegistry) -> None:
