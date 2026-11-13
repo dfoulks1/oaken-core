@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Router:** `locality = "local"` is no longer taken on the owner's word alone. An LLM backend or embedder may say, once started, that it sends
+  text to another machine (`off_machine = True`, new on `BaseLLMBackend` and `BaseEmbedder`); the router then treats it as `hosted` and logs an
+  error, so a confidential item cannot reach another box through a mistyped locality. A plugin that does not say keeps the owner's word.
+
 ## 1.0.0 (alpha)
 
 The first release of Oaken Core as its own project: the pipeline and plugin loader taken out of oaken-mail and made generic. It replaces the

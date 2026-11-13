@@ -11,7 +11,8 @@ the retry-once-then-fail shape of ``ai/generate.py`` became escalate-once-then-f
 workspaces and the single global model gate (each backend has its own semaphore).
 
 Confidential calls: a ``local`` backend is always allowed, a ``lan`` one only if the owner lists it
-in ``[router] lan_allowlist``, a ``hosted`` one never. A backend that is not allowed is skipped, and
+in ``[router] lan_allowlist``, a ``hosted`` one never. ``local`` is the owner's word, checked against the
+plugin's own: a backend or embedder whose ``off_machine`` is True is never taken as local. A backend that is not allowed is skipped, and
 when none is left the router refuses (``ConfidentialRefused``). It never reaches a remote box.
 shortcut: backend ``concurrency`` is read when the backend is first used; a change needs a restart.
 """
@@ -165,6 +166,17 @@ class HostDirectory:
                 kind=kind,
                 name=name,
                 locality=str(locality),
+            )
+            locality = "hosted"
+        if locality == "local" and plugin is not None and getattr(plugin, "off_machine", None) is True:
+            # The owner typed ``local``, but the plugin says it talks to another machine (a base_url that
+            # is not loopback, say). A typed word must not send confidential text off the box: take the
+            # strictest answer, as for a typo. ``lan`` plus ``[router] lan_allowlist`` is the way to
+            # allow a box on the network.
+            log.error(
+                "locality local refused: the plugin reaches another machine; treating as hosted",
+                kind=kind,
+                name=name,
             )
             locality = "hosted"
         return Entry(name, plugin, locality, max(1, int(table.get("concurrency", 1))))  # type: ignore[arg-type]
