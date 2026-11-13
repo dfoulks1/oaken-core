@@ -471,6 +471,10 @@ class BaseEmbedder(BasePlugin):
     model_id: str = ""
     dimensions: int = 0
     max_input_tokens: int = 8192
+    # Set in ``start``: True if this plugin sends text to another machine, False if only to this one,
+    # None if it cannot tell. The router never takes an off-machine plugin as ``local``, whatever its
+    # table says.
+    off_machine: bool | None = None
 
     @_default
     async def embed(self, texts: Sequence[str]) -> list[list[float]]:
@@ -492,6 +496,10 @@ class BaseLLMBackend(BasePlugin):
 
     model_id: str = ""
     context_window: int = 0
+    # Set in ``start``: True if this plugin sends text to another machine, False if only to this one,
+    # None if it cannot tell. The router never takes an off-machine plugin as ``local``, whatever its
+    # table says.
+    off_machine: bool | None = None
 
     def thinking_for(self, request: LLMRequest) -> bool | None:
         """Whether to let the model reason on this call, or None to leave it to the model. A ``think``
