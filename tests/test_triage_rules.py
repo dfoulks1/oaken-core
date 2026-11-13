@@ -1,10 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 import pytest
+
 from oaken_core.clock import FakeClock
 from oaken_core.errors import PluginError
 from oaken_core.intake import IntakeItem
 from oaken_core.plugins.contracts import PluginContext, PluginOpContext
-from oaken_core.triage.rules import RulesTriager, TryIn, Nothing, When, matches
+from oaken_core.triage.rules import Nothing, RulesTriager, TryIn, When, matches
 
 RULES = {"rules": [
     {"name": "noise", "when": {"field_contains": {"company": "test"}}, "action": "reject", "learn": True},

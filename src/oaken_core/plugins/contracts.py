@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
@@ -20,9 +20,6 @@ from oaken_core.db import Database
 from oaken_core.errors import PluginError
 from oaken_core.events import Event, EventBus, PluginEvent
 from oaken_core.untrusted import UntrustedText
-
-if TYPE_CHECKING:
-    from oaken_core.labels import LabelStore
 
 # 1: the first Oaken Core plugin API.
 PLUGIN_API_VERSION = 1

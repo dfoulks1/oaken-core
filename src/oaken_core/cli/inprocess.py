@@ -17,8 +17,8 @@ import dataclasses
 from collections.abc import AsyncIterator, Mapping
 from typing import TYPE_CHECKING, Any
 
-from oaken_core.operations.caller import CallerContext
 from oaken_core.cli.client import ApiClient, CallResult, Event, OpInfo, Proposal
+from oaken_core.operations.caller import CallerContext
 
 if TYPE_CHECKING:
     from oaken_core.events import Event as CoreEvent

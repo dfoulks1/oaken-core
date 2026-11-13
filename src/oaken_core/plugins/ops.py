@@ -43,7 +43,7 @@ def adapt(host: PluginHost, offered: OfferedOperation) -> AnyOperation:
             return d.output.model_validate(result)
         except OakenError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - plugin code can raise anything; only the type is kept
             raise PluginError(f"{plugin}.{d.name} failed ({type(exc).__name__})") from None
 
     async def preview(ctx: OpContext, inp: BaseModel) -> Preview:
@@ -53,7 +53,7 @@ def adapt(host: PluginHost, offered: OfferedOperation) -> AnyOperation:
             p = await asyncio.wait_for(d.preview(pctx(ctx), inp), timeout)
         except OakenError:
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - plugin code can raise anything; only the type is kept
             raise PluginError(f"{plugin}.{d.name} preview failed ({type(exc).__name__})") from None
         return Preview(
             summary=p.summary,

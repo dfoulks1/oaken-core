@@ -31,7 +31,7 @@ from oaken_core.changelog import ChangeLog
 from oaken_core.db import Database
 from oaken_core.errors import InvalidInput, Unavailable
 from oaken_core.ids import SubjectId, new_subject_id
-from oaken_core.jobs import PRIORITY_INGEST, Job, Jobs, JobRunner, PermanentJobError
+from oaken_core.jobs import PRIORITY_INGEST, Job, JobRunner, Jobs, PermanentJobError
 from oaken_core.labels import LabelError, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.parts import Part, whole
@@ -266,7 +266,7 @@ class Intake:
                     {n: Part.model_validate(v) for n, v in dict(made).items()}
                     or whole(p.body)
                 ), "ok"
-            except Exception as exc:  # a body that will not split is still an item: whole, or held, as configured
+            except Exception as exc:  # noqa: BLE001 - a body that will not split is still an item: whole, or held, as configured
                 outcome, why = (
                     "failed",
                     f"{fmt} formatter could not parse it ({type(exc).__name__})",

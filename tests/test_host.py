@@ -5,14 +5,21 @@ from typing import Any, ClassVar
 import pytest
 from pydantic import BaseModel
 
-from oaken_core.actors import SYSTEM, USER
+from oaken_core.actors import USER
 from oaken_core.changelog import ChangeLog
 from oaken_core.clock import FakeClock
-from oaken_core.logging import get_logger
 from oaken_core.errors import NotFound, PluginError
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore
-from oaken_core.plugins.base import BaseLLMAnalyzer, BasePlugin, BaseProvider, BaseTemplatePlugin, BaseTriager, command
+from oaken_core.logging import get_logger
+from oaken_core.plugins.base import (
+    BaseLLMAnalyzer,
+    BasePlugin,
+    BaseProvider,
+    BaseTemplatePlugin,
+    BaseTriager,
+    command,
+)
 from oaken_core.plugins.contracts import Health, PluginContext, PluginOpContext
 from oaken_core.plugins.host import PluginHost
 from oaken_core.plugins.kinds import KindRegistry, KindSpec
@@ -52,7 +59,7 @@ def stub(kind: str, **attrs: Any) -> type:
     async def method(self: Any, *a: Any, **k: Any) -> Any:
         return None
 
-    body: dict[str, Any] = {m: (VALUES[m] if m in VALUES else method) for m in spec.required}
+    body: dict[str, Any] = {m: (VALUES.get(m, method)) for m in spec.required}
     return type(f"Stub_{kind}", (BasePlugin,), {**body, **attrs})
 
 
@@ -326,7 +333,11 @@ async def test_a_command_becomes_an_operation_when_the_plugin_loads_and_goes_whe
 async def test_job_handlers_and_scheduled_tasks_are_registered_from_plugins(tmp_path: Path, clock: FakeClock, kit: Any) -> None:
     from datetime import timedelta
 
-    from oaken_core.plugins.contracts import PluginJobContext, PluginJobHandler, PluginScheduledTask
+    from oaken_core.plugins.contracts import (
+        PluginJobContext,
+        PluginJobHandler,
+        PluginScheduledTask,
+    )
     from oaken_core.plugins.jobs import register_plugin_jobs, seed_plugin_schedules
     from oaken_core.scheduler import Scheduler
 
@@ -453,7 +464,7 @@ async def test_a_plain_install_finds_the_sqlite_store_through_real_entry_points(
 
 async def test_an_llm_analyzer_is_a_kind_base_plus_base_llm_analyzer_in_either_order() -> None:
     class A(BaseLLMAnalyzer, BaseTriager):
-        route = {"backend": "desk"}
+        route: ClassVar[dict[str, Any]] = {"backend": "desk"}
 
     class B(BaseTriager, BaseLLMAnalyzer):
         pass

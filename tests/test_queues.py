@@ -37,10 +37,8 @@ def test_a_missing_queue_is_refused_and_the_label_check_agrees() -> None:
 
 
 # -- queues from config.toml: one analyzer kind each --------------------------------------------
-import pytest  # noqa: E402
 
 from oaken_core.daemon.core import Core  # noqa: E402
-from oaken_core.errors import ConfigError  # noqa: E402
 from oaken_core.settings import Settings  # noqa: E402
 
 STAGES = {"queues": {
@@ -109,7 +107,7 @@ import types  # noqa: E402
 
 from oaken_core import paths  # noqa: E402
 from oaken_core.clock import fmt_ts  # noqa: E402
-from oaken_core.errors import Conflict, InvalidInput  # noqa: E402
+from oaken_core.errors import Conflict  # noqa: E402
 from oaken_core.operations.caller import CallerContext  # noqa: E402
 from oaken_core.plugins.kinds import KindRegistry  # noqa: E402
 
@@ -117,7 +115,7 @@ from .conftest import Ops  # noqa: E402
 
 
 def with_host(ops: Ops) -> None:
-    ops.svc.host = types.SimpleNamespace(kinds=KindRegistry.shipped(), check_config=lambda n, t: [], statuses=lambda: [])  # type: ignore[assignment]
+    ops.svc.host = types.SimpleNamespace(kinds=KindRegistry.shipped(), check_config=lambda n, t: [], statuses=list)  # type: ignore[assignment]
 
 
 def saved() -> dict:  # type: ignore[type-arg]

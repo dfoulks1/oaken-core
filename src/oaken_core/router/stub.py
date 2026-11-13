@@ -8,7 +8,13 @@ from collections.abc import Callable, Sequence
 from typing import Any, ClassVar
 
 from oaken_core.plugins.base import BasePlugin
-from oaken_core.plugins.contracts import Health, Hit, LLMRequest, LLMResponse, VectorItem
+from oaken_core.plugins.contracts import (
+    Health,
+    Hit,
+    LLMRequest,
+    LLMResponse,
+    VectorItem,
+)
 
 
 class StubBackend(BasePlugin):

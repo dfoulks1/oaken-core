@@ -17,7 +17,6 @@ from oaken_core.ids import SubjectId, new_subject_id
 from oaken_core.plugins.base import BaseIngestor, command
 from oaken_core.plugins.contracts import PluginContext, PluginOpContext, Query
 
-
 COLLECTION = "items"
 
 

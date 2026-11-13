@@ -2,14 +2,14 @@
 """``oaken-plugins``: one distribution, a subpackage per plugin, nothing imported until it is added."""
 
 import sys
-from typing import Any
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from oaken_core.cli.commands import main
-from oaken_core.plugins.host import PluginTables
 from oaken_core.plugins import catalog
+from oaken_core.plugins.host import PluginTables
 from oaken_core.plugins.kinds import KindRegistry
 
 from .test_console import Rig, make_core, rig  # noqa: F401 - a started core

@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from oaken_core import paths
 from oaken_core.config_edit import get_table, remove_table, set_table
-from oaken_core.errors import Conflict, ConfigError, InvalidInput
+from oaken_core.errors import ConfigError, Conflict, InvalidInput
 from oaken_core.labels import BaseLabel, LabelError
 from oaken_core.operations.builtin.queue import reload_core
 from oaken_core.operations.builtin.settings import _check_text
@@ -126,7 +126,7 @@ class LabelKeysOut(BaseModel):
            permission="read", input=Empty, output=LabelKeysOut, mcp="on", group="label")  # fmt: skip
 async def label_keys(ctx: OpContext, inp: Empty) -> LabelKeysOut:
     return LabelKeysOut(keys=[LabelKey(key=b.key, description=b.description, values=list(b.values), reserved=b.reserved, writers=list(b.writers), source=ctx.svc.labels.maker.source(b.key))
-                              for b in ctx.svc.labels.maker.keys()])  # fmt: skip
+                              for b in ctx.svc.labels.maker.keys()])  # fmt: skip  # noqa: SIM118
 
 
 class LabelFindIn(BaseModel):
@@ -235,14 +235,14 @@ def _new_plan(ctx: OpContext, inp: LabelNewIn) -> tuple[str, dict[str, Any]]:
         BaseLabel.new(inp.key, inp.description, tuple(inp.values))
     except LabelError as exc:
         raise InvalidInput(exc.message) from None
-    if inp.key in {b.key for b in ctx.svc.labels.maker.keys()}:
+    if inp.key in {b.key for b in ctx.svc.labels.maker.keys()}:  # noqa: SIM118 - LabelMaker.keys() is a method, not a dict's
         raise Conflict(f"label {inp.key!r} already exists")
     table = _table(inp)
     return set_table(_text(), ["labels", inp.key], table), table
 
 
 async def preview_label_new(ctx: OpContext, inp: LabelNewIn) -> Preview:
-    _text_, table = _new_plan(ctx, inp)
+    _, table = _new_plan(ctx, inp)
     return Preview(summary=f"Define label {inp.key} and reload core",
                    changes=[Change(target=inp.key, field="label", after=table or "any text")], total_changes=1)  # fmt: skip
 
@@ -251,7 +251,7 @@ async def preview_label_new(ctx: OpContext, inp: LabelNewIn) -> Preview:
            permission="mutate", input=LabelNewIn, output=LabelChangeOut, mcp="never", group="label",
            preview=preview_label_new)  # fmt: skip
 async def label_new(ctx: OpContext, inp: LabelNewIn) -> LabelChangeOut:
-    text, _table_ = _new_plan(ctx, inp)
+    text, _ = _new_plan(ctx, inp)
     _write(ctx, text)
     reloading, note = reload_core(ctx, "the key shows in a moment")
     return LabelChangeOut(key=inp.key, reloading=reloading, note=note)

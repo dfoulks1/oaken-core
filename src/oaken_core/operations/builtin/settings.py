@@ -15,10 +15,17 @@ from oaken_core.config_edit import refuse_secrets, save_table, set_table
 from oaken_core.errors import ConfigError, InvalidInput, NotFound
 from oaken_core.labels import BaseLabel, LabelError, LabelMaker
 from oaken_core.operations.context import OpContext
-from oaken_core.plugins.kinds import check_queue_kind
 from oaken_core.operations.registry import Change, Preview, operation
+from oaken_core.plugins.kinds import check_queue_kind
 from oaken_core.settings import Settings
-from oaken_core.settings_edit import SECTIONS, Section, key_of, section, settings_of, table_path
+from oaken_core.settings_edit import (
+    SECTIONS,
+    Section,
+    key_of,
+    section,
+    settings_of,
+    table_path,
+)
 
 RELOAD_NOTE = "Saved to config.toml. It reaches the running core on reload (the console's Reload core, or `oaken reload`)."
 
@@ -161,11 +168,11 @@ def _check_text(ctx: OpContext, text: str) -> list[str]:
     for key, lt in settings.labels.items():
         try:
             BaseLabel.new(key, lt.description, tuple(lt.values))
-            if key in {b.key for b in core_keys.keys()}:
+            if key in {b.key for b in core_keys.keys()}:  # noqa: SIM118 - LabelMaker.keys() is a method, not a dict's
                 raise LabelError(f"{key!r} is reserved by core")
         except LabelError as exc:
             raise ConfigError(f"[labels.{key}]: {exc.message}") from None
-    for kind, named in settings.plugins.tables.items():
+    for named in settings.plugins.tables.values():
         for name, table in named.items():
             try:
                 problems = host.check_config(name, {k: v for k, v in table.items() if k != "plugin"}) if host else []

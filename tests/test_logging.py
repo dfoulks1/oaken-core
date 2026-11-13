@@ -87,7 +87,7 @@ def test_an_exception_logs_its_type_and_frames_never_its_message() -> None:
         try:
             raise ValueError("private text")
         except ValueError:
-            log.error("boom", exc_info=True)
+            log.error("boom", exc_info=True)  # noqa: G201 - exc_info on error() is the thing under test
 
     (e,) = run(LogSettings(format="json"), emit)
     assert e["exception"] == "ValueError" and e["frames"]

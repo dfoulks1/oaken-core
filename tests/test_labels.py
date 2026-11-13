@@ -5,7 +5,13 @@ from oaken_core.actors import SYSTEM, USER, Actor
 from oaken_core.changelog import ChangeLog
 from oaken_core.clock import FakeClock
 from oaken_core.db import Database
-from oaken_core.labels import BaseLabel, LabelError, LabelMaker, LabelStore, ReservedLabel
+from oaken_core.labels import (
+    BaseLabel,
+    LabelError,
+    LabelMaker,
+    LabelStore,
+    ReservedLabel,
+)
 
 AGENT = Actor("agent", "librarian")
 S = "subject-1"
@@ -127,7 +133,7 @@ async def test_the_queue_validator_runs_on_every_write(labels: LabelStore, maker
 
 
 async def test_keys_lists_every_defined_key_by_name(maker: LabelMaker) -> None:
-    keys = [b.key for b in maker.keys()]
+    keys = [b.key for b in maker.keys()]  # noqa: SIM118 - LabelMaker.keys() is a method, not a dict's
     assert keys == sorted(keys) and {"queue", "priority", "confidential", "heat"} <= set(keys)
 
 

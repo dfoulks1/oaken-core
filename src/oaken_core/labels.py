@@ -106,7 +106,7 @@ class LabelMaker:
 
     def source(self, key: str) -> str:
         """Who defined it: ``core``, ``config`` (the owner) or ``plugin``."""
-        label = self.get(key)
+        self.get(key)
         return "core" if key in self._core else "config" if key in self._config else "plugin"
 
     def keys(self) -> list[BaseLabel]:

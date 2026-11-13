@@ -18,10 +18,9 @@ import functools
 import inspect
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, TypeVar
-
-from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ValidationError
 
@@ -29,7 +28,6 @@ from oaken_core.db import Database
 from oaken_core.errors import Deferred, PluginError
 from oaken_core.labels import BaseLabel
 from oaken_core.plugins import stats
-from oaken_core.trace import brief, trace_context
 from oaken_core.plugins.contracts import (
     PLUGIN_API_VERSION,
     CacheEntry,
@@ -50,11 +48,12 @@ from oaken_core.plugins.contracts import (
     UiTemplate,
     VectorItem,
 )
+from oaken_core.trace import brief, trace_context
 
 if TYPE_CHECKING:
-    from oaken_core.router.router import Route
     from oaken_core.plugins.contracts import Query, Record
-    from oaken_core.stages import ActionResult, ActionTarget, EnrichTarget, Enrichment
+    from oaken_core.router.router import Route
+    from oaken_core.stages import ActionResult, ActionTarget, Enrichment, EnrichTarget
 
 F = TypeVar("F", bound=Callable[..., Any])
 M = TypeVar("M", bound=BaseModel)
@@ -263,7 +262,7 @@ class BasePlugin:
                     name=spec["name"], summary=spec["summary"], permission=spec["permission"],
                     input=spec["input"], output=spec["output"], handler=getattr(self, attr),
                     preview=preview, mcp=spec["mcp"],
-                )  # fmt: skip
+                )
             )
         return found
 
@@ -385,9 +384,8 @@ class BaseTemplatePlugin(BasePlugin):
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         super().__init_subclass__(**kwargs)
-        if cls.__dict__.get("kind") or any(getattr(b, "kind", "") for b in cls.__mro__[1:] if b is not BaseTemplatePlugin and b is not BasePlugin):
-            if not cls.contextual:  # a template with nothing to be given is not one
-                raise TypeError(f"{cls.__name__} is a BaseTemplatePlugin: name what an instance must be given in `contextual`")
+        if (cls.__dict__.get("kind") or any(getattr(b, "kind", "") for b in cls.__mro__[1:] if b is not BaseTemplatePlugin and b is not BasePlugin)) and not cls.contextual:  # a template with nothing to be given is not one
+            raise TypeError(f"{cls.__name__} is a BaseTemplatePlugin: name what an instance must be given in `contextual`")
 
 
 class BaseFriendlyNames(BasePlugin):

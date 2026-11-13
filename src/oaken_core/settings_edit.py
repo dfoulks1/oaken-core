@@ -67,7 +67,7 @@ SECTIONS: tuple[Section, ...] = (
             "handler_timeout_seconds", "max_result_bytes", "kind_limits", "requeue_cooldown_seconds",
             "store_by_default", "embed_by_default", "unmatched_format", "failed_format", "open_gate_on_final_failure",
         ),
-    ),  # fmt: skip
+    ),
     Section(
         "swarm",
         "External workers (agents) that lease jobs. Turning them on, and which kinds they may take, hand "
@@ -89,7 +89,7 @@ SECTIONS: tuple[Section, ...] = (
             ),
             **_by_hand("lan_allowlist", why="it widens who may see confidential text"),
         },
-    ),  # fmt: skip
+    ),
     Section(
         "console",
         "How the console looks, and whether it is served at all. It always binds 127.0.0.1; its port is set by hand.",

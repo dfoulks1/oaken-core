@@ -10,7 +10,11 @@ from pydantic import BaseModel
 from oaken_core.operations.builtin import core_operations, core_registry
 from oaken_core.operations.context import OpContext
 from oaken_core.operations.openapi import _add, build_openapi
-from oaken_core.operations.registry import Operation, OperationDefinitionError, operation
+from oaken_core.operations.registry import (
+    Operation,
+    OperationDefinitionError,
+    operation,
+)
 
 from .conftest import Ops
 
@@ -132,5 +136,5 @@ async def test_the_registry_serves_plugin_operations_beside_core_ones(ops: Ops) 
     assert "greeter.hello" in names and "queue_pause" in names
     assert names == sorted(names)
     assert "greeter.hello" not in {o.name for o in ops.registry.core()}
-    ops.registry.attach_plugins(lambda: [])  # a plugin that goes away is gone at once
+    ops.registry.attach_plugins(list)  # a plugin that goes away is gone at once
     assert "greeter.hello" not in ops.registry

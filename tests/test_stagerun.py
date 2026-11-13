@@ -12,7 +12,7 @@ from oaken_core.operations.caller import CallerContext
 from oaken_core.plugins.base import BaseAction, BaseEnricher, BaseTriager
 from oaken_core.plugins.host import PluginTables
 from oaken_core.settings import Settings
-from oaken_core.stages import ActionResult, ActionTarget, EnrichTarget, Enrichment
+from oaken_core.stages import ActionResult, ActionTarget, Enrichment, EnrichTarget
 from oaken_core.store import SqliteStore
 
 from .test_host import EP

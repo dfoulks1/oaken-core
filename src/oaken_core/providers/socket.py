@@ -29,10 +29,11 @@ import os
 import stat
 from typing import Any, ClassVar, Literal
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from oaken_core.errors import PluginError
 from oaken_core.plugins.base import BaseProvider, BaseTemplatePlugin
 from oaken_core.plugins.contracts import Health
-from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 LOOPBACK = "127.0.0.1"  # hard-coded: this plugin never listens beyond this machine
 

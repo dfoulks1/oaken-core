@@ -22,10 +22,11 @@ from oaken_core.clock import Clock, SystemClock
 from oaken_core.console import Console, ConsoleServer
 from oaken_core.daemon.units import Lifecycle, ServiceUnit, unit
 from oaken_core.errors import ConfigError, Deferred, NotFound, PluginError, Unavailable
+from oaken_core.eventlog import EventLog, event_log_path
 from oaken_core.events import EventBus
-from oaken_core.intake import Intake, IntakeItem
-from oaken_core.jobs import Jobs, JobRunner
 from oaken_core.ids import SubjectId
+from oaken_core.intake import Intake, IntakeItem
+from oaken_core.jobs import JobRunner, Jobs
 from oaken_core.labels import (
     BaseLabel,
     LabelError,
@@ -34,23 +35,22 @@ from oaken_core.labels import (
     ReservedLabel,
 )
 from oaken_core.logging import get_logger
+from oaken_core.logstore import LogTable, LogToBus
+from oaken_core.maintenance import register_maintenance_jobs
 from oaken_core.operations.builtin import core_registry
 from oaken_core.operations.client import CoreClient
 from oaken_core.operations.services import Services
-from oaken_core.plugins.kinds import check_queue_kind
-from oaken_core.eventlog import EventLog, event_log_path
-from oaken_core.maintenance import register_maintenance_jobs
-from oaken_core.secrets import KeyringSecrets, SecretStore
+from oaken_core.parts import Part
 from oaken_core.plugins.host import Discover, PluginHost, discover_entry_points
 from oaken_core.plugins.jobs import register_plugin_jobs, seed_plugin_schedules
+from oaken_core.plugins.kinds import check_queue_kind
 from oaken_core.plugins.ops import plugin_operations
-from oaken_core.logstore import LogTable, LogToBus
 from oaken_core.queues import DEFAULT, Queues
 from oaken_core.router import HostDirectory, Router
 from oaken_core.scheduler import Scheduler
-from oaken_core.parts import Part
-from oaken_core.stagerun import StagePayload, StageRunner, body_from_parts
+from oaken_core.secrets import KeyringSecrets, SecretStore
 from oaken_core.settings import Settings
+from oaken_core.stagerun import StagePayload, StageRunner, body_from_parts
 from oaken_core.trace import Tracer
 
 log = get_logger("oaken_core.daemon")

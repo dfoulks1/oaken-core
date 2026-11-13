@@ -34,9 +34,9 @@ from starlette.responses import JSONResponse
 from starlette.types import Receive, Scope, Send
 
 from oaken_core import identity
+from oaken_core.agents import TOKEN_PREFIX, Agent, AgentRegistry
 from oaken_core.api.guard import Surface
 from oaken_core.api.runtime import same_secret
-from oaken_core.agents import TOKEN_PREFIX, Agent, AgentRegistry
 from oaken_core.errors import NotExposed, OakenError, PermissionDenied
 from oaken_core.logging import get_logger
 from oaken_core.operations.caller import CallerContext
@@ -280,7 +280,7 @@ class McpServer:
             )
         except OakenError as exc:
             return failure(exc.code, exc.message)
-        except Exception as exc:  # the type only: the text of an error may quote private text
+        except Exception as exc:  # noqa: BLE001 - the type only: the text of an error may quote private text
             log.error("mcp call failed", tool=params.name, error=type(exc).__name__)
             return failure("internal", "the operation failed")
         return self._shape(visible[params.name], result, detail)

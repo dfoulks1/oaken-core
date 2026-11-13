@@ -19,7 +19,13 @@ from typing import Any
 from pydantic import BaseModel, ValidationError
 
 from oaken_core.agents import Agent
-from oaken_core.errors import InvalidInput, NotExposed, NotFound, PermissionDenied, SendDisabled
+from oaken_core.errors import (
+    InvalidInput,
+    NotExposed,
+    NotFound,
+    PermissionDenied,
+    SendDisabled,
+)
 from oaken_core.ids import AgentId
 from oaken_core.logging import get_logger
 from oaken_core.operations.caller import CallerContext

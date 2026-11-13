@@ -2,6 +2,7 @@
 from typing import Any
 
 import pytest
+
 from oaken_core.clock import FakeClock
 from oaken_core.enrich.llm import Answer, LlmEnricher, TryIn
 from oaken_core.errors import PluginError

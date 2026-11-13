@@ -12,7 +12,11 @@ import pytest
 
 from oaken_core.errors import PluginError
 from oaken_core.plugins.contracts import VectorItem
-from oaken_core.testing.contracts import VectorStoreContract, make_context, verify_vector_store
+from oaken_core.testing.contracts import (
+    VectorStoreContract,
+    make_context,
+    verify_vector_store,
+)
 from oaken_core.vec_sqlite import SqliteVecStore
 
 

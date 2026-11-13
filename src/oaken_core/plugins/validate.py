@@ -111,7 +111,7 @@ def declared_operations(obj: object) -> list[PluginOperation]:
 def check_operations(obj: object) -> list[str]:
     try:
         ops = declared_operations(obj)
-    except Exception as exc:  # a plugin that cannot say what it offers is a broken plugin
+    except Exception as exc:  # noqa: BLE001 - a plugin that cannot say what it offers is a broken plugin
         return [f"operations() failed: {type(exc).__name__}"]
     problems: list[str] = []
     seen: set[str] = set()
@@ -145,7 +145,7 @@ def declared_job_handlers(obj: object) -> list[PluginJobHandler]:
 def check_job_handlers(obj: object) -> list[str]:
     try:
         handlers = declared_job_handlers(obj)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - plugin code can raise anything; only the type is kept
         return [f"job_handlers() failed: {type(exc).__name__}"]
     problems: list[str] = []
     seen: set[str] = set()
@@ -180,7 +180,7 @@ def declared_scheduled_tasks(obj: object) -> list[PluginScheduledTask]:
 def check_scheduled_tasks(obj: object) -> list[str]:
     try:
         tasks = declared_scheduled_tasks(obj)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - plugin code can raise anything; only the type is kept
         return [f"scheduled_tasks() failed: {type(exc).__name__}"]
     problems: list[str] = []
     seen: set[str] = set()

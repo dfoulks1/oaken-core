@@ -20,7 +20,7 @@ import contextlib
 import importlib
 import inspect
 import re
-from collections.abc import Awaitable, Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, replace
 from importlib.metadata import EntryPoint, entry_points
 from typing import Any, Literal, cast
@@ -50,7 +50,6 @@ from oaken_core.plugins.contracts import (
     UiRow,
     UiSpec,
 )
-from oaken_core.secrets import PluginSecrets
 from oaken_core.plugins.kinds import KindRegistry, KindSpec
 from oaken_core.plugins.ui import check_ui
 from oaken_core.plugins.validate import (
@@ -61,6 +60,7 @@ from oaken_core.plugins.validate import (
     declared_operations,
     declared_scheduled_tasks,
 )
+from oaken_core.secrets import PluginSecrets
 from oaken_core.settings import PluginTables
 from oaken_core.store import MIGRATIONS
 from oaken_core.trace import Tracer
@@ -323,7 +323,7 @@ class PluginHost:
                         value = catalog.class_path(
                             entry
                         )  # imports the module: a broken one must not stop startup
-                    except Exception as exc:
+                    except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                         log.error(
                             "plugin failed to load",
                             kind=spec.name,
@@ -577,7 +577,7 @@ class PluginHost:
             if problems:
                 raise PluginError("; ".join(problems))
             rec.info = info
-        except Exception as exc:  # a broken plugin must never take core down
+        except Exception as exc:  # noqa: BLE001 - a broken plugin must never take core down
             rec.instance, rec.healthy, rec.disabled = None, False, True
             rec.detail = f"failed to load: {exc}"
             log.error(
@@ -608,7 +608,7 @@ class PluginHost:
                 rec.detail = "" if found.instance is not None else found.detail
                 if found.instance is None:
                     rec.instance, rec.disabled = None, True
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                 rec.disabled, rec.detail = True, f"failed to load: {exc}"
         return rec
 
@@ -936,7 +936,7 @@ class PluginHost:
         except LabelError as exc:
             await self._fault(rec, exc)
             return
-        except Exception as exc:  # a bad migration or key table is the plugin's, not core's
+        except Exception as exc:  # noqa: BLE001 - a bad migration or key table is the plugin's, not core's
             rec.started, rec.healthy, rec.detail = (
                 False,
                 False,
@@ -978,7 +978,7 @@ class PluginHost:
                 await self._call(rec.instance, "stop")
                 raise PluginError("; ".join(problems))
             rec.started, rec.healthy, rec.detail = True, True, ""
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
             rec.started, rec.healthy = False, False
             if not ctx.config and not self.tables.table(rec.kind, rec.name):
                 # Installed but never set up (no table): not an error, and not left half-alive:
@@ -1104,7 +1104,7 @@ class PluginHost:
         if rec.started:
             try:
                 await self._call(rec.instance, "stop")
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                 log.error(
                     "plugin failed to stop",
                     kind=rec.kind,
@@ -1216,7 +1216,7 @@ class PluginHost:
                 result = await self._call(rec.instance, "health")
                 health = result if isinstance(result, Health) else Health(True)
                 rec.healthy, rec.detail = health.ok, health.detail
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                 rec.healthy, rec.detail = False, f"health check failed: {exc}"
                 log.error(
                     "plugin health check failed",
@@ -1252,7 +1252,7 @@ class PluginHost:
                 PluginHealthChanged(
                     ts=self.clock.now(), plugin=f"{rec.kind}:{rec.name}",
                     healthy=rec.healthy, detail=rec.detail,
-                )  # fmt: skip
+                )
             )
 
     # -- what plugins offer ------------------------------------------------------------------
@@ -1293,7 +1293,7 @@ class PluginHost:
         for rec in self._shared():
             try:
                 decls = declared_operations(rec.instance)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                 log.error(
                     "plugin operations failed", name=rec.name, error=type(exc).__name__
                 )
@@ -1322,7 +1322,7 @@ class PluginHost:
         for rec in self._shared():
             try:
                 decls = declared_job_handlers(rec.instance)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                 log.error(
                     "plugin job_handlers failed",
                     name=rec.name,
@@ -1349,7 +1349,7 @@ class PluginHost:
         for rec in self._shared():
             try:
                 decls = declared_scheduled_tasks(rec.instance)
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001 - plugin code can raise anything, and never takes core down
                 log.error(
                     "plugin scheduled_tasks failed",
                     name=rec.name,
@@ -1574,7 +1574,7 @@ class PluginHost:
                 multitenant=bool(getattr(r.instance, "multitenant", False)),
                 provider=extensions.origin(r.loadpath),
             )
-            for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))  # fmt: skip
+            for r in sorted(self._records.values(), key=lambda r: (r.kind, r.name))
         ]
 
     async def setting_choices(self, kind: str, name: str) -> dict[str, list[str]]:

@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 import pytest
+
 from oaken_core.errors import Conflict, NotFound
 from oaken_core.plugins.contracts import Query
 from oaken_core.store import SqliteStore, open_core
@@ -44,7 +45,7 @@ async def test_list_and_count_by_where_has_order_and_page(store: SqliteStore) ->
     assert [r.id for r in await s.list("n", Query(has=("p.deep",)))] == ["i4"]
     page = Query(newest_first=True, limit=2, offset=1)
     assert len(await s.list("n", page)) == 2 and await s.count("n", page) == 5
-    with pytest.raises(Exception):
+    with pytest.raises(Exception):  # noqa: B017 - whichever error the store raises: the point is that it does not run
         await s.list("n", Query(where={"k') OR 1=1 --": 1}))
 
 

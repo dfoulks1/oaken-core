@@ -5,7 +5,6 @@ from pathlib import Path
 
 import httpx2
 import pytest
-from markupsafe import escape
 from pydantic import BaseModel, Field
 
 from oaken_core.errors import NotFound

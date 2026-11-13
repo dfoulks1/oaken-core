@@ -26,7 +26,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Mapping
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Self
 
 
 @dataclass(frozen=True)
@@ -114,7 +114,7 @@ class ApiClient(ABC):
     honours the same protocol.
     """
 
-    async def __aenter__(self) -> ApiClient:
+    async def __aenter__(self) -> Self:
         return self
 
     async def __aexit__(self, *exc: object) -> None:

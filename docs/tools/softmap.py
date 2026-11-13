@@ -331,8 +331,8 @@ def _marker(mid: str, cls: str) -> str:
 
 def map_svg(lay: Layout) -> str:
     p = [
-        f'<svg id="softmap" class="map-svg" viewBox="0 0 {lay.width} {lay.height}" role="img" '
-        'aria-label="Component map">',
+        (f'<svg id="softmap" class="map-svg" viewBox="0 0 {lay.width} {lay.height}" role="img" '
+        'aria-label="Component map">'),
         "<defs>"
         + _marker("m-out", "mk-out")
         + _marker("m-cb", "mk-cb")
@@ -562,9 +562,9 @@ def _builder(cfg: Config) -> Page:
     out: list[str] = [
         "## Status",
         "",
-        f"{len(comps)} components in {len(data['layers'])} layers: "
+        (f"{len(comps)} components in {len(data['layers'])} layers: "
         f"**{counts['built']} built**, **{counts['partial']} partial**, "
-        f"**{counts['planned']} planned**.",
+        f"**{counts['planned']} planned**."),
         "",
         "| Status | Meaning |",
         "|---|---|",
@@ -574,45 +574,45 @@ def _builder(cfg: Config) -> Page:
     out += [
         "",
         "::: callout",
-        f"Generated from {src_link(cfg, 'docs/softmap.toml')} by {src_link(cfg, 'docs/tools/softmap.py')}, "
+        (f"Generated from {src_link(cfg, 'docs/softmap.toml')} by {src_link(cfg, 'docs/tools/softmap.py')}, "
         "which refuses to build if the data breaks the layering rules or disagrees with the repository. "
-        "Edit the data in the same change that builds or alters a component.",
+        "Edit the data in the same change that builds or alters a component."),
         ":::",
         "",
         "## Map",
         "",
-        "Click a component to draw its relationships. Each separate piece of software is its own "
+        ("Click a component to draw its relationships. Each separate piece of software is its own "
         "framed stack, with its layers top to bottom. The border shows status; a red dot marks "
-        "components that handle untrusted input.",
+        "components that handle untrusted input."),
         "",
         f'<div class="mapbox">{map_svg(lay)}</div>',
         "",
-        '<div class="legend">'
+        ('<div class="legend">'
         '<span><svg width="34" height="10"><line x1="0" y1="5" x2="34" y2="5" class="e e-out"/></svg>calls (selected component calls this)</span>'
         '<span><svg width="34" height="10"><line x1="0" y1="5" x2="34" y2="5" class="e e-in"/></svg>called by</span>'
         '<span><svg width="34" height="10"><line x1="0" y1="5" x2="34" y2="5" class="e e-cb"/></svg>notifies (event or callback, upward)</span>'
         '<span><svg width="34" height="10"><line x1="0" y1="5" x2="34" y2="5" class="e e-incb"/></svg>notified by</span>'
-        "</div>",
+        "</div>"),
         "",
         '<div id="sel" class="card card-body small">Select a component on the map.</div>',
         "",
         "## Conventions",
         "",
-        "- **Calls go down.** A component may call its own layer or a lower one, never a higher "
-        "one, and the call graph has no cycles.",
-        "- **Events go up.** Lower layers reach higher ones only through events or a handler the "
-        "higher layer registered.",
-        "- **Plugins meet core at a contract.** Core never imports provider code, and a plugin "
-        "never touches the databases.",
-        "- **Outside text is data.** Anything that handles text from outside is marked untrusted, and "
-        "its text reaches a model only as `UntrustedText`.",
-        "- **Mutations are gated in code.** The operation registry's confirm gate, not a prompt, "
-        "decides whether anything changes: a change is a proposal until a person confirms it.",
+        ("- **Calls go down.** A component may call its own layer or a lower one, never a higher "
+        "one, and the call graph has no cycles."),
+        ("- **Events go up.** Lower layers reach higher ones only through events or a handler the "
+        "higher layer registered."),
+        ("- **Plugins meet core at a contract.** Core never imports provider code, and a plugin "
+        "never touches the databases."),
+        ("- **Outside text is data.** Anything that handles text from outside is marked untrusted, and "
+        "its text reaches a model only as `UntrustedText`."),
+        ("- **Mutations are gated in code.** The operation registry's confirm gate, not a prompt, "
+        "decides whether anything changes: a change is a proposal until a person confirms it."),
         "",
         "## Components",
         "",
-        '<div class="mb-3"><input id="q" class="form-control" type="search" '
-        'placeholder="Filter components and functions (for example: intake, queue, plugin)"></div>',
+        ('<div class="mb-3"><input id="q" class="form-control" type="search" '
+        'placeholder="Filter components and functions (for example: intake, queue, plugin)"></div>'),
         "",
     ]
     for stack in data["stacks"]:
@@ -631,9 +631,9 @@ def _builder(cfg: Config) -> Page:
             [
                 "## Class relationships",
                 "",
-                "Every class that takes part in an in-core inheritance, read from the live package by "
+                ("Every class that takes part in an in-core inheritance, read from the live package by "
                 f"{src_link(cfg, 'docs/tools/classmap.py')} into {src_link(cfg, 'docs/softmap.classes.toml')}. "
-                "Subclasses nest under their base; the arrow names a base from outside the package.",
+                "Subclasses nest under their base; the arrow names a base from outside the package."),
                 "",
                 class_tree_html(classes, {c["path"]: c["name"] for c in comps if c.get("path")}),
                 "",
@@ -643,8 +643,8 @@ def _builder(cfg: Config) -> Page:
         ),
         "## Call flows",
         "",
-        "Each step is one call from one component into another, checked against the declared "
-        "relationships at build time.",
+        ("Each step is one call from one component into another, checked against the declared "
+        "relationships at build time."),
         "",
     ]
     for chunk in flows_html(data, names, by_id):
@@ -652,8 +652,8 @@ def _builder(cfg: Config) -> Page:
     out += [
         "## Dependency matrix",
         "",
-        "Row is the caller, column is the target. **C** is a direct call, **B** is an event or "
-        "registered callback.",
+        ("Row is the caller, column is the target. **C** is a direct call, **B** is an event or "
+        "registered callback."),
         "",
         matrix_html(comps, names),
         "",

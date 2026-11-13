@@ -24,8 +24,8 @@ from oaken_core.dbgen.sqlite import models as rows
 from oaken_core.dbgen.sqlite import records as q
 from oaken_core.errors import Conflict, InvalidInput, NotFound, PluginError
 from oaken_core.ids import new_subject_id
-from oaken_core.plugins.contracts import Query, Record
 from oaken_core.plugins.base import BaseStore
+from oaken_core.plugins.contracts import Query, Record
 
 MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 

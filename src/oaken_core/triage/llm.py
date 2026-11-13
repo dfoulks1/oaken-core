@@ -24,11 +24,18 @@ owner wants rejects to teach ``nearjunk``.
 import hashlib
 from typing import Any, ClassVar, Literal
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from oaken_core.intake import IntakeItem, Verdict, item_text
-from oaken_core.plugins.base import BaseLLMAnalyzer, BaseMultitenant, BaseTemplatePlugin, BaseTriager, command
+from oaken_core.plugins.base import (
+    BaseLLMAnalyzer,
+    BaseMultitenant,
+    BaseTemplatePlugin,
+    BaseTriager,
+    command,
+)
 from oaken_core.plugins.contracts import LLMRequest, PluginOpContext, UiField, UiSpec
 from oaken_core.untrusted import UntrustedText
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_REASON_WORDS = 20
 

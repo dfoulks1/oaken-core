@@ -5,6 +5,7 @@ import pytest
 
 from oaken_core.formatters.structured import JsonFormatter
 
+
 async def test_json_splits_an_object_by_key_and_keeps_anything_else_whole() -> None:
     parts = await JsonFormatter().split('{"title": "Hi", "tags": ["a"]}')
     assert {n: p.content for n, p in parts.items()} == {"title": "Hi", "tags": ["a"]}

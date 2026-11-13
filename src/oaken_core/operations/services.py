@@ -6,8 +6,8 @@ because a process may run without them. A handler that needs one asks with ``nee
 gets ``unavailable`` rather than a crash.
 """
 
-from dataclasses import dataclass
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from oaken_core.agents import AgentRegistry

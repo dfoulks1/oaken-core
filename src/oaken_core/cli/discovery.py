@@ -151,19 +151,16 @@ def discover(
         _require_loopback(url, allow_remote)
         return Endpoint(base_url=url.rstrip("/"), token=credential())
 
-    try:
-        runtime = _read_runtime(runtime_path or _runtime_path())
-        pid = runtime.get("pid")
-        if not isinstance(pid, int) or not _pid_alive(pid):
-            raise CoreUnavailable("runtime file is stale (process not running)")
-        host = runtime.get("host", "127.0.0.1")
-        port = runtime.get("port")
-        if port == 0:
-            raise CoreUnavailable("core is still starting (no port yet)")
-        if host not in _LOOPBACK or not isinstance(port, int) or not (0 < port <= 65535):
-            raise CoreUnavailable("runtime file does not name a loopback host and port")
-    except CoreUnavailable:
-        raise
+    runtime = _read_runtime(runtime_path or _runtime_path())
+    pid = runtime.get("pid")
+    if not isinstance(pid, int) or not _pid_alive(pid):
+        raise CoreUnavailable("runtime file is stale (process not running)")
+    host = runtime.get("host", "127.0.0.1")
+    port = runtime.get("port")
+    if port == 0:
+        raise CoreUnavailable("core is still starting (no port yet)")
+    if host not in _LOOPBACK or not isinstance(port, int) or not (0 < port <= 65535):
+        raise CoreUnavailable("runtime file does not name a loopback host and port")
     return Endpoint(base_url=f"http://{host}:{port}", token=credential())
 
 

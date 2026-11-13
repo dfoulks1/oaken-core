@@ -104,7 +104,7 @@ async def test_intake_submit_is_off_over_mcp_until_the_owner_turns_it_on(core: C
 
 
 async def test_item_show_reads_an_item_back_through_its_ingestor_with_its_labels_and_history(tmp_path: Path) -> None:
-    from oaken_core.errors import NotFound, Unavailable
+    from oaken_core.errors import NotFound
     from oaken_core.formatters.structured import JsonFormatter
 
     core = await make(tmp_path, {"oaken_core.formatters": [EP("json", JsonFormatter)]})

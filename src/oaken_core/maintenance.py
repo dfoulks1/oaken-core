@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from oaken_core.actors import SYSTEM, Actor
 from oaken_core.db import Database
 from oaken_core.errors import StorageError
-from oaken_core.jobs import PRIORITY_BACKFILL, Enqueued, Job, Jobs, JobRunner
+from oaken_core.jobs import PRIORITY_BACKFILL, Enqueued, Job, JobRunner, Jobs
 
 VACUUM_KIND = "maintenance.vacuum"
 ROOM = 1.1  # free space wanted, as a multiple of the database being rewritten

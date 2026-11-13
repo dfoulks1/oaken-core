@@ -32,7 +32,12 @@ import httpx2
 
 from oaken_core.cli.client import ApiClient, CallResult, Event, OpInfo, Proposal
 from oaken_core.cli.discovery import Endpoint
-from oaken_core.cli.exits import CliError, CoreUnavailable, ExitCode, exit_for_error_code
+from oaken_core.cli.exits import (
+    CliError,
+    CoreUnavailable,
+    ExitCode,
+    exit_for_error_code,
+)
 
 CLIENT_CLASS = "cli"
 CONNECT_ERRORS = (httpx2.ConnectError, httpx2.ConnectTimeout, httpx2.RemoteProtocolError)

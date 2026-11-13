@@ -51,9 +51,9 @@ def _adr_index(cfg: Config) -> Page:
     adr_dir = cfg.docs_dir / ADR_DIR
     for path in sorted(adr_dir.glob("[0-9][0-9][0-9][0-9]-*.md")):
         text = path.read_text(encoding="utf-8")
-        t = re.search(r"^# (?:\d+\.\s*)?(.+)$", text, re.M)
-        s = re.search(r"^[-*]\s*Status:\s*(.+)$", text, re.M | re.I)
-        d = re.search(r"^[-*]\s*Date:\s*(.+)$", text, re.M | re.I)
+        t = re.search(r"^# (?:\d+\.\s*)?(.+)$", text, re.MULTILINE)
+        s = re.search(r"^[-*]\s*Status:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
+        d = re.search(r"^[-*]\s*Date:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
         if not (t and s and d):
             raise BuildError(
                 f"{path}: an ADR needs a '# N. Title' heading and Status and Date bullets"

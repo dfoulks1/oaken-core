@@ -20,18 +20,19 @@ anything, to tune the instructions.
 import hashlib
 from typing import Any, ClassVar
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from oaken_core.intake import item_text
 from oaken_core.plugins.base import (
-    BaseLLMAnalyzer,
     BaseEnricher,
+    BaseLLMAnalyzer,
     BaseMultitenant,
     BaseTemplatePlugin,
     command,
 )
 from oaken_core.plugins.contracts import LLMRequest, PluginOpContext, UiField, UiSpec
-from oaken_core.stages import EnrichTarget, Enrichment
+from oaken_core.stages import Enrichment, EnrichTarget
 from oaken_core.untrusted import UntrustedText
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_SUMMARY_WORDS = 40
 MAX_FACTS = 8

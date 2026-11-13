@@ -25,7 +25,14 @@ from oaken_core import __version__
 from oaken_core.clock import FakeClock
 from oaken_core.logging import get_logger
 from oaken_core.plugins.base import VectorStats
-from oaken_core.plugins.contracts import CacheEntry, Hit, LLMRequest, LLMResponse, PluginContext, VectorItem
+from oaken_core.plugins.contracts import (
+    CacheEntry,
+    Hit,
+    LLMRequest,
+    LLMResponse,
+    PluginContext,
+    VectorItem,
+)
 from oaken_core.plugins.kinds import KindRegistry
 from oaken_core.plugins.validate import check_plugin, check_started
 from oaken_core.untrusted import UntrustedText
@@ -245,7 +252,7 @@ async def _verify(
         try:
             async with running(make(), kind, config) as plugin:
                 await check(plugin)
-        except Exception as exc:  # AssertionError or anything the plugin raised
+        except Exception as exc:  # noqa: BLE001 - AssertionError or anything the plugin raised
             failures.append(f"{check.__name__}: {type(exc).__name__}: {exc}")
     if failures:
         raise AssertionError("contract failures:\n  " + "\n  ".join(failures))

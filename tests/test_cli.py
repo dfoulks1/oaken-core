@@ -52,7 +52,7 @@ async def test_the_command_tree_is_the_registry_and_a_plugin_verb_appears_only_w
     ops.registry.attach_plugins(greeter)  # it loads
     code, out, _ = await run(ops, capsys, "greeter", "hi", "--who", "Drew", "--shout", "--json")
     assert code == 0 and json.loads(out)["output"] == {"text": "HI Drew"}
-    ops.registry.attach_plugins(lambda: [])  # it failed to load, or was disabled
+    ops.registry.attach_plugins(list)  # it failed to load, or was disabled
     code, _, err = await run(ops, capsys, "greeter", "hi")
     assert code == 2 and "invalid choice" in err
 
@@ -199,11 +199,11 @@ def test_the_three_level_template_tree_routes_to_the_right_leaf() -> None:
     ]
     parser = build_parser("oaken", ops)
     args = parser.parse_args(["gmail", "warwalrux", "auth"])
-    assert getattr(args, "_op").name == "warwalrux.auth"
+    assert args._op.name == "warwalrux.auth"
     args = parser.parse_args(["gmail", "dfoulks", "auth"])
-    assert getattr(args, "_op").name == "dfoulks.auth"
+    assert args._op.name == "dfoulks.auth"
     args = parser.parse_args(["crm", "scan"])  # plain plugin unchanged
-    assert getattr(args, "_op").name == "crm.scan"
+    assert args._op.name == "crm.scan"
 
 
 def test_oaken_home_flag_sets_the_home_variable_and_leaves_the_rest(monkeypatch, tmp_path) -> None:

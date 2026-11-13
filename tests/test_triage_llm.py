@@ -2,12 +2,13 @@
 from typing import Any
 
 import pytest
+
 from oaken_core.clock import FakeClock
 from oaken_core.errors import PluginError
 from oaken_core.intake import IntakeItem
 from oaken_core.plugins.contracts import PluginContext
-from oaken_core.untrusted import UntrustedText
 from oaken_core.triage.llm import Answer, LlmTriager, TryIn
+from oaken_core.untrusted import UntrustedText
 
 CRITERIA = "A company that could buy a vector database."
 
@@ -77,6 +78,6 @@ def test_a_long_reason_is_cut_to_twenty_words_and_a_bad_verdict_is_refused() -> 
 async def test_with_no_criteria_it_will_not_start_and_try_changes_nothing() -> None:
     with pytest.raises(PluginError):
         await started({"verdict": "accept"}, {})
-    t, router = await started({"verdict": "accept", "reason": "fits", "confidence": 0.8})
+    t, _router = await started({"verdict": "accept", "reason": "fits", "confidence": 0.8})
     out = await t.try_text(None, TryIn(text="Acme builds RAG"))  # type: ignore[arg-type]
     assert (out.verdict, out.reason, out.confidence) == ("accept", "fits", 0.8)

@@ -7,9 +7,8 @@ import logging
 from pathlib import Path
 
 import httpx2
-import pytest
 
-from oaken_core.events import Event, LogEvent
+from oaken_core.events import LogEvent
 from oaken_core.logging import get_logger, log_context
 from oaken_core.logstore import plugin_of, read_file
 from oaken_core.operations.caller import CallerContext

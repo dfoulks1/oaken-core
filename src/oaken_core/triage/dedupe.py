@@ -18,11 +18,12 @@ import json
 from pathlib import Path
 from typing import Any, ClassVar
 
+from pydantic import BaseModel, Field
+
 from oaken_core.errors import InvalidInput
 from oaken_core.intake import IntakeItem, Verdict
 from oaken_core.plugins.base import BaseTriager, command
 from oaken_core.plugins.contracts import PluginChange, PluginOpContext, PluginPreview
-from pydantic import BaseModel, Field
 
 
 class DedupeConfig(BaseModel):

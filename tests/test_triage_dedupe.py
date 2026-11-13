@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from pathlib import Path
+from typing import ClassVar
 
-import pytest
 from oaken_core.clock import FakeClock
 from oaken_core.db import Database, migrate
 from oaken_core.intake import IntakeItem
@@ -85,17 +85,17 @@ async def test_a_bare_context_with_no_database_passes_everything() -> None:
 # -- through the real host, intake and an ingestor --------------------------------------------------------
 
 from oaken_core.daemon.core import Core  # noqa: E402
+from oaken_core.ids import SubjectId  # noqa: E402
 from oaken_core.plugins.base import BaseIngestor, BaseProvider  # noqa: E402
 from oaken_core.plugins.host import PluginTables  # noqa: E402
 from oaken_core.settings import Settings  # noqa: E402
 from oaken_core.store import SqliteStore  # noqa: E402
-from oaken_core.ids import SubjectId  # noqa: E402
 
 from .test_host import EP  # noqa: E402
 
 
 class Shelf(BaseIngestor):
-    stored: list[IntakeItem] = []
+    stored: ClassVar[list[IntakeItem]] = []
 
     async def ingest(self, item: IntakeItem) -> SubjectId:
         self.stored.append(item)

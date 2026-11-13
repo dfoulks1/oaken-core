@@ -19,7 +19,7 @@ def test_generated_code_is_current(tmp_path: Path) -> None:
     temp = ROOT / f"sqlc.check-{tmp_path.name}.yaml"
     temp.write_text(cfg)
     try:
-        run = subprocess.run([SQLC, "generate", "-f", str(temp)], cwd=ROOT, capture_output=True, text=True)
+        run = subprocess.run([SQLC, "generate", "-f", str(temp)], cwd=ROOT, capture_output=True, text=True, check=False)
         assert run.returncode == 0, run.stderr
         diff = filecmp.dircmp(out, ROOT / "src" / "oaken_core" / "dbgen" / "sqlite")
         assert not (diff.diff_files or diff.left_only or diff.right_only), "run: uv run sqlc generate"

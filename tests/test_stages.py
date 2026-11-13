@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from oaken_core.intake import Verdict, item_text
 from oaken_core.plugins.base import BaseAction, BaseEnricher
-from oaken_core.stages import ActionResult, ActionTarget, EnrichTarget, Enrichment
+from oaken_core.stages import ActionResult, ActionTarget, Enrichment, EnrichTarget
 
 
 def test_targets_read_like_intake_items_and_actions_add_a_route() -> None:

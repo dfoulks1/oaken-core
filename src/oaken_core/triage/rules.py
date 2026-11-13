@@ -39,12 +39,13 @@ import json
 from fnmatch import fnmatchcase
 from typing import Any, ClassVar, Literal
 
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+
 from oaken_core.errors import InvalidInput
 from oaken_core.intake import IntakeItem, Verdict, item_text
 from oaken_core.parts import Part
 from oaken_core.plugins.base import BaseTriager, command
 from oaken_core.plugins.contracts import PluginOpContext, UiField, UiPage, UiSpec
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 Scalar = str | int | float | bool
 

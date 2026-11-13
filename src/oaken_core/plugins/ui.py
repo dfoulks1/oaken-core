@@ -5,7 +5,14 @@ import re
 from collections.abc import Mapping, Sequence
 
 from oaken_core.errors import InvalidInput
-from oaken_core.plugins.contracts import PIPELINE_TABS, UI_ACTIONS, UiPage, UiRow, UiSpec, UiTemplate
+from oaken_core.plugins.contracts import (
+    PIPELINE_TABS,
+    UI_ACTIONS,
+    UiPage,
+    UiRow,
+    UiSpec,
+    UiTemplate,
+)
 
 _NAME = re.compile(r"^[a-z][a-z0-9_-]{0,40}$")
 _OP = re.compile(r"^[a-z][a-z0-9_]{0,60}$")

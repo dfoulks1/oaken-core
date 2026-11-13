@@ -47,7 +47,7 @@ class LogToBus(logging.Handler):
             rest = {k: v for k, v in e.items() if k not in SHAPE}
             self.bus.publish_nowait(LogEvent(ts=datetime.fromisoformat(e["ts"]), level=e["level"], logger=e["logger"], event=e["event"],
                                              plugin=plugin_of(e["logger"]), queue=str(rest.get("queue", "")), data=rest))  # fmt: skip
-        except Exception:  # noqa: BLE001 - a log call never costs the caller
+        except Exception:  # noqa: BLE001, S110 - a log call never costs the caller
             pass
 
     def attach(self) -> None:

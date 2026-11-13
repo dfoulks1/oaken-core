@@ -9,13 +9,13 @@ from pydantic import BaseModel, Field
 
 from oaken_core import paths
 from oaken_core.config_edit import get_table, refuse_secrets, remove_table, save_table
-from oaken_core.plugins.contracts import PLUGIN_API_VERSION
 from oaken_core.errors import InvalidInput, NotFound, PluginError
 from oaken_core.operations.builtin.queue import Empty, QueueRow, reload_core
 from oaken_core.operations.context import OpContext
-from oaken_core.operations.exposure import OP, PLUGIN, scope_of
+from oaken_core.operations.exposure import OP, scope_of
 from oaken_core.operations.registry import Change, Preview, operation
 from oaken_core.operations.services import need
+from oaken_core.plugins.contracts import PLUGIN_API_VERSION
 from oaken_core.plugins.host import AddPlan
 
 

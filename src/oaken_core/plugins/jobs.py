@@ -18,9 +18,9 @@ from pydantic import BaseModel
 from oaken_core.errors import OakenError, PluginError
 from oaken_core.jobs import Job, JobRunner
 from oaken_core.logging import get_logger
-from oaken_core.scheduler import Scheduler
 from oaken_core.plugins.contracts import PluginJobHandler
 from oaken_core.plugins.host import OfferedJobHandler, PluginHost
+from oaken_core.scheduler import Scheduler
 
 log = get_logger("oaken_core.plugins")
 
@@ -48,7 +48,7 @@ def _adapt(host: PluginHost, offered: OfferedJobHandler) -> tuple[str, PluginJob
             result = await decl.handler(ctx, payload)
         except OakenError:
             raise
-        except Exception as exc:  # a plugin error could quote private text: keep only its type
+        except Exception as exc:  # noqa: BLE001 - a plugin error could quote private text: keep only its type
             raise PluginError(f"{full} failed ({type(exc).__name__})") from None
         if decl.result_model is not None and result is not None:
             return decl.result_model.model_validate(result)

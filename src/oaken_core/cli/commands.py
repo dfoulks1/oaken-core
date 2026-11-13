@@ -28,7 +28,12 @@ from typing import Any
 
 from oaken_core import identity
 from oaken_core.cli.client import ApiClient, CallResult, OpInfo
-from oaken_core.cli.exits import CliError, CoreUnavailable, ExitCode, exit_for_error_code
+from oaken_core.cli.exits import (
+    CliError,
+    CoreUnavailable,
+    ExitCode,
+    exit_for_error_code,
+)
 from oaken_core.cli.output import print_json, print_table, print_text
 from oaken_core.cli.schema_flags import add_flags, missing_required, secret_fields
 

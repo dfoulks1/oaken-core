@@ -108,7 +108,7 @@ class Renderer:
         where = str(page.origin or page.id)
         if href.startswith("repo:"):
             return self._repo_url(href[5:], where)
-        if href.startswith("#") or SCHEME.match(href) or href.startswith("//"):
+        if href.startswith(("#", "//")) or SCHEME.match(href):
             return href
         path, _, frag = href.partition("#")
         base = page.origin.parent if page.origin else self.cfg.docs_dir

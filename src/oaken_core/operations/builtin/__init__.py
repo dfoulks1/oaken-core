@@ -1,7 +1,18 @@
 # SPDX-License-Identifier: Apache-2.0
 """The core operations, and the function that puts them in a registry."""
 
-from oaken_core.operations.builtin import agents, intake, labels, logs, maintenance, queue, schedule, secrets, settings, system
+from oaken_core.operations.builtin import (
+    agents,
+    intake,
+    labels,
+    logs,
+    maintenance,
+    queue,
+    schedule,
+    secrets,
+    settings,
+    system,
+)
 from oaken_core.operations.registry import AnyOperation, OperationRegistry
 
 

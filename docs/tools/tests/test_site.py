@@ -58,7 +58,7 @@ def test_theme_attribute_and_storage_guard(built: Callable[[], Path]) -> None:
         assert "prefers-color-scheme: dark" in html
         assert "oaken-theme" in html
         # every localStorage access in the head script is inside try/catch
-        head = re.search(r"<script>(.*?)</script>", html, re.S)
+        head = re.search(r"<script>(.*?)</script>", html, re.DOTALL)
         assert head is not None
         script = head.group(1)
         assert script.count("localStorage") == 1

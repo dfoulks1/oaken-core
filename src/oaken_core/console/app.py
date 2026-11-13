@@ -13,18 +13,18 @@ pipeline), the position-box ordering (``plugins.ui.reposition``) and the Origin 
 """
 
 import dataclasses
-from urllib.parse import urlencode
-import re
-import time
 import hashlib
 import hmac
 import os
+import re
 import secrets
+import time
 import tomllib
 from collections.abc import Awaitable, Callable
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import jinja2
 from pydantic import BaseModel
@@ -35,13 +35,13 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 
 from oaken_core import identity, paths
-from oaken_core.cron import parse_cron
 from oaken_core.api.errors import status_for
 from oaken_core.config_edit import get_table, refuse_secrets, save_table, set_table
 from oaken_core.console import forms
 from oaken_core.console.docs_text import docs_html
 from oaken_core.console.forms import Field
 from oaken_core.console.guard import ConsoleGuard, PortRef
+from oaken_core.cron import parse_cron
 from oaken_core.errors import (
     ConfigError,
     InvalidInput,
@@ -57,7 +57,6 @@ from oaken_core.operations.services import Services
 from oaken_core.plugins.contracts import UiPage, UiSpec
 from oaken_core.plugins.host import HOST_KEYS
 from oaken_core.plugins.ui import reposition
-from oaken_core.queues import DEFAULT
 
 log = get_logger("oaken_core.console")
 HERE = Path(__file__).resolve().parent

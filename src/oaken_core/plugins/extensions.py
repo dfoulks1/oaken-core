@@ -77,7 +77,7 @@ def origin(loadpath: str) -> str:
     if not top or top == "oaken_core":
         return "core"
     spec = importlib.util.find_spec(top) if top not in sys.modules else sys.modules[top].__spec__
-    where = spec and (spec.origin if spec.origin not in (None, "namespace") else (list(spec.submodule_search_locations or [""])[0]))
+    where = spec and (spec.origin if spec.origin not in (None, "namespace") else (next(iter(spec.submodule_search_locations or [""]))))
     if not where:
         return "local"
     parts = Path(where).resolve().parts

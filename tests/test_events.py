@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 from dataclasses import dataclass
 
-import pytest
-
 from oaken_core.clock import FakeClock
-from oaken_core.events import Event, EventBus, JobStateChanged, PluginEvent, TraceEvent, event_data
+from oaken_core.events import (
+    Event,
+    EventBus,
+    JobStateChanged,
+    PluginEvent,
+    TraceEvent,
+    event_data,
+)
 from oaken_core.ids import JobId
 
 

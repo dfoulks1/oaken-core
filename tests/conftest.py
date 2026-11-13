@@ -2,16 +2,23 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from oaken_core.changelog import ChangeLog
 from oaken_core.clock import FakeClock
 from oaken_core.db import Database
-from oaken_core.jobs import Jobs, JobRunner
+from oaken_core.jobs import JobRunner, Jobs
 from oaken_core.labels import LabelMaker, LabelStore
 from oaken_core.queues import Queues
 from oaken_core.settings import JobsSettings
+
+if TYPE_CHECKING:
+    from oaken_core.agents import AgentRegistry
+    from oaken_core.operations.client import CoreClient
+    from oaken_core.operations.registry import OperationRegistry
+    from oaken_core.operations.services import Services
 
 
 @pytest.fixture(autouse=True)

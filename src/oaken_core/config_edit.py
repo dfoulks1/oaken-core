@@ -8,6 +8,7 @@ table it was asked about. It does no I/O and no validation of the result: the ca
 whole file through ``Settings`` before it writes anything.
 """
 
+import itertools
 import os
 import re
 from collections.abc import Mapping, Sequence
@@ -45,7 +46,7 @@ def looks_secret(key: str) -> bool:
     if not words or words[-1] in _WHERE_IT_LIVES:
         return False
     return any(w in _SECRET_WORDS for w in words) or any(
-        a == "api" and b == "key" for a, b in zip(words, words[1:], strict=False)
+        a == "api" and b == "key" for a, b in itertools.pairwise(words)
     )
 
 

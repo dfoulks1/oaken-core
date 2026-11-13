@@ -113,11 +113,10 @@ class Operation(Generic[In, Out]):
             )
         if self.group and not self.name.startswith(self.group + "_"):
             raise OperationDefinitionError(f"{self.name}: its group {self.group!r} must prefix it")
-        if self.plugin is not None:
-            if self.mcp == "on":
-                raise OperationDefinitionError(
-                    f"{self.name}: a plugin's operations start off over MCP"
-                )
+        if self.plugin is not None and self.mcp == "on":
+            raise OperationDefinitionError(
+                f"{self.name}: a plugin's operations start off over MCP"
+            )
 
     @property
     def cli_path(self) -> tuple[str, ...]:

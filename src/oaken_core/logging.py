@@ -30,7 +30,7 @@ ROOT = "oaken_core"
 REDACTED = "[REDACTED]"
 MAX_FIELD = 200
 _SENSITIVE = re.compile(r"token|secret|password|authorization", re.IGNORECASE)
-_CTX: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("oaken_log_ctx", default={})
+_CTX: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar("oaken_log_ctx", default={})  # noqa: B039 - never mutated: bind() sets a new dict
 _overridden: set[str] = set()  # loggers whose level a previous configure_logging set
 
 

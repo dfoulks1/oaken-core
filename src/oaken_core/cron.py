@@ -13,8 +13,8 @@ from datetime import UTC, datetime, timedelta, tzinfo
 
 from oaken_core.errors import ConfigError
 
-_MONTHS = {m: i for i, m in enumerate("jan feb mar apr may jun jul aug sep oct nov dec".split(), 1)}
-_DAYS = {d: i for i, d in enumerate("sun mon tue wed thu fri sat".split())}
+_MONTHS = {m: i for i, m in enumerate(["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1)}
+_DAYS = {d: i for i, d in enumerate(["sun", "mon", "tue", "wed", "thu", "fri", "sat"])}
 _MAX_YEARS = 5
 
 

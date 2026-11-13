@@ -91,7 +91,7 @@ async def test_set_status_and_delete_never_show_or_log_the_value(ops: Ops) -> No
 
 async def test_an_unknown_plugin_or_an_empty_secret_is_refused(ops: Ops) -> None:
     ops.svc.secrets = MemorySecrets()
-    ops.svc.host = types.SimpleNamespace(statuses=lambda: [])  # type: ignore[assignment]
+    ops.svc.host = types.SimpleNamespace(statuses=list)  # type: ignore[assignment]
     with pytest.raises(NotFound):
         await ops.client.call("secret_set", {"kind": "provider", "name": "nope", "key": "k", "value": "v"}, CLI, confirm=True)
     ops.svc.host = types.SimpleNamespace(statuses=lambda: [types.SimpleNamespace(kind="provider", name="gmail")])  # type: ignore[assignment]

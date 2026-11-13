@@ -64,12 +64,12 @@ async def log_tail(ctx: OpContext, inp: LogTailIn) -> LogTailOut:
                          data={k: v for k, v in r.items() if k not in ("ts", "level", "logger", "event", "queue")}) for r in rows[-inp.limit:]]  # fmt: skip
         path = _log_path(cfg.file)
         return LogTailOut(kept_in="file", path=str(path) if path.exists() else "", lines=lines)
-    where, args = ["level IN (%s)" % ",".join("?" * len(near))], list(near)
+    where, args = ["level IN ({})".format(",".join("?" * len(near)))], list(near)
     if inp.plugin:
         where.append("plugin = ?")
         args.append(inp.plugin)
     if inp.stage:
-        where.append("(queue = ?" + (" OR plugin IN (%s)" % ",".join("?" * len(members)) if members else "") + ")")
+        where.append("(queue = ?" + (" OR plugin IN ({})".format(",".join("?" * len(members))) if members else "") + ")")
         args += [inp.stage, *members]
     found = await ctx.svc.db.fetchall(f"SELECT ts, level, logger, plugin, queue, event, data FROM log_lines WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT ?", (*args, inp.limit))  # noqa: S608
     import json

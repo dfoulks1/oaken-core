@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
 
-import pytest
-
 from oaken_core.actors import USER
 from oaken_core.ids import SubjectId
 from oaken_core.intake import FORMAT_KIND, KIND, STORE_KIND, Intake, IntakeItem, Verdict

@@ -11,7 +11,6 @@ import platformdirs
 
 from oaken_core import identity
 
-
 POINTER_ENV = "OAKEN_STATE_DIR"  # where the last-known-home pointer lives (tests redirect it)
 POINTER_FILE = "last_home"
 

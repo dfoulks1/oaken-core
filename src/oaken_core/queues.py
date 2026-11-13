@@ -16,7 +16,7 @@ from oaken_core.errors import ConfigError, InvalidInput
 from oaken_core.labels import LabelError
 
 if TYPE_CHECKING:
-    from oaken_core.jobs import Enqueued, JobSpec, Jobs, Metrics, Stats
+    from oaken_core.jobs import Enqueued, Jobs, JobSpec, Metrics, Stats
 
 DEFAULT = "default"
 STORE = "store"  # hidden, just after default: items labelled ``store`` wait here to be stored
@@ -78,7 +78,7 @@ class Queue:
 
 class Queues:
     def __init__(self, default_workers: int = 2) -> None:
-        self._jobs: "Jobs | None" = None
+        self._jobs: Jobs | None = None
         self._queues: dict[str, Queue] = {
             DEFAULT: Queue(DEFAULT, "Where an item enters: formatters split it into parts, then it moves on to triage", default_workers, kind="formatter", label="Intake"),
             STORE: Queue(STORE, "Items labelled store wait here to be stored", 1, hidden=True, serves="ingestor"),
@@ -98,7 +98,7 @@ class Queues:
     def bind(self, jobs: "Jobs") -> None:
         """Give every queue (and those made later) the store its jobs live in."""
         self._jobs = jobs
-        for name, q in self._queues.items():
+        for q in self._queues.values():
             object.__setattr__(q, "_jobs", jobs)
 
     def get(self, name: str) -> Queue:

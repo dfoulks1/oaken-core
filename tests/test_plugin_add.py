@@ -144,7 +144,7 @@ def test_a_plugin_comes_from_core_plugins_or_local(tmp_path: Path) -> None:
         sys.path.remove(str(tmp_path / "oaken-x" / "src"))
 
 
-async def test_plugin_list_shows_the_api_each_plugin_speaks_and_status_the_one_core_speaks(rig: Rig) -> None:
+async def test_plugin_list_shows_the_api_each_plugin_speaks_and_status_the_one_core_speaks(rig: Rig) -> None:  # noqa: F811 - the imported fixture, asked for by name
     from oaken_core.plugins.contracts import PLUGIN_API_VERSION
 
     rows = (await rig.core.client.call("plugin_list", {}, CLI)).output.plugins
