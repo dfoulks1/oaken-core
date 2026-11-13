@@ -387,6 +387,43 @@ async def test_the_host_directory_reads_locality_and_concurrency_from_the_instan
         await host.stop()
 
 
+class RemoteStub(StubBackend):
+    off_machine = True  # what a plugin whose base_url is another machine says once started
+
+
+class RemoteEmbedder(StubEmbedder):
+    off_machine = True
+
+
+async def test_a_backend_that_reaches_another_machine_is_never_taken_as_local(tmp_path: Any, clock: FakeClock, core_db: Database) -> None:
+    from oaken_core.router import HostDirectory
+
+    from .test_host import STORE, make
+
+    tables = {"llm_backend": {"box": {"plugin": "remote", "locality": "local"}, "lanbox": {"plugin": "remote", "locality": "lan"},
+                              "desk": {"plugin": "stub", "locality": "local"}},
+              "embedder": {"emb": {"plugin": "remote-emb", "locality": "local"}}}  # fmt: skip
+    (tmp_path / "host").mkdir()  # core_db keeps tmp_path/core.db; the host gets its own
+    host = make(tmp_path / "host", clock, [STORE, ("llm_backend", "remote", RemoteStub), ("llm_backend", "stub", StubBackend),
+                                  ("embedder", "remote-emb", RemoteEmbedder)], tables)  # fmt: skip
+    await host.start()
+    try:
+        d = HostDirectory(host, RouterSettings(lan_allowlist=["lanbox"]))
+        known = d.backends()
+        assert known["box"].locality == "hosted"  # typed local, but the plugin says it leaves the machine
+        assert known["lanbox"].locality == "lan"  # an honest lan is kept, and the allowlist still decides
+        assert known["desk"].locality == "local"  # a plugin that does not say keeps the owner's word
+        emb = d.embedder()
+        assert emb is not None and emb.locality == "hosted"
+        router = Router(core_db, clock, RouterSettings(lan_allowlist=["lanbox"]), d)
+        with pytest.raises(ConfidentialRefused):
+            router.resolve(Route("box", "m"), call(confidential=True))
+        assert router.resolve(Route("box", "m"), call()).name == "box"  # not confidential: allowed as before
+        assert router.resolve(Route("box", "m", fallback=("lanbox",)), call(confidential=True)).name == "lanbox"
+    finally:
+        await host.stop()
+
+
 async def test_a_daily_token_budget_holds_the_job_back_until_midnight_and_cache_hits_stay_free(core_db: Database, clock: FakeClock) -> None:
     router, d = rig(core_db, clock)
     be = d.add("desk", StubBackend(answer()))
