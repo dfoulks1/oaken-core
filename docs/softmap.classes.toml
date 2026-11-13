@@ -379,6 +379,13 @@ bases = ["JobRef"]
 doc = ""
 
 [[classes]]
+name = "JobGetIn"
+module = "oaken_core.operations.builtin.queue"
+path = "src/oaken_core/operations"
+bases = ["JobRef"]
+doc = ""
+
+[[classes]]
 name = "JobRef"
 module = "oaken_core.operations.builtin.queue"
 path = "src/oaken_core/operations"

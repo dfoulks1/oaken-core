@@ -90,6 +90,7 @@ nothing here lets an agent touch the database.</p>
 <div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[swarm]</span>
 <span class="n">enabled</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">false</span><span class="w">          </span><span class="c1"># nothing is offered to agents unless this is true</span>
 <span class="n">allowed_kinds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span><span class="w">       </span><span class="c1"># job kinds an agent may ever be given, for example ["&lt;kind&gt;.&lt;name&gt;"]</span>
+<span class="n">allowed_queues</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[]</span><span class="w">      </span><span class="c1"># queues an agent made with no kinds may work, for example an enrich stage</span>
 <span class="n">max_agents</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">8</span><span class="w">           </span><span class="c1"># active (unrevoked) agents</span>
 <span class="n">default_max_leases</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">2</span><span class="w">   </span><span class="c1"># jobs one agent may hold at once</span>
 <span class="n">default_max_per_hour</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">600</span><span class="w">  </span><span class="c1"># jobs one agent may claim per hour</span>
@@ -98,9 +99,14 @@ nothing here lets an agent touch the database.</p>
 <span class="k">[jobs]</span>
 <span class="n">max_result_bytes</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">65536</span>
 </code></pre></div>
-<p><code>enabled</code> and <code>allowed_kinds</code> are set by hand in <code>config.toml</code>. The console and <code>settings set</code> leave
-them alone, because they hand job text to an outside worker. Both have to be set, so turning the swarm
-on does not give any work to anyone by itself. With the swarm off, no agent token is accepted at all.
+<p><code>enabled</code>, <code>allowed_kinds</code> and <code>allowed_queues</code> hand job text to an outside worker. They can be set in
+<code>config.toml</code> or with <code>settings set</code>, which shows the change and asks before it saves; it is never
+offered over MCP. Turning the swarm on does not give any work to anyone by itself: a kind or a queue
+has to be listed too.</p>
+<p>An agent is made with job kinds, with queues, or both. With kinds, each must be in <code>allowed_kinds</code>,
+and its queues only narrow where it looks. With no kinds, its queues are its scope: each must be in
+<code>allowed_queues</code>, and it is offered only the jobs whose result core can act on (an enrich stage's
+jobs: core stores the answers and sends the item on). A confidential item is never offered to an agent. With the swarm off, no agent token is accepted at all.
 The agent lease is long on purpose: a large model on modest hardware is slow.</p>
 <p>Which kinds make sense? Those that need a model and not the vector index, which an agent cannot reach.
 The plugin host lists them (<code>agent_eligible_kinds</code>, as <code>&lt;kind&gt;.&lt;name&gt;</code>). It only lists. You opt in.</p>

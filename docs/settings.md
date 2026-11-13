@@ -22,7 +22,7 @@ oaken reload                                         # core re-reads config.toml
 ```
 
 Only some keys are editable here. Anything that changes where core listens or keeps data, or that
-hands text to an outside worker or a LAN backend, is set by hand in `config.toml`. `get --json`
+lets a LAN backend see confidential text, is set by hand in `config.toml`. `get --json`
 marks it `editable: false` with the note `set by hand in config.toml`, and `set` refuses it:
 
 ```text
@@ -33,9 +33,9 @@ log.file cannot be changed here (set by hand in config.toml)
 | --- | --- | --- | --- |
 | `log` | `[log]` | Level, per-logger levels, format, keep days, `enabled`. | `file`, `file_max_bytes`, `file_backups`, `events_file` |
 | `jobs` | `[jobs]` | Leases, retries, backoff, timeouts, per-kind limits, store and embed defaults. | none |
-| `swarm` | `[swarm]` | Agent limits and lease time. | `enabled`, `allowed_kinds` |
+| `swarm` | `[swarm]` | Whether agents run, the kinds and queues they may take, limits and lease time. | none |
 | `router` | `[router]` | Shortcuts, confidence, token limits, waits, embedder and vector store. | `lan_allowlist` |
-| `console` | `[console]` | `palette` and `mode`. | `port` |
+| `console` | `[console]` | `enabled`, `palette` and `mode`. | `port` |
 
 `[api]`, `[queues]`, `[labels]`, `[extensions]` and each plugin's table are not here. Plugin
 settings have their own commands: see [Plugins](plugins.md).

@@ -80,7 +80,7 @@ oaken<span class="w"> </span>settings<span class="w"> </span><span class="nb">se
 oaken<span class="w"> </span>reload<span class="w">                                         </span><span class="c1"># core re-reads config.toml in place</span>
 </code></pre></div>
 <p>Only some keys are editable here. Anything that changes where core listens or keeps data, or that
-hands text to an outside worker or a LAN backend, is set by hand in <code>config.toml</code>. <code>get --json</code>
+lets a LAN backend see confidential text, is set by hand in <code>config.toml</code>. <code>get --json</code>
 marks it <code>editable: false</code> with the note <code>set by hand in config.toml</code>, and <code>set</code> refuses it:</p>
 <div class="code"><pre class="highlight"><code class="language-text">log.file cannot be changed here (set by hand in config.toml)
 </code></pre></div>
@@ -109,8 +109,8 @@ marks it <code>editable: false</code> with the note <code>set by hand in config.
 <tr>
 <td><code>swarm</code></td>
 <td><code>[swarm]</code></td>
-<td>Agent limits and lease time.</td>
-<td><code>enabled</code>, <code>allowed_kinds</code></td>
+<td>Whether agents run, the kinds and queues they may take, limits and lease time.</td>
+<td>none</td>
 </tr>
 <tr>
 <td><code>router</code></td>
@@ -121,7 +121,7 @@ marks it <code>editable: false</code> with the note <code>set by hand in config.
 <tr>
 <td><code>console</code></td>
 <td><code>[console]</code></td>
-<td><code>palette</code> and <code>mode</code>.</td>
+<td><code>enabled</code>, <code>palette</code> and <code>mode</code>.</td>
 <td><code>port</code></td>
 </tr>
 </tbody>

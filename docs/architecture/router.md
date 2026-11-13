@@ -54,6 +54,15 @@ A backend is a plugin of kind `llm_backend`. Each instance is a table
 `lan` or `hosted`; unset means `hosted`. `concurrency` (default 1) is the size of that backend's own
 semaphore. It is read when the backend is first used, so a change needs a restart.
 
+`local` is the owner's word, and the router checks it against the plugin's own. A backend or embedder
+sets `off_machine` when it starts: `True` if it sends text to another machine, `False` if only to this
+one, `None` (the default) if it cannot tell. A `local` entry whose plugin says `True` is treated as
+`hosted` and an error is logged, so a mistyped `locality` cannot send a confidential item to another
+box. To allow a box on your network, say `lan` and list it in `[router] lan_allowlist`. A plugin that
+does not say keeps the owner's word. The check is only as good as what the plugin can see: the Ollama
+plugins judge by the address in `base_url`, so a server reached through a tunnel or proxy on
+`127.0.0.1` still counts as this machine.
+
 A plugin names what it wants in `route`, as a default dict on the class. The owner overrides it in
 `[plugins.<kind>.<name>.route]`:
 
@@ -63,6 +72,7 @@ backend = "desk"
 model = "qwen3"          # empty: the backend's own default
 fallback = ["laptop"]    # tried in order if the backend errors
 min_confidence = 0.7     # overrides [router] min_confidence
+input_tokens = 500       # 0 (the default): [router] default_input_tokens; less text is a faster call
 daily_tokens = 200000    # 0 (the default): no budget
 escalate = { backend = "big", model = "qwen3-72b" }
 ```

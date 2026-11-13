@@ -58,11 +58,12 @@
       <a class="nav-link" href="#a-plugin-in-one-screen"><span class="num">2</span>A plugin in one screen</a>
       <a class="nav-link" href="#what-a-base-class-gives-you"><span class="num">3</span>What a base class gives you</a>
       <a class="nav-link" href="#template-plugins"><span class="num">4</span>Template plugins</a>
-      <a class="nav-link" href="#the-plugin-api-version"><span class="num">5</span>The plugin API version</a>
-      <a class="nav-link" href="#the-ui-contract"><span class="num">6</span>The UI contract</a>
-      <a class="nav-link" href="#testing"><span class="num">7</span>Testing</a>
-      <a class="nav-link" href="#registering-it"><span class="num">8</span>Registering it</a>
-      <a class="nav-link" href="#what-the-host-does"><span class="num">9</span>What the host does</a>
+      <a class="nav-link" href="#choosing-which-items-an-enricher-runs-on"><span class="num">5</span>Choosing which items an enricher runs on</a>
+      <a class="nav-link" href="#the-plugin-api-version"><span class="num">6</span>The plugin API version</a>
+      <a class="nav-link" href="#the-ui-contract"><span class="num">7</span>The UI contract</a>
+      <a class="nav-link" href="#testing"><span class="num">8</span>Testing</a>
+      <a class="nav-link" href="#registering-it"><span class="num">9</span>Registering it</a>
+      <a class="nav-link" href="#what-the-host-does"><span class="num">10</span>What the host does</a>
     </nav></div>
   </div></div>
 </nav>
@@ -310,6 +311,11 @@ declares <code>prompt</code>, <code>guard</code> and a default <code>route</code
 See the <a href="architecture/router.html">router</a> and <a href="architecture/prompt-safety.html">prompt safety</a>. For
 embeddings and nearest-example lookups add <code>BaseVecAnalyzer</code>. <code>BaseMultitenant</code> says several workers
 may run the plugin at once.</p>
+<p>A backend or embedder that can reach another machine says so. Set <code>self.off_machine</code> in <code>start</code>:
+<code>True</code> when the address you were given is not this machine, <code>False</code> when it is. The router never
+takes an off-machine plugin as <code>local</code>, whatever its table says (see the
+<a href="architecture/router.html">router</a>). The host strips <code>locality</code> from your config, so this is the only
+way your plugin can speak up.</p>
 </section>
 <section id="template-plugins" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Template plugins</h2></div>
 <p>A template runs only as named instances, each given what makes it what it is. The <code>llm</code> triager is
@@ -327,17 +333,50 @@ table that says which template it is:</p>
 <span class="n">criteria</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"A company that could buy a vector database."</span>
 </code></pre></div>
 <p>Tables are <code>[plugins.&lt;kind&gt;.&lt;name&gt;]</code>. The keys <code>enabled</code>, <code>plugin</code>, <code>class</code>, <code>stage</code>, <code>locality</code>,
-<code>concurrency</code>, <code>route</code>, <code>prompt</code> and <code>guard</code> belong to the host. Your <code>ctx.config</code> never holds them.
+<code>concurrency</code>, <code>route</code>, <code>prompt</code>, <code>guard</code>, <code>when</code> and <code>unless</code> belong to the host. Your <code>ctx.config</code> never holds them.
 <code>class = &quot;pkg.mod:Class&quot;</code> loads a class with no entry point. Use <code>setup_help</code> and <code>config_example</code> to
 say what the template is for.</p>
 </section>
-<section id="the-plugin-api-version" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>The plugin API version</h2></div>
+<section id="choosing-which-items-an-enricher-runs-on" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Choosing which items an enricher runs on</h2></div>
+<p>By default an enricher runs on every item that reaches its stage. <code>when</code> and <code>unless</code> in its table
+narrow that, so a slow model only sees the items worth its time:</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.enricher.summary]</span>
+<span class="n">plugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"llm"</span>
+<span class="n">instructions</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"Summarize the item in one sentence."</span>
+<span class="n">when</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"work"</span><span class="p">,</span><span class="w"> </span><span class="s2">"priority=high"</span><span class="p">]</span><span class="w">   </span><span class="c1"># every entry must hold</span>
+<span class="n">unless</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"confidential"</span><span class="w">            </span><span class="c1"># none may hold; one entry can be a plain string</span>
+</code></pre></div>
+<p>Each entry is tested against the labels the item carries:</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Entry</th>
+<th>Holds when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>key=value</code></td>
+<td>the label <code>key</code> is exactly <code>value</code></td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>the label <code>name</code> is set (not empty and not <code>false</code>), or <code>name</code> is a tag a filter added (one of the comma lists in <code>sieve.labels</code> or <code>filters.labels</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>The labels are the ones set at intake and triage, plus any an earlier enricher set, so one enricher
+can decide whether a later one runs. With no <code>when</code> and no <code>unless</code> the enricher runs on everything.
+An item no enricher of a stage selects gets no job in that stage and moves straight on. Only enrichers
+take these keys.</p>
+</section>
+<section id="the-plugin-api-version" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>The plugin API version</h2></div>
 <p><code>PLUGIN_API_VERSION</code> (now 1, in <code>repo:src/oaken_core/plugins/contracts.py</code>) is the shape of the
 contracts. A plugin whose <code>api_version</code> differs is refused, and the reason shows beside it. Plugin
 authors should set it explicitly, as the example does. <code>requires_core</code> is the separate, finer check
 against core's own version. See <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>.</p>
 </section>
-<section id="the-ui-contract" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>The UI contract</h2></div>
+<section id="the-ui-contract" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>The UI contract</h2></div>
 <p>A plugin declares its console UI as data, never markup (<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0018-a-web-ui-contract-for-plugins.md">ADR 0018</a>).
 Override <code>ui()</code> and return a <code>UiSpec</code> (<code>repo:src/oaken_core/plugins/ui.py</code> checks it):</p>
 <div class="table-responsive"><table class="table table-sm table-striped align-middle">
@@ -374,7 +413,7 @@ Override <code>ui()</code> and return a <code>UiSpec</code> (<code>repo:src/oake
 the plugin's own operations. Core owns the HTML, escaping and CSRF. If <code>check_ui</code> finds a problem, core
 ignores the spec and builds the settings modal from the schema. Without <code>ui()</code>, that is what you get.</p>
 </section>
-<section id="testing" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>Testing</h2></div>
+<section id="testing" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>Testing</h2></div>
 <p>Contract suites live in <code>repo:src/oaken_core/testing/contracts.py</code>. There is one for each of four
 kinds: <code>EmbedderContract</code>, <code>LLMContract</code>, <code>VectorStoreContract</code> and <code>CacheContract</code>. Use one as a
 pytest mixin and override the fixture:</p>
@@ -390,7 +429,7 @@ the host's own validity rules too. Other kinds have no suite yet: test them as t
 <p><code>repo:src/oaken_core/router/stub.py</code> gives a scripted <code>StubBackend</code>, a <code>StubEmbedder</code> and
 <code>MemoryVectors</code> for testing code that uses a model, with no network.</p>
 </section>
-<section id="registering-it" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>Registering it</h2></div>
+<section id="registering-it" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>Registering it</h2></div>
 <p>Add an entry point in your package's <code>pyproject.toml</code>, in the group of your kind. The entry-point
 name is the plugin's name. Core's own plugins do exactly this.</p>
 <div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[project.entry-points.</span><span class="s2">"oaken_core.triagers"</span><span class="k">]</span>
@@ -400,7 +439,7 @@ name is the plugin's name. Core's own plugins do exactly this.</p>
 writes the config table. <code>oaken plugins</code> lists the plugins in the <code>oaken-plugins</code> package and your
 <code>[extensions] dirs</code>, with <code>--kind</code> and <code>--tag</code> filters.</p>
 </section>
-<section id="what-the-host-does" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>What the host does</h2></div>
+<section id="what-the-host-does" class="doc-section"><div class="section-head"><span class="section-num">10</span><h2>What the host does</h2></div>
 <ul>
 <li><strong>Load.</strong> Imports the plugin and checks it: <code>api_version</code>, <code>requires_core</code>, the members of its
 kind, its commands, jobs and UI. It reports every problem at once.</li>

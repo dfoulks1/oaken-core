@@ -27,6 +27,7 @@ nothing here lets an agent touch the database.
 [swarm]
 enabled = false          # nothing is offered to agents unless this is true
 allowed_kinds = []       # job kinds an agent may ever be given, for example ["<kind>.<name>"]
+allowed_queues = []      # queues an agent made with no kinds may work, for example an enrich stage
 max_agents = 8           # active (unrevoked) agents
 default_max_leases = 2   # jobs one agent may hold at once
 default_max_per_hour = 600  # jobs one agent may claim per hour
@@ -36,9 +37,15 @@ agent_lease_seconds = 600   # how long an agent holds a job before it must heart
 max_result_bytes = 65536
 ```
 
-`enabled` and `allowed_kinds` are set by hand in `config.toml`. The console and `settings set` leave
-them alone, because they hand job text to an outside worker. Both have to be set, so turning the swarm
-on does not give any work to anyone by itself. With the swarm off, no agent token is accepted at all.
+`enabled`, `allowed_kinds` and `allowed_queues` hand job text to an outside worker. They can be set in
+`config.toml` or with `settings set`, which shows the change and asks before it saves; it is never
+offered over MCP. Turning the swarm on does not give any work to anyone by itself: a kind or a queue
+has to be listed too.
+
+An agent is made with job kinds, with queues, or both. With kinds, each must be in `allowed_kinds`,
+and its queues only narrow where it looks. With no kinds, its queues are its scope: each must be in
+`allowed_queues`, and it is offered only the jobs whose result core can act on (an enrich stage's
+jobs: core stores the answers and sends the item on). A confidential item is never offered to an agent. With the swarm off, no agent token is accepted at all.
 The agent lease is long on purpose: a large model on modest hardware is slow.
 
 Which kinds make sense? Those that need a model and not the vector index, which an agent cannot reach.

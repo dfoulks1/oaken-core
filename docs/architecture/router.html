@@ -124,6 +124,14 @@ second retry. If nothing larger may answer, a low-confidence answer is kept, and
 <code>[plugins.llm_backend.&lt;name&gt;]</code> with <code>plugin</code>, <code>locality</code> and <code>concurrency</code>. <code>locality</code> is <code>local</code>,
 <code>lan</code> or <code>hosted</code>; unset means <code>hosted</code>. <code>concurrency</code> (default 1) is the size of that backend's own
 semaphore. It is read when the backend is first used, so a change needs a restart.</p>
+<p><code>local</code> is the owner's word, and the router checks it against the plugin's own. A backend or embedder
+sets <code>off_machine</code> when it starts: <code>True</code> if it sends text to another machine, <code>False</code> if only to this
+one, <code>None</code> (the default) if it cannot tell. A <code>local</code> entry whose plugin says <code>True</code> is treated as
+<code>hosted</code> and an error is logged, so a mistyped <code>locality</code> cannot send a confidential item to another
+box. To allow a box on your network, say <code>lan</code> and list it in <code>[router] lan_allowlist</code>. A plugin that
+does not say keeps the owner's word. The check is only as good as what the plugin can see: the Ollama
+plugins judge by the address in <code>base_url</code>, so a server reached through a tunnel or proxy on
+<code>127.0.0.1</code> still counts as this machine.</p>
 <p>A plugin names what it wants in <code>route</code>, as a default dict on the class. The owner overrides it in
 <code>[plugins.&lt;kind&gt;.&lt;name&gt;.route]</code>:</p>
 <div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.triager.llm.route]</span>
@@ -131,6 +139,7 @@ semaphore. It is read when the backend is first used, so a change needs a restar
 <span class="n">model</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"qwen3"</span><span class="w">          </span><span class="c1"># empty: the backend's own default</span>
 <span class="n">fallback</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"laptop"</span><span class="p">]</span><span class="w">    </span><span class="c1"># tried in order if the backend errors</span>
 <span class="n">min_confidence</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mf">0.7</span><span class="w">     </span><span class="c1"># overrides [router] min_confidence</span>
+<span class="n">input_tokens</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">500</span><span class="w">       </span><span class="c1"># 0 (the default): [router] default_input_tokens; less text is a faster call</span>
 <span class="n">daily_tokens</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200000</span><span class="w">    </span><span class="c1"># 0 (the default): no budget</span>
 <span class="n">escalate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">backend</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"big"</span><span class="p">,</span><span class="w"> </span><span class="n">model</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"qwen3-72b"</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>

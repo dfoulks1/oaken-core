@@ -160,6 +160,12 @@ See the [router](architecture/router.md) and [prompt safety](architecture/prompt
 embeddings and nearest-example lookups add `BaseVecAnalyzer`. `BaseMultitenant` says several workers
 may run the plugin at once.
 
+A backend or embedder that can reach another machine says so. Set `self.off_machine` in `start`:
+`True` when the address you were given is not this machine, `False` when it is. The router never
+takes an off-machine plugin as `local`, whatever its table says (see the
+[router](architecture/router.md)). The host strips `locality` from your config, so this is the only
+way your plugin can speak up.
+
 ## Template plugins
 
 A template runs only as named instances, each given what makes it what it is. The `llm` triager is
@@ -183,9 +189,34 @@ criteria = "A company that could buy a vector database."
 ```
 
 Tables are `[plugins.<kind>.<name>]`. The keys `enabled`, `plugin`, `class`, `stage`, `locality`,
-`concurrency`, `route`, `prompt` and `guard` belong to the host. Your `ctx.config` never holds them.
+`concurrency`, `route`, `prompt`, `guard`, `when` and `unless` belong to the host. Your `ctx.config` never holds them.
 `class = "pkg.mod:Class"` loads a class with no entry point. Use `setup_help` and `config_example` to
 say what the template is for.
+
+## Choosing which items an enricher runs on
+
+By default an enricher runs on every item that reaches its stage. `when` and `unless` in its table
+narrow that, so a slow model only sees the items worth its time:
+
+```toml
+[plugins.enricher.summary]
+plugin = "llm"
+instructions = "Summarize the item in one sentence."
+when = ["work", "priority=high"]   # every entry must hold
+unless = "confidential"            # none may hold; one entry can be a plain string
+```
+
+Each entry is tested against the labels the item carries:
+
+| Entry | Holds when |
+| --- | --- |
+| `key=value` | the label `key` is exactly `value` |
+| `name` | the label `name` is set (not empty and not `false`), or `name` is a tag a filter added (one of the comma lists in `sieve.labels` or `filters.labels`) |
+
+The labels are the ones set at intake and triage, plus any an earlier enricher set, so one enricher
+can decide whether a later one runs. With no `when` and no `unless` the enricher runs on everything.
+An item no enricher of a stage selects gets no job in that stage and moves straight on. Only enrichers
+take these keys.
 
 ## The plugin API version
 
