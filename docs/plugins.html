@@ -293,6 +293,12 @@ It is in the operation registry like any core operation, so the CLI builds a ver
 (confirmed). For a <code>mutate</code>, <code>preview</code> names a method that says what would change. A command is off
 over MCP until the user turns it on (<code>mcp=&quot;never&quot;</code> keeps it off for good). A plugin that fails to load
 takes its commands with it.</p>
+<p>An MCP client is not cleared for confidential items unless its door says so (see
+<a href="architecture/operations.html#the-confidential-gate">the confidential gate</a>), and such a client is
+offered only the commands that declare <code>confidential_aware=True</code>. Declare it when the command never
+returns item content, or when it reads <code>ctx.confidential</code> and, if that is <code>False</code>, leaves out every
+item whose <code>confidential</code> label is <code>&quot;true&quot;</code> (<code>oaken_core.confidential.is_confidential</code>). A command that
+does not declare it keeps working for the person and for cleared clients.</p>
 <p>Do not write <code>enable</code>, <code>disable</code>, <code>reload</code> or settings commands. Core does those for every plugin
 (the operations <code>plugin_enable</code>, <code>plugin_disable</code>, <code>plugin_reload</code>).</p>
 <h3 id="tables-labels-and-deferred">Tables, labels and Deferred</h3>

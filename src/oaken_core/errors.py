@@ -101,6 +101,13 @@ class ConfidentialRefused(PermissionDenied):
     code = "confidential_refused"
 
 
+class ConfidentialWithheld(PermissionDenied):
+    """The item is labelled confidential and this caller's door has not cleared it for such items
+    (an MCP client, by default). Nothing from the item is returned."""
+
+    code = "confidential_withheld"
+
+
 class ConfirmationInvalid(PermissionDenied):
     """A confirmation token that is unknown, used already, expired, or for a different call."""
 

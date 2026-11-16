@@ -140,6 +140,13 @@ It is in the operation registry like any core operation, so the CLI builds a ver
 over MCP until the user turns it on (`mcp="never"` keeps it off for good). A plugin that fails to load
 takes its commands with it.
 
+An MCP client is not cleared for confidential items unless its door says so (see
+[the confidential gate](architecture/operations.md#the-confidential-gate)), and such a client is
+offered only the commands that declare `confidential_aware=True`. Declare it when the command never
+returns item content, or when it reads `ctx.confidential` and, if that is `False`, leaves out every
+item whose `confidential` label is `"true"` (`oaken_core.confidential.is_confidential`). A command that
+does not declare it keeps working for the person and for cleared clients.
+
 Do not write `enable`, `disable`, `reload` or settings commands. Core does those for every plugin
 (the operations `plugin_enable`, `plugin_disable`, `plugin_reload`).
 

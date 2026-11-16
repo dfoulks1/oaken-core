@@ -213,6 +213,10 @@ class ApiSettings(BaseModel):
     mcp_enabled: bool = (
         True  # the master switch for the person's MCP door (agents have their own)
     )
+    # May the person's MCP door hand out items labelled confidential? Off by default: an MCP client
+    # can be a hosted model, and the token says nothing about where its answers go. Turn it on only
+    # when every client holding the MCP token runs its model on this machine.
+    mcp_confidential: bool = False
     mcp_max_body_bytes: int = Field(default=256_000, ge=1024)
     mcp_max_concurrent: int = Field(default=8, ge=1)
     mcp_max_result_bytes: int = Field(default=256_000, ge=1024)

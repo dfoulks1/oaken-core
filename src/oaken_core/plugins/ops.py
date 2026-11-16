@@ -34,8 +34,9 @@ def adapt(host: PluginHost, offered: OfferedOperation) -> AnyOperation:
 
     def pctx(ctx: OpContext) -> Any:
         return host.operation_context(
-            plugin, ctx.caller.client, ctx.caller.actor.label or ctx.caller.actor.kind
-        )
+            plugin, ctx.caller.client, ctx.caller.actor.label or ctx.caller.actor.kind,
+            confidential=ctx.caller.may_see_confidential,
+        )  # fmt: skip
 
     async def handler(ctx: OpContext, inp: BaseModel) -> BaseModel:
         try:
@@ -77,6 +78,7 @@ def adapt(host: PluginHost, offered: OfferedOperation) -> AnyOperation:
         plugin=plugin,
         template=offered.template,
         description=f"Offered by the {plugin} plugin.",
+        confidential_aware=d.confidential_aware,
     )
 
 

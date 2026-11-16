@@ -7,7 +7,8 @@ token must also have been granted the operation.
 
 
 This is the one path every operation takes, so the rules cannot be skipped: the MCP exposure check,
-input validation, the permission class, the confirm gate, the handler, then the audit row. The
+the confidential gate (an MCP caller its door has not cleared is offered no plugin operation that does
+not honour it), input validation, the permission class, the confirm gate, the handler, then the audit row. The
 HTTP layer wraps this later; the tests drive it as it is.
 """
 
@@ -85,6 +86,7 @@ class CoreClient:
         return [
             op for op in self.registry.all()
             if self.exposure.effective(op, chosen) and self._granted(op, agent)
+            and self._cleared(op, caller)
         ]  # fmt: skip
 
     async def _agent(self, caller: CallerContext) -> Agent | None:
@@ -109,6 +111,16 @@ class CoreClient:
             op.plugin is not None and f"plugin:{op.plugin}" in agent.operations
         )
 
+    @staticmethod
+    def _cleared(op: AnyOperation, caller: CallerContext) -> bool:
+        """May this caller reach ``op`` as far as confidential items go? A caller cleared for them
+        reaches everything; one that is not reaches core's operations (which check in their
+        handlers) and the plugin operations that declare they honour the gate. A plugin that has not
+        said is assumed to hand out whatever it reads."""
+        if caller.may_see_confidential or op.plugin is None:
+            return True
+        return op.confidential_aware
+
     async def call(
         self,
         name: str,
@@ -129,7 +141,11 @@ class CoreClient:
             # The same words whether it never exists for MCP, is switched off, or this agent was
             # not granted it: an agent learns nothing about what it was not offered.
             agent = await self._agent(caller)
-            if not await self.exposure.enabled(op) or not self._granted(op, agent):
+            if (
+                not await self.exposure.enabled(op)
+                or not self._granted(op, agent)
+                or not self._cleared(op, caller)
+            ):
                 raise NotExposed(f"operation {name!r} is not available to MCP clients")
         inp = self._parse(op, payload)
         if op.permission == "send":

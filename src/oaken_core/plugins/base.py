@@ -135,16 +135,20 @@ def command(
     permission: Literal["read", "mutate"] = "read",
     preview: str | None = None,
     mcp: Literal["off", "never"] = "off",
+    confidential_aware: bool = False,
 ) -> Callable[[F], F]:
     """Offer a method of your plugin as a command: an operation core registers as
     ``<plugin>.<name>``. ``preview`` names another method (same signature, returning
     ``PluginPreview``) that says what a ``mutate`` command would change. A command is never on over
-    MCP until the user turns it on."""
+    MCP until the user turns it on. ``confidential_aware=True`` promises the method leaves out items
+    labelled confidential when ``ctx.confidential`` is False (or never returns item content); only
+    such commands are offered to an MCP client that may not see confidential items."""
 
     def wrap(fn: F) -> F:
         fn._oaken_command = {  # type: ignore[attr-defined]
             "name": name, "summary": summary, "input": input, "output": output,
             "permission": permission, "preview": preview, "mcp": mcp,
+            "confidential_aware": confidential_aware,
         }  # fmt: skip
         return fn
 
@@ -263,6 +267,7 @@ class BasePlugin:
                     name=spec["name"], summary=spec["summary"], permission=spec["permission"],
                     input=spec["input"], output=spec["output"], handler=getattr(self, attr),
                     preview=preview, mcp=spec["mcp"],
+                    confidential_aware=spec.get("confidential_aware", False),
                 )  # fmt: skip
             )
         return found

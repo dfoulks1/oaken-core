@@ -38,6 +38,7 @@ class LabelGetOut(BaseModel):
 @operation("label_get", "A subject's labels: the effective value and both layers.", permission="read",
            input=LabelGetIn, output=LabelGetOut, mcp="on", group="label")  # fmt: skip
 async def label_get(ctx: OpContext, inp: LabelGetIn) -> LabelGetOut:
+    await ctx.withhold_confidential(inp.subject_id)  # a label can be read off the item (an enricher's topic, say)
     store = ctx.svc.labels
     keys = [inp.key] if inp.key else sorted(await store.all(inp.subject_id))
     out = []
@@ -61,6 +62,7 @@ class LabelSetOut(BaseModel):
 
 async def preview_label_set(ctx: OpContext, inp: LabelSetIn) -> Preview:
     ctx.svc.labels.maker.check(inp.key, inp.value)  # a bad key or value fails before the proposal
+    await ctx.withhold_confidential(inp.subject_id)  # the proposal shows the value it replaces
     layer = "human" if ctx.caller.actor.kind == "user" else "machine"
     before = (await ctx.svc.labels.layers(inp.subject_id, inp.key)).get(layer)
     return Preview(summary=f"Set {inp.key}={inp.value} on {inp.subject_id} ({layer} layer)",
@@ -152,7 +154,8 @@ async def label_find(ctx: OpContext, inp: LabelFindIn) -> LabelFindOut:
         found = await ctx.svc.labels.find(inp.key, inp.value, inp.limit)
     except LabelError as exc:
         raise InvalidInput(exc.message) from None
-    return LabelFindOut(key=inp.key, hits=[LabelHit(subject_id=s, value=v) for s, v in found])
+    hidden = await ctx.confidential_among(s for s, _ in found)
+    return LabelFindOut(key=inp.key, hits=[LabelHit(subject_id=s, value=v) for s, v in found if s not in hidden])
 
 
 # -- define, change and remove a key (the owner's, in config.toml) -----------------------------

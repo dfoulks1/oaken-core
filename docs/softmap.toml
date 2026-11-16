@@ -117,11 +117,11 @@ layer = "operations"
 status = "built"
 path = "src/oaken_core/operations"
 summary = "Every action core offers is one operation: typed input and output, a permission class, an MCP mode and an optional preview. The CLI, API, MCP and console are generated from it. A change is a proposal until a person confirms it."
-uses = ["pluginhost", "jobs", "queues", "scheduler", "labels", "changelog", "router", "agents", "settings", "events", "database"]
+uses = ["pluginhost", "jobs", "queues", "scheduler", "labels", "changelog", "router", "agents", "settings", "events", "database", "confidential"]
 types = [
   ["Operation", "dataclass", "Name, summary, permission, input and output models, mcp mode, preview, group."],
   ["OperationRegistry", "class", "Core's operations plus the ones loaded plugins offer."],
-  ["CoreClient", "class", "Calls an operation as a caller: validates, gates mutations, audits."],
+  ["CoreClient", "class", "Calls an operation as a caller: validates, gates mutations and confidential items, audits."],
   ["Services", "dataclass", "What an operation may reach: the host, jobs, queues, scheduler, labels and more."],
 ]
 notes = ["`pluginhost` notifies this layer with the operations a plugin offers; the registry takes them."]
@@ -325,12 +325,21 @@ name = "Agents"
 layer = "runtime"
 status = "built"
 path = "src/oaken_core/agents.py"
-summary = "External workers with their own tokens that lease jobs over the API or MCP. Off unless enabled; each agent is bounded by the kinds, queues and quotas of its token."
-uses = ["database", "events", "settings"]
+summary = "External workers with their own tokens that lease jobs over the API or MCP. Off unless enabled; each agent is bounded by the kinds, queues and quotas of its token, and by the locality the person states for it."
+uses = ["database", "events", "settings", "confidential"]
 untrusted = true
 types = [
   ["AgentRegistry", "class", "Creates, authenticates and bounds agents."],
 ]
+
+[[components]]
+id = "confidential"
+name = "Confidentiality"
+layer = "runtime"
+status = "built"
+path = "src/oaken_core/confidential.py"
+summary = "What is confidential (the effective confidential label) and who may see it (only something whose locality is local). Every check calls it."
+uses = []
 
 # --- State -------------------------------------------------------------------------------
 [[components]]

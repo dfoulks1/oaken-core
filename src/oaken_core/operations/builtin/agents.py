@@ -4,6 +4,7 @@
 
 from pydantic import BaseModel, Field
 
+from oaken_core.confidential import STRICTEST, Locality
 from oaken_core.errors import InvalidInput, NotFound
 from oaken_core.ids import AgentId
 from oaken_core.operations.context import OpContext
@@ -21,13 +22,14 @@ class AgentRow(BaseModel):
     max_per_hour: int
     revoked: bool
     last_seen_at: str | None
+    locality: Locality
 
 
 def _row(a) -> AgentRow:  # type: ignore[no-untyped-def]
     return AgentRow(id=a.id, label=a.label, kinds=sorted(a.kinds),
                     queues=sorted(a.queues) if a.queues is not None else None,
                     operations=sorted(a.operations), max_leases=a.max_leases,
-                    max_per_hour=a.max_per_hour, revoked=a.revoked,
+                    max_per_hour=a.max_per_hour, revoked=a.revoked, locality=a.locality,
                     last_seen_at=a.last_seen_at.isoformat() if a.last_seen_at else None)  # fmt: skip
 
 
@@ -38,6 +40,9 @@ class AgentCreateIn(BaseModel):
     operations: list[str] = Field(default_factory=list, description="Operations it may call beyond the job protocol.")
     max_leases: int | None = Field(default=None, ge=1)
     max_per_hour: int | None = Field(default=None, ge=1)
+    locality: Locality = Field(default=STRICTEST, description=(
+        "Where the agent and its model run: local (this machine), lan or hosted. Only a local agent"
+        " is handed confidential content. Default hosted."))  # fmt: skip
 
 
 class AgentCreateOut(BaseModel):
@@ -62,7 +67,7 @@ def _check_grants(ctx: OpContext, names: list[str]) -> None:
 
 
 async def preview_create(ctx: OpContext, inp: AgentCreateIn) -> Preview:
-    return Preview(summary=f"Create agent {inp.label!r} for {', '.join(inp.kinds)}",
+    return Preview(summary=f"Create {inp.locality} agent {inp.label!r} for {', '.join(inp.kinds)}",
                    changes=[Change(target=inp.label, field="agent", after="new")], total_changes=1)  # fmt: skip
 
 
@@ -72,7 +77,7 @@ async def agent_create(ctx: OpContext, inp: AgentCreateIn) -> AgentCreateOut:
     _check_grants(ctx, inp.operations)
     agent, token = await need(ctx.svc.agents, "the agent registry").create(
         inp.label, inp.kinds, queues=inp.queues, operations=inp.operations,
-        max_leases=inp.max_leases, max_per_hour=inp.max_per_hour,
+        max_leases=inp.max_leases, max_per_hour=inp.max_per_hour, locality=inp.locality,
     )  # fmt: skip
     return AgentCreateOut(agent=_row(agent), token=token)
 

@@ -124,7 +124,9 @@ label change does not move jobs already queued: use <code>requeue</code> with a 
 <p><strong>Pause.</strong> <code>oaken queue pause NAME</code> stops a queue handing out jobs. Running jobs finish. The switch
 is a row in <code>queue_state</code>, so it survives a restart. <code>oaken queue resume NAME</code> undoes it. Pausing is
 how you free a GPU or stop a stage while you fix a plugin. Each change is published as a
-<code>QueueStateChanged</code> event.</p>
+<code>QueueStateChanged</code> event. A paused queue still hands out jobs at <code>PRIORITY_USER</code> (100) or above: a user's own
+request (such as <code>item_rerun</code>, which defaults to that priority) runs next, even with the queue closed. Everything
+else waits for the resume.</p>
 </section>
 <section id="the-job-lifecycle" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>The job lifecycle</h2></div>
 <p>A job is a row in <code>core.db</code>. A worker <em>claims</em> it: one short transaction marks the best runnable

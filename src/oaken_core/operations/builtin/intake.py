@@ -103,6 +103,7 @@ def _ingestor(ctx: OpContext) -> Any:
 @operation("item_show", "An item's context: the parts the ingestor stored, its labels and its history. Read back through the active ingestor.",
            permission="read", input=ItemShowIn, output=ItemShowOut, mcp="off", group="item")  # fmt: skip
 async def item_show(ctx: OpContext, inp: ItemShowIn) -> ItemShowOut:
+    await ctx.withhold_confidential(inp.id)
     ingestor = _ingestor(ctx)
     parts = await ingestor.read(inp.id, inp.part)
     rows = await ctx.svc.changelog.rows(ctx.svc.db, inp.id, None, 50)
@@ -138,6 +139,7 @@ def _walk(value: Any, path: list[str], where: str) -> Any:
 @operation("item_get", "One named thing from an item, as a value: a part, a path into a part (headers.subject), or a label (labels.format). Prints just the value.",
            permission="read", input=ItemGetIn, output=ItemGetOut, mcp="off", group="item")  # fmt: skip
 async def item_get(ctx: OpContext, inp: ItemGetIn) -> ItemGetOut:
+    await ctx.withhold_confidential(inp.id)
     head, *path = inp.name.split(".")
     if head == "labels":
         labels = await ctx.svc.labels.all(inp.id)

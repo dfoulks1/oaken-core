@@ -108,6 +108,33 @@ the ceiling stays above any grant. A revoke or a changed grant applies at once.
 The person's MCP door also has a master switch, `[api] mcp_enabled`. Results over MCP are cut at
 `[api] mcp_max_result_bytes` (256000), and a result that holds outside text is fenced as data.
 
+### The confidential gate
+
+Exposure says which operations an MCP client may call. It does not say whether the client may be
+handed an item labelled `confidential`, and an MCP client can be a hosted model. So each caller also
+carries a clearance, `CallerContext.confidential`, set by its door and never by anything it sends:
+
+| Door | Cleared for confidential items |
+|---|---|
+| CLI, console, core itself | yes |
+| The person's MCP door (`/mcp`) | only if `[api] mcp_confidential = true` (default `false`) |
+| The agent door (`/mcp/agent`) | only if the agent's `locality` is `local` (default `hosted`) |
+
+`mcp_confidential` is set by hand in `config.toml`. Turn it on only when every client that holds the
+MCP token runs its model on this machine. An agent's `locality` is set by the person in `agent_create`.
+
+An uncleared caller gets nothing from a confidential item:
+
+- `item_show`, `item_get` and `label_get` refuse it with `confidential_withheld`, before anything is
+  read, and so does a `label_set` proposal (it would show the value it replaces);
+- `label_find` and `log_list` leave its rows out;
+- plugin operations are offered only if they declare `confidential_aware` (see
+  [plugins](../plugins.md#commands)); the rest are not offered, with the same answer as an operation
+  that is switched off.
+
+A handler that reads items calls `ctx.withhold_confidential(subject_id)` or
+`ctx.confidential_among(subject_ids)` on its `OpContext`.
+
 ## Plugin operations
 
 A plugin can offer operations, named `<plugin>.<name>`. They get the same gate, the same audit and

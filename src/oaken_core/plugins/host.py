@@ -1276,11 +1276,11 @@ class PluginHost:
             if r.started and r.healthy and r.instance is not None
         ]  # fmt: skip
 
-    def _opctx(self, rec: _Record, client: str, actor: str) -> PluginOpContext:
+    def _opctx(self, rec: _Record, client: str, actor: str, confidential: bool) -> PluginOpContext:
         assert rec.ctx is not None
         return PluginOpContext(
             plugin=rec.name, client=client, actor=actor, config=dict(rec.ctx.config),
-            clock=self.clock, log=rec.ctx.log, labels=rec.ctx.labels,
+            clock=self.clock, log=rec.ctx.log, labels=rec.ctx.labels, confidential=confidential,
         )  # fmt: skip
 
     def offered_operations(self) -> list[OfferedOperation]:
@@ -1308,11 +1308,12 @@ class PluginHost:
         return out
 
     def operation_context(
-        self, plugin: str, client: str, actor: str
+        self, plugin: str, client: str, actor: str, *, confidential: bool = False
     ) -> PluginOpContext:
+        """``confidential``: may the caller be handed confidential items (no unless said)."""
         for rec in self._shared():
             if rec.name == plugin and rec.ctx is not None:
-                return self._opctx(rec, client, actor)
+                return self._opctx(rec, client, actor, confidential)
         raise NotFound(f"plugin {plugin!r} is not running")
 
     def offered_job_handlers(self) -> list[OfferedJobHandler]:

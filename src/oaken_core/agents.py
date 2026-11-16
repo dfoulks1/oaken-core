@@ -17,6 +17,12 @@ from datetime import datetime
 from sqlite3 import Row
 
 from oaken_core.clock import Clock, fmt_ts, parse_ts
+from oaken_core.confidential import (
+    LOCALITIES,
+    STRICTEST,
+    Locality,
+    may_see_confidential,
+)
 from oaken_core.db import Database
 from oaken_core.errors import ConfigError, NotFound, PermissionDenied, QuotaExceeded
 from oaken_core.events import EventBus, JobStateChanged
@@ -43,6 +49,12 @@ class Agent:
     created_at: datetime
     last_seen_at: datetime | None
     revoked_at: datetime | None
+    locality: Locality = STRICTEST  # where it runs, as the person said when creating it
+
+    @property
+    def may_see_confidential(self) -> bool:
+        """Whether this agent may be handed confidential content (only a ``local`` one)."""
+        return may_see_confidential(self.locality)
 
     @property
     def worker(self) -> str:
@@ -67,6 +79,7 @@ class Agent:
             created_at=parse_ts(r["created_at"]),
             last_seen_at=parse_ts(r["last_seen_at"]) if r["last_seen_at"] else None,
             revoked_at=parse_ts(r["revoked_at"]) if r["revoked_at"] else None,
+            locality=r["locality"] if r["locality"] in LOCALITIES else STRICTEST,
         )
 
 
@@ -92,9 +105,13 @@ class AgentRegistry:
         operations: Collection[str] = (),
         max_leases: int | None = None,
         max_per_hour: int | None = None,
+        locality: str = STRICTEST,
     ) -> tuple[Agent, str]:
-        """Register an agent. Returns it with its token, which cannot be shown again."""
+        """Register an agent. Returns it with its token, which cannot be shown again. ``locality``
+        is where it runs, as the person says; only a ``local`` agent is handed confidential content."""
         s = self.settings
+        if locality not in LOCALITIES:
+            raise ConfigError(f"an agent's locality is one of {', '.join(LOCALITIES)}")
         if not s.enabled:
             raise PermissionDenied("the swarm is disabled ([swarm] enabled = false)")
         label = label.strip()
@@ -122,8 +139,8 @@ class AgentRegistry:
                 raise QuotaExceeded(f"at most {s.max_agents} active agents ([swarm] max_agents)")
             await tx.execute(
                 "INSERT INTO agents (id, label, token_hash, kinds_json, queues_json,"
-                " max_leases, max_per_hour, created_at, operations_json)"
-                " VALUES (?,?,?,?,?,?,?,?,?)",
+                " max_leases, max_per_hour, created_at, operations_json, locality)"
+                " VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (
                     agent_id,
                     label,
@@ -134,6 +151,7 @@ class AgentRegistry:
                     hourly,
                     fmt_ts(now),
                     json.dumps(sorted(set(operations))),
+                    locality,
                 ),
             )
             created = await tx.fetchone("SELECT * FROM agents WHERE id = ?", (agent_id,))

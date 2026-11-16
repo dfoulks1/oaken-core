@@ -150,6 +150,9 @@ class PluginOpContext:
     labels: PluginLabels | None = None
     # The active store (``BaseStore``): records by create, get, list, count, update, delete. A plugin that keeps data uses this, not SQL.
     store: Any = None
+    # May the caller be handed items labelled confidential? False for an MCP client its door has not
+    # cleared. A command declared ``confidential_aware`` must leave such items out when this is False.
+    confidential: bool = False
 
 
 @dataclass(frozen=True)
@@ -183,6 +186,10 @@ class PluginOperation:
     console, and by proposal and token over MCP; give it a ``preview`` to say what it would change.
     ``mcp`` is ``off`` (the user may turn it on) or ``never`` (they may not): a plugin's operations
     are never on by default. ``input`` and ``output`` are pydantic models.
+
+    ``confidential_aware`` says the handler honours ``PluginOpContext.confidential``: it returns
+    nothing from an item labelled confidential when that is False (or it never returns item content
+    at all). An MCP client that may not see confidential items is offered only commands that say so.
     """
 
     name: str
@@ -193,6 +200,7 @@ class PluginOperation:
     handler: PluginOpHandler
     preview: PluginOpPreview | None = None
     mcp: Literal["off", "never"] = "off"
+    confidential_aware: bool = False
 
 
 # -- A plugin's UI, as data (oaken-mail ADR 0018) ----------------------------------------------

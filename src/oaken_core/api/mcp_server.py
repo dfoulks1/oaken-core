@@ -20,6 +20,11 @@ The transport is the official SDK's streamable HTTP, stateless and answering wit
 is no long-lived stream to hold a concurrency slot and nothing to resume. Host, Origin, the token
 and the size and concurrency limits are the guard's (``oaken_core.api.guard``); the surface, not any
 header, makes the caller ``mcp``.
+
+The door also says whether its caller may be handed confidential items, and by default it may not:
+an MCP client can be a hosted model. The person's door follows ``[api] mcp_confidential``; the agent
+door follows the agent's ``locality``, which only the person sets. ``CoreClient`` and the handlers do
+the rest (see ``CallerContext.confidential``).
 """
 
 import asyncio
@@ -232,11 +237,13 @@ class McpServer:
     # -- tools -------------------------------------------------------------------------------
     def _caller(self) -> CallerContext:
         if self._agents is None:
-            return CallerContext.mcp("mcp")
+            return CallerContext.mcp("mcp", confidential=self._cfg.mcp_confidential)
         agent = _AGENT.get()
         if agent is None:  # the guard let a request through with no agent: nothing is offered
             raise NotExposed("no agent is calling")
-        return CallerContext.mcp(agent.label, agent_id=str(agent.id))
+        return CallerContext.mcp(
+            agent.label, agent_id=str(agent.id), confidential=agent.may_see_confidential
+        )
 
     async def _list_tools(
         self, ctx: Any, params: types.PaginatedRequestParams | None
