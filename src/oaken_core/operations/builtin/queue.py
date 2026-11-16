@@ -222,7 +222,7 @@ class ClaimOut(BaseModel):
     content_is_untrusted: bool = True  # the MCP door fences the result in a DATA block
 
 
-@operation("job_claim", "Lease the best job in a queue that this token may take.",
+@operation("job_claim", "Lease the best job in a queue that this token may take. A confidential job goes only to a local agent.",
            permission="read", input=ClaimIn, output=ClaimOut, mcp="on", group="job", agent_ok=True,
            audit="always")  # fmt: skip
 async def job_claim(ctx: OpContext, inp: ClaimIn) -> ClaimOut:

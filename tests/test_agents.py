@@ -108,3 +108,59 @@ async def test_job_state_changes_reach_the_event_bus(kit: Kit) -> None:
     seen = [(await stream.__anext__()).status for _ in range(3)]  # type: ignore[attr-defined]
     assert seen == ["queued", "running", "succeeded"] and enq.created
     await stream.aclose()
+
+
+# -- confidential jobs (security review: swarm agents got whole payloads, confidential or not) --
+
+
+async def _jobs_for(kit: Kit) -> dict[str, str]:
+    """Queue one job per case, highest priority first, so a claim that skips one takes the next."""
+    from oaken_core.actors import SYSTEM, USER
+
+    cases: dict[str, tuple[str | None, str]] = {
+        "label": ("s-label", "{}"),  # the subject's machine label says confidential
+        "human": ("s-human", "{}"),  # the person said so over a machine "false"
+        "embed": (None, '{"subject_id": "s", "text": "x", "confidential": true}'),
+        "intake": (None, '{"labels": {"confidential": "true"}, "body": "x"}'),
+        "cleared": ("s-cleared", "{}"),  # the machine said confidential, the person said it is not
+        "plain": ("s-plain", "{}"),
+        "odd": (None, "[1, 2]"),  # not an object: nothing in it says confidential
+        "broken": (None, "not json"),  # must not break the claim for everyone
+    }
+    await kit.labels.set("s-label", "confidential", "true", SYSTEM)
+    await kit.labels.set("s-human", "confidential", "false", SYSTEM)
+    await kit.labels.set("s-human", "confidential", "true", USER)
+    await kit.labels.set("s-cleared", "confidential", "true", SYSTEM)
+    await kit.labels.set("s-cleared", "confidential", "false", USER)
+    await kit.labels.set("s-plain", "confidential", "false", SYSTEM)
+    ids = {}
+    for i, (name, (subject, payload)) in enumerate(cases.items()):
+        ids[(await kit.jobs.enqueue("llm.summarize", payload, subject=subject, priority=90 - 10 * i)).job_id] = name
+    return ids
+
+
+async def test_an_agent_that_is_not_local_never_gets_a_confidential_job(kit: Kit) -> None:
+    swarm = SwarmSettings(enabled=True, allowed_kinds=["llm.summarize"], default_max_leases=20)
+    kit.jobs.swarm = swarm
+    agents = AgentRegistry(kit.db, kit.clock, swarm)
+    ids = await _jobs_for(kit)
+    for locality in ("hosted", "lan"):
+        agent, _ = await agents.create(locality, ["llm.summarize"], locality=locality)
+        got = []
+        while (job := await kit.jobs.claim("x", "default", ["llm.summarize"], agent=agent)) is not None:
+            got.append(ids[job.id])
+        assert got == ["cleared", "plain", "odd", "broken"][: len(got)]
+    local, _ = await agents.create("desk", ["llm.summarize"], locality="local")
+    got = []
+    while (job := await kit.jobs.claim("x", "default", ["llm.summarize"], agent=local)) is not None:
+        got.append(ids[job.id])
+    assert got == ["label", "human", "embed", "intake"]  # what the others left is the local agent's
+
+
+async def test_core_workers_still_run_confidential_jobs(kit: Kit) -> None:
+    from oaken_core.actors import SYSTEM
+
+    await kit.labels.set("s", "confidential", "true", SYSTEM)
+    await kit.jobs.enqueue("llm.summarize", "{}", subject="s")
+    job = await kit.jobs.claim("w", "default", ["llm.summarize"])  # no agent: core's own worker
+    assert job is not None and job.subject == "s"

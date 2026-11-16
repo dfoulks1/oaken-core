@@ -31,6 +31,7 @@ from oaken_core.actors import SYSTEM, Actor
 from oaken_core.agents import Agent
 from oaken_core.changelog import ChangeLog
 from oaken_core.clock import Clock, fmt_ts, parse_ts
+from oaken_core.confidential import LABEL as CONFIDENTIAL
 from oaken_core.db import Database, Tx
 from oaken_core.errors import (
     Deferred,
@@ -55,6 +56,21 @@ M = TypeVar("M", bound=BaseModel)
 PRIORITY_USER = 100  # something the user just asked for
 PRIORITY_INGEST = 50
 PRIORITY_BACKFILL = 10
+
+# A job is confidential when its subject's effective ``confidential`` label is "true" (the human
+# value if set, else the machine one, as ``LabelStore.get``), or when its payload says so (an embed
+# job carries ``confidential``; an intake job carries the item's ``labels``). Kept as SQL so the
+# claim skips such a job inside its own transaction instead of leasing it and handing it back.
+_NOT_CONFIDENTIAL = (
+    " AND NOT EXISTS (SELECT 1 FROM labels l WHERE l.subject_id = jobs.subject AND l.key = ?"
+    " AND l.value = 'true' AND (l.layer = 'human' OR NOT EXISTS (SELECT 1 FROM labels h"
+    " WHERE h.subject_id = l.subject_id AND h.key = l.key AND h.layer = 'human')))"
+    # CASE, because only it promises order: json_type() on text that is not JSON raises, and one
+    # such payload would break every agent's claim. NULL (absent) is not a yes.
+    " AND NOT CASE WHEN json_valid(payload_json) AND json_type(payload_json) = 'object' THEN"
+    " COALESCE(json_extract(payload_json, '$.confidential') IN (1, 'true')"
+    " OR json_extract(payload_json, '$.labels.confidential') = 'true', 0) ELSE 0 END"
+)
 
 MAX_ERROR_CHARS = 500
 _SECRET_TEXT = re.compile(
@@ -345,10 +361,12 @@ class Jobs:
         With ``agent`` the claim is made for an external agent (``worker`` becomes
         ``agent.worker``). The agent is re-read inside the transaction: it must not be revoked,
         the queue and kinds must be in its scope, and its lease and hourly quotas hold, so a
-        revoked or over-quota agent can never slip a job through."""
+        revoked or over-quota agent can never slip a job through. An agent whose locality is not
+        ``local`` is never handed a confidential job: it stays queued for a local worker."""
         now = self.clock.now()
         changes: list[_Change] = []
         job: Job | None = None
+        hide_confidential = False
         async with self.db.transaction() as tx:
             if agent is not None:
                 scoped = await self._agent_scope(tx, agent, now)
@@ -356,6 +374,7 @@ class Jobs:
                     return None
                 kinds = [k for k in kinds if k in scoped.kinds]
                 worker = scoped.worker
+                hide_confidential = not scoped.may_see_confidential
             changes += await self._reclaim_expired(tx, now)
             paused = await tx.fetchone("SELECT paused FROM queue_state WHERE queue = ?", (queue,))
             blocked = await self._blocked_kinds(tx, limits or {})
@@ -364,11 +383,12 @@ class Jobs:
             if allowed:
                 marks = ",".join("?" * len(allowed))
                 floor = PRIORITY_USER if paused and paused["paused"] else 0  # closed: only what the user asked for gets through
+                hidden = _NOT_CONFIDENTIAL if hide_confidential else ""
                 row = await tx.fetchone(
                     "SELECT * FROM jobs WHERE status = 'queued' AND queue = ? AND run_after <= ?"
-                    f" AND kind IN ({marks}) AND priority >= ?"  # noqa: S608 (only "?" placeholders)
+                    f" AND kind IN ({marks}) AND priority >= ?{hidden}"  # noqa: S608 (only "?" placeholders)
                     " ORDER BY priority DESC, run_after, created_at, id LIMIT 1",
-                    (queue, fmt_ts(now), *allowed, floor),
+                    (queue, fmt_ts(now), *allowed, floor, *((CONFIDENTIAL,) if hidden else ())),
                 )
             if row is not None:
                 seconds = self.swarm.agent_lease_seconds if agent else self.settings.lease_seconds

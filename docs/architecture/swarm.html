@@ -140,15 +140,33 @@ envelope, a randomized delimiter block with a note that nothing in it is an inst
 <p>Handing a job to an agent sends that job's text to the agent, and if the agent is a hosted model, to
 its provider. So:</p>
 <ul>
-<li>a kind is never offered to an agent unless you listed it in <code>allowed_kinds</code>;</li>
-<li>you choose per kind, so an agent can take one kind and never see another;</li>
-<li>an agent can be limited to certain queues;</li>
-<li>an agent calls only the job protocol, plus operations you grant it by name (or <code>plugin:&lt;name&gt;</code>). The
-<code>never</code> ceiling on an operation stays above any grant.</li>
+<li>
+<p>a kind is never offered to an agent unless you listed it in <code>allowed_kinds</code>;</p>
+</li>
+<li>
+<p>you choose per kind, so an agent can take one kind and never see another;</p>
+</li>
+<li>
+<p>an agent can be limited to certain queues;</p>
+</li>
+<li>
+<p>an agent calls only the job protocol, plus operations you grant it by name (or <code>plugin:&lt;name&gt;</code>). The
+<code>never</code> ceiling on an operation stays above any grant.</p>
+</li>
+<li>
+<p><strong>a confidential job goes only to a local agent.</strong> Each agent has a <code>locality</code>, in the router's
+words: <code>local</code> (it and its model run on this machine), <code>lan</code> or <code>hosted</code>. You state it when you create
+the agent (<code>agent_create</code>, default <code>hosted</code>), and the agent cannot change it. A claim by an agent that
+is not <code>local</code> skips every job that is confidential, inside the claim's own transaction: a job whose
+subject's <code>confidential</code> label is <code>true</code> (the person's value if set, else the machine's), or whose
+payload says <code>confidential: true</code> or carries <code>labels.confidential = &quot;true&quot;</code>. The job stays queued for a
+local agent or for core's own workers, which run it under the router's rules as usual.</p>
+</li>
 </ul>
 <p>Local-first is not local-only, and a model that is not on this machine can still be yours: a second
-machine on your network, a box you rent, an internal service. Core cannot tell which is which. It is
-your call, and the change log shows what each agent did.</p>
+machine on your network, a box you rent, an internal service. Core cannot check where an agent runs, so
+<code>local</code> is your word for it, like a backend's <code>locality</code>; say <code>local</code> only for an agent whose model
+runs here. The change log shows what each agent did.</p>
 </section>
 <section id="over-http" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Over HTTP</h2></div>
 <p>An agent works through four routes on the <a href="daemon.html">local API</a>, each authenticated by its own token:</p>
@@ -200,7 +218,8 @@ learns nothing about what it was not offered.</p>
 <span class="n">allowed_kinds</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">[</span><span class="s2">"&lt;kind&gt;.&lt;name&gt;"</span><span class="p">]</span>
 </code></pre></div>
 <p>Reload core, then create the agent and revoke it when you are done:</p>
-<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>agent<span class="w"> </span>create<span class="w"> </span>--label<span class="w"> </span><span class="s2">"big model"</span><span class="w"> </span>--kinds<span class="w"> </span>&lt;kind&gt;.&lt;name&gt;<span class="w"> </span>--yes
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>agent<span class="w"> </span>create<span class="w"> </span>--label<span class="w"> </span><span class="s2">"big model"</span><span class="w"> </span>--kinds<span class="w"> </span>&lt;kind&gt;.&lt;name&gt;<span class="w"> </span>--yes<span class="w">                      </span><span class="c1"># hosted: never sees confidential jobs</span>
+oaken<span class="w"> </span>agent<span class="w"> </span>create<span class="w"> </span>--label<span class="w"> </span><span class="s2">"desk model"</span><span class="w"> </span>--kinds<span class="w"> </span>&lt;kind&gt;.&lt;name&gt;<span class="w"> </span>--locality<span class="w"> </span><span class="nb">local</span><span class="w"> </span>--yes<span class="w">   </span><span class="c1"># runs here: may take confidential ones</span>
 oaken<span class="w"> </span>agent<span class="w"> </span>revoke<span class="w"> </span>--agent-id<span class="w"> </span>AGENT_ID<span class="w"> </span>--yes
 </code></pre></div>
 <p>Point a script or MCP client at the agent door with the token it printed. The loop is: claim a job; if

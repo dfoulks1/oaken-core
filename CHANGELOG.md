@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- **Agents:** an agent now has a `locality` (`local`, `lan` or `hosted`), stated by the person in `agent_create` and shown by `agent_list`.
+  It defaults to `hosted`, the strictest, and existing agents become `hosted`. Only a `local` agent may be handed confidential content. New
+  `oaken_core.confidential` holds the one rule for what is confidential and who may see it (migration 0009).
+- **Swarm:** `job_claim` no longer hands a confidential job to an agent that is not `local`. The claim skips, in its own transaction, a job
+  whose subject's effective `confidential` label is `true` or whose payload says it is confidential; the job waits for a local agent or
+  core's own workers. Before, any agent allowed a kind received every job of it, confidential or not.
 - **Router:** `locality = "local"` is no longer taken on the owner's word alone. An LLM backend or embedder may say, once started, that it sends
   text to another machine (`off_machine = True`, new on `BaseLLMBackend` and `BaseEmbedder`); the router then treats it as `hosted` and logs an
   error, so a confidential item cannot reach another box through a mistyped locality. A plugin that does not say keeps the owner's word.

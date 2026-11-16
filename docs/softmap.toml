@@ -325,12 +325,21 @@ name = "Agents"
 layer = "runtime"
 status = "built"
 path = "src/oaken_core/agents.py"
-summary = "External workers with their own tokens that lease jobs over the API or MCP. Off unless enabled; each agent is bounded by the kinds, queues and quotas of its token."
-uses = ["database", "events", "settings"]
+summary = "External workers with their own tokens that lease jobs over the API or MCP. Off unless enabled; each agent is bounded by the kinds, queues and quotas of its token, and by the locality the person states for it."
+uses = ["database", "events", "settings", "confidential"]
 untrusted = true
 types = [
   ["AgentRegistry", "class", "Creates, authenticates and bounds agents."],
 ]
+
+[[components]]
+id = "confidential"
+name = "Confidentiality"
+layer = "runtime"
+status = "built"
+path = "src/oaken_core/confidential.py"
+summary = "What is confidential (the effective confidential label) and who may see it (only something whose locality is local). Every check calls it."
+uses = []
 
 # --- State -------------------------------------------------------------------------------
 [[components]]

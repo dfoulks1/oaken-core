@@ -91,9 +91,18 @@ its provider. So:
 - an agent calls only the job protocol, plus operations you grant it by name (or `plugin:<name>`). The
   `never` ceiling on an operation stays above any grant.
 
+- **a confidential job goes only to a local agent.** Each agent has a `locality`, in the router's
+  words: `local` (it and its model run on this machine), `lan` or `hosted`. You state it when you create
+  the agent (`agent_create`, default `hosted`), and the agent cannot change it. A claim by an agent that
+  is not `local` skips every job that is confidential, inside the claim's own transaction: a job whose
+  subject's `confidential` label is `true` (the person's value if set, else the machine's), or whose
+  payload says `confidential: true` or carries `labels.confidential = "true"`. The job stays queued for a
+  local agent or for core's own workers, which run it under the router's rules as usual.
+
 Local-first is not local-only, and a model that is not on this machine can still be yours: a second
-machine on your network, a box you rent, an internal service. Core cannot tell which is which. It is
-your call, and the change log shows what each agent did.
+machine on your network, a box you rent, an internal service. Core cannot check where an agent runs, so
+`local` is your word for it, like a backend's `locality`; say `local` only for an agent whose model
+runs here. The change log shows what each agent did.
 
 ## Over HTTP
 
@@ -136,7 +145,8 @@ allowed_kinds = ["<kind>.<name>"]
 Reload core, then create the agent and revoke it when you are done:
 
 ```bash
-oaken agent create --label "big model" --kinds <kind>.<name> --yes
+oaken agent create --label "big model" --kinds <kind>.<name> --yes                      # hosted: never sees confidential jobs
+oaken agent create --label "desk model" --kinds <kind>.<name> --locality local --yes   # runs here: may take confidential ones
 oaken agent revoke --agent-id AGENT_ID --yes
 ```
 
