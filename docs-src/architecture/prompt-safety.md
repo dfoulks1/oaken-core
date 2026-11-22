@@ -58,6 +58,10 @@ cut to the backend's context window (and to `default_input_tokens`, 2000). Later
 
 ## Confidential items
 
+The router is one of three places that keep a confidential item off other machines. The others are the agent door
+([swarm](swarm.md): a confidential job goes only to a `local` agent) and the MCP doors
+([operations](operations.md): a client needs clearance to read one).
+
 An item labelled `confidential = "true"` (a reserved label) must stay off remote machines. The router
 reads each backend's `locality` from its table, `[plugins.llm_backend.<name>]`:
 

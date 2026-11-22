@@ -34,6 +34,7 @@ that for development, so a test run never touches your real home.
 ```text
 src/oaken_core/   core: daemon, API, console, operations, jobs, queues, plugin host, store seam
 tests/            core's tests
+tools/            QA.sh: rebuild the docs, lint, summarise
 docs-src/         the knowledge base: Markdown sources, site generator (tools/)
 docs-src/origin/  the architecture decisions core inherited from oaken-mail
 docs-src/prompts/ the build prompts, in order
@@ -69,6 +70,11 @@ Contributions produced with generative AI tooling must follow the ASF's
 - Public-facing AI-generated text (the docs site, release notes, announcements, security
   advisories) must be reviewed by a committer before publishing, or be labeled as AI-generated
   (EU AI Act). Reviewing it as you would any other contribution is enough.
+
+## Quality checks
+
+`tools/QA.sh` runs the docs rebuild and every lint in one go and prints what passed and failed. `tools/QA.sh --tests` adds pytest.
+The release procedure is in [docs-src/releasing.md](docs-src/releasing.md).
 
 ## Documentation
 

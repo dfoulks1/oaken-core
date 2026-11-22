@@ -1,0 +1,192 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Releasing Oaken · Oaken Core</title>
+<meta name="description" content="The release procedure for oaken-core and oaken-plugins: versions, the pin between them, the changelog, the build, the QA script, the upload order and the clean-install check.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Releasing Oaken · Oaken Core">
+<meta property="og:description" content="The release procedure for oaken-core and oaken-plugins: versions, the pin between them, the changelog, the build, the QA script, the upload order and the clean-install check.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+<header class="topbar d-lg-none">
+  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
+  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> OAKEN CORE</span>
+</header>
+<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
+  <div class="offcanvas-header d-lg-none">
+    <span class="offcanvas-title fw-bold">Menu</span>
+    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
+  </div>
+  <div class="offcanvas-body"><div class="sidebar-inner">
+    <div class="top"><a class="brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
+    <div class="what">How oaken-core and oaken-plugins reach PyPI</div>
+    <div class="docnav"><a class="home-link" href="index.html">&#8962; Home</a>
+      <div class="label">Start</div>
+      <a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a>
+      <a class="doc-link" href="keyring.html">Store credentials in your keyring</a>
+      <a class="doc-link" href="settings.html">Settings, storage and the event log</a>
+      <div class="label">Concepts</div>
+      <a class="doc-link" href="architecture/overview.html">Architecture overview</a>
+      <a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a>
+      <a class="doc-link" href="architecture/software-map.html">Software map</a>
+      <a class="doc-link" href="architecture/swarm.html">The swarm</a>
+      <a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a>
+      <a class="doc-link" href="plugins.html">Writing a plugin</a>
+      <a class="doc-link" href="architecture/router.html">The model router</a>
+      <a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a>
+      <a class="doc-link" href="architecture/operations.html">Operations</a>
+      <div class="label">Project</div>
+      <a class="doc-link current" href="releasing.html" aria-current="page">Releasing Oaken</a>
+      <a class="doc-link" href="adr/index.html">Architecture decisions</a>
+    </div>
+    <div class="gh"><div class="label">GitHub</div>
+      <a href="https://github.com/dfoulks1/oaken-core">Repository</a><a href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a><a class="star" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo</a></div>
+    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
+      <a class="nav-link" href="#the-two-packages"><span class="num">1</span>The two packages</a>
+      <a class="nav-link" href="#versions-and-the-pin"><span class="num">2</span>Versions and the pin</a>
+      <a class="nav-link" href="#before-you-build"><span class="num">3</span>Before you build</a>
+      <a class="nav-link" href="#build-and-check"><span class="num">4</span>Build and check</a>
+      <a class="nav-link" href="#prove-a-clean-install"><span class="num">5</span>Prove a clean install</a>
+      <a class="nav-link" href="#upload"><span class="num">6</span>Upload</a>
+      <a class="nav-link" href="#after-release"><span class="num">7</span>After release</a>
+      <a class="nav-link" href="#ai-assisted-work"><span class="num">8</span>AI-assisted work</a>
+    </nav></div>
+  </div></div>
+</nav>
+<main id="content" tabindex="-1">
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"></div>
+    <h1 class="display-6">Releasing Oaken</h1>
+    <p class="lead">Oaken ships as two independent packages. This page is the whole procedure: what each package is, what to check, the order to upload in, and how to confirm a clean install works.</p>
+  </header>
+
+<section id="the-two-packages" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>The two packages</h2></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Package</th>
+<th>What it is</th>
+<th>Repository</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>oaken-core</code></td>
+<td>The pipeline, plugin host, operations, CLI, API, MCP door and console. It has no nouns.</td>
+<td><code>oaken-core</code></td>
+</tr>
+<tr>
+<td><code>oaken-plugins</code></td>
+<td>The plugins you add to core: providers, formatters, triagers, enrichers, ingestors, backends. One distribution, a subpackage per plugin.</td>
+<td><code>oaken-plugins</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>They are separate projects with separate versions. <code>oaken-plugins</code> depends on core with a range
+(<code>oaken-core&gt;=1.0.0,&lt;2</code>) and core never imports a plugin. A product (a mail client, a CRM) is a third
+thing: a small package on top of both. It is not part of this release.</p>
+</section>
+<section id="versions-and-the-pin" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Versions and the pin</h2></div>
+<ul>
+<li>Core and plugins version independently. Core follows <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0010-the-stable-surface-and-its-versioning.md">the stable surface</a>:
+a breaking change to a plugin contract, an operation, a config key or a CLI command needs a new major.</li>
+<li>Raise the floor in <code>oaken-plugins</code> (<code>pyproject.toml</code>) only when it needs something core added. Say what
+in a comment beside the pin.</li>
+<li>Each plugin also declares the core versions it needs (<code>requires_core</code>). The host refuses one that does not fit.</li>
+<li>Unreleased work lives under <code>## Unreleased</code> in <code>CHANGELOG.md</code>. At release, rename the heading to the version.</li>
+</ul>
+</section>
+<section id="before-you-build" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>Before you build</h2></div>
+<ol>
+<li>
+<p>Merge what is going out. A migration is numbered in order: if two branches both add <code>0009_*.sql</code>, the
+later merge renumbers its file and every test that lists migrations (<code>tests/test_store.py</code>, <code>tests/test_host.py</code>).</p>
+</li>
+<li>
+<p>Fold the changelog and set <code>version</code> in <code>pyproject.toml</code>.</p>
+</li>
+<li>
+<p>Run the QA script from the repository root:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">tools/QA.sh<span class="w">           </span><span class="c1"># rebuild the docs, lint, a summary of what passed</span>
+tools/QA.sh<span class="w"> </span>--tests<span class="w">   </span><span class="c1"># the same, plus pytest</span>
+</code></pre></div>
+<p>It rebuilds the site into <code>docs/</code>, checks the class map, links and anchors, runs the docs tool tests,
+and runs ruff and mypy. Ruff gates; mypy and the formatter are reported only. If it changed <code>docs/</code>,
+commit that.</p>
+</li>
+<li>
+<p>Review the changed documents and seal them (<code>bower</code> records that a human reviewed the exact bytes of a
+file, so seal last: any edit afterwards breaks the seal).</p>
+</li>
+</ol>
+</section>
+<section id="build-and-check" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Build and check</h2></div>
+<p>From each repository:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">uv<span class="w"> </span>build<span class="w">                 </span><span class="c1"># writes dist/&lt;name&gt;-&lt;version&gt;.tar.gz and .whl</span>
+uvx<span class="w"> </span>twine<span class="w"> </span>check<span class="w"> </span>dist/*<span class="w">   </span><span class="c1"># both files must say PASSED</span>
+</code></pre></div>
+<p>Look inside the source archive once: <code>tar tzf dist/&lt;name&gt;-&lt;version&gt;.tar.gz</code>. Core's is limited to <code>src</code>, <code>tests</code>,
+<code>docs-src</code> and the project files by <code>[tool.hatch.build.targets.sdist]</code>, so local tooling and the generated site
+do not ship.</p>
+</section>
+<section id="prove-a-clean-install" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Prove a clean install</h2></div>
+<p>In a new virtual environment, with a throwaway home, install the two wheels and run the pipeline once:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">python<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>/tmp/v<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>/tmp/v/bin/pip<span class="w"> </span>install<span class="w"> </span>dist/*.whl
+<span class="nv">O</span><span class="o">=</span><span class="s2">"/tmp/v/bin/oaken --oaken-home /tmp/home"</span>
+<span class="nv">$O</span><span class="w"> </span>start
+<span class="nv">$O</span><span class="w"> </span>plugins<span class="w">                       </span><span class="c1"># the oaken-plugins catalog</span>
+<span class="nv">$O</span><span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>formatter.ini<span class="w"> </span>--yes
+<span class="nv">$O</span><span class="w"> </span>intake<span class="w"> </span>submit<span class="w"> </span>--yes<span class="w"> </span>--source<span class="w"> </span>smoke<span class="w"> </span>--format<span class="w"> </span>ini<span class="w"> </span>--body<span class="w"> </span><span class="s1">$'[a]\nx=1\n[b]\ny=2'</span>
+<span class="nv">$O</span><span class="w"> </span>items<span class="w"> </span>list<span class="w">                    </span><span class="c1"># one item, with parts a and b</span>
+<span class="nv">$O</span><span class="w"> </span>stop
+</code></pre></div>
+<p>Two things surprise a first-time user. <code>intake submit</code> prints the subject id of the submission, which is not the id
+the stored item gets, so <code>oaken item show --id</code> with it finds nothing; use <code>oaken items list</code> (plural, the built-in
+ingestor's command). <code>oaken item</code> (singular) is the core command group and has no <code>list</code>.</p>
+</section>
+<section id="upload" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Upload</h2></div>
+<p>Uploading to PyPI is final: a version number can never be used again, and a yanked release still counts as used.
+Upload in this order, and stop between the two to confirm the first installs:</p>
+<ol>
+<li><code>oaken-core</code>, because <code>oaken-plugins</code> requires it.</li>
+<li><code>oaken-plugins</code>.</li>
+</ol>
+<div class="code"><pre class="highlight"><code class="language-bash">uv<span class="w"> </span>publish<span class="w"> </span>dist/oaken_core-&lt;version&gt;*<span class="w">       </span><span class="c1"># needs a PyPI token (UV_PUBLISH_TOKEN)</span>
+uv<span class="w"> </span>publish<span class="w"> </span>dist/oaken_plugins-&lt;version&gt;*
+</code></pre></div>
+<p>Then tag each repository (<code>v&lt;version&gt;</code>), push the tag, and publish the GitHub release with the changelog entry.</p>
+</section>
+<section id="after-release" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>After release</h2></div>
+<ul>
+<li>Reinstall both from PyPI in a new environment and repeat the clean-install check above.</li>
+<li>The old 0.x <code>oaken-core</code> bundle and the <code>oaken</code> and <code>oaken-cli</code> names were retired by 1.0.0. A final release of
+each that points here is a separate step. Check their status on PyPI first.</li>
+</ul>
+</section>
+<section id="ai-assisted-work" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>AI-assisted work</h2></div>
+<p>Public-facing text (this site, release notes, announcements) that an AI helped write is reviewed by a human before it
+ships, or is labelled AI-generated. See <a href="https://github.com/dfoulks1/oaken-core/blob/main/CONTRIBUTING.md">CONTRIBUTING</a>. Each commit carries a <code>Co-Authored-By</code>
+trailer naming the model that helped.</p>
+</section>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>

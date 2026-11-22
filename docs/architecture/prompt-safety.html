@@ -49,6 +49,7 @@
       <a class="doc-link current" href="prompt-safety.html" aria-current="page">Prompt safety</a>
       <a class="doc-link" href="operations.html">Operations</a>
       <div class="label">Project</div>
+      <a class="doc-link" href="../releasing.html">Releasing Oaken</a>
       <a class="doc-link" href="../adr/index.html">Architecture decisions</a>
     </div>
     <div class="gh"><div class="label">GitHub</div>
@@ -121,6 +122,9 @@ Then the call raises <code>AIBackendError</code> and stores nothing. Error text 
 cut to the backend's context window (and to <code>default_input_tokens</code>, 2000). Later parts are cut first.</p>
 </section>
 <section id="confidential-items" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Confidential items</h2></div>
+<p>The router is one of three places that keep a confidential item off other machines. The others are the agent door
+(<a href="swarm.html">swarm</a>: a confidential job goes only to a <code>local</code> agent) and the MCP doors
+(<a href="operations.html">operations</a>: a client needs clearance to read one).</p>
 <p>An item labelled <code>confidential = &quot;true&quot;</code> (a reserved label) must stay off remote machines. The router
 reads each backend's <code>locality</code> from its table, <code>[plugins.llm_backend.&lt;name&gt;]</code>:</p>
 <div class="table-responsive"><table class="table table-sm table-striped align-middle">

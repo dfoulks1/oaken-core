@@ -78,5 +78,9 @@ id = "architecture/software-map"
 generated = true
 
 [[pages]]
+id = "releasing"
+file = "releasing.md"
+
+[[pages]]
 id = "adr/index"
 generated = true
