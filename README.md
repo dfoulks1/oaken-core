@@ -3,8 +3,6 @@
 An async pipeline and a plugin loader. It has no nouns: no message, no person, no file. What an item *is* comes from the plugins
 you load, so the same core runs a mail client, a CRM, or whatever you build.
 
-**Alpha.** It works and it is used, but expect rough edges and change.
-
 ```bash
 pip install oaken-core
 oaken start                    # the daemon, in the background
@@ -47,5 +45,5 @@ uv sync
 uv run pytest
 ```
 
-The architecture decisions it inherited from oaken-mail are in [`docs/origin/`](docs/origin/). See [CONTRIBUTING.md](CONTRIBUTING.md)
+The architecture decisions it inherited from oaken-mail are in [`docs-src/origin/`](docs-src/origin/). See [CONTRIBUTING.md](CONTRIBUTING.md)
 (including the rules for AI-assisted contributions) and [SECURITY.md](SECURITY.md). Apache-2.0.

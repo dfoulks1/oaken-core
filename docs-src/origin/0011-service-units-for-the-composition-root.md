@@ -16,7 +16,7 @@ parallel `name → stop-handler` dict and walked `reversed(self._started)`. A st
 not the other would `KeyError` on shutdown, and the ordering was implicit in statement order rather
 than declared. Adding a subsystem meant editing both methods (and the store-close tail), which is
 exactly the kind of core churn this stabilization work is meant to remove
-(`docs/prompts/CORE_34-stabilize-core.md`, Stage 1 §2).
+(`docs-src/prompts/CORE_34-stabilize-core.md`, Stage 1 §2).
 
 ## Decision
 

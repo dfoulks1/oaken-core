@@ -1,7 +1,7 @@
 # Site registry. Every Markdown file under docs/ must be listed here or excluded below,
 # otherwise check_docs.py reports it as an orphan.
 
-# Globs (relative to docs/, '*' crosses '/') that are not site content. docs/tools/** is always excluded.
+# Globs (relative to docs/, '*' crosses '/') that are not site content. docs-src/tools/** is always excluded.
 exclude = ["origin/*.md"]
 
 [site]
@@ -9,6 +9,7 @@ title = "Oaken Core"
 description = "An async pipeline and a plugin loader. It has no nouns."
 repo = "https://github.com/dfoulks1/oaken-core"
 url = "https://dfoulks1.github.io/oaken-core/"
+out = "docs"  # where the built site is published (GitHub Pages serves /docs)
 branch = "main"
 home = "index.md"
 

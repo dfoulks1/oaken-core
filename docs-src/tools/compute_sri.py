@@ -4,7 +4,7 @@
 
 Run this by hand when you change a pinned version in PINNED below:
 
-    uv run --group docs python docs/tools/compute_sri.py
+    uv run --group docs python docs-src/tools/compute_sri.py
 
 The hash is sha384 over the exact bytes jsDelivr serves, base64-encoded, which is what the
 ``integrity`` attribute expects. pagebase.py reads sri.toml; nothing at build time touches

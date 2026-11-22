@@ -2,7 +2,6 @@
 title = "Events, jobs and the scheduler"
 subtitle = "How core does work in the background"
 lead = "An in-memory event bus says what happened. A durable job queue does the work and survives a crash. A scheduler puts recurring work on that queue."
-badges = [["text-bg-warning", "Alpha"]]
 group = "concepts"
 order = 20
 description = "The event bus and logs, the durable job queues with leases and retries, queue pause, and the scheduler."

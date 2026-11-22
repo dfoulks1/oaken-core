@@ -1,9 +1,17 @@
 # Changelog
 
-## 1.0.1 (alpha)
+## 1.0.0
 
-What a product with a browser UI, and the plugins, needed on top of 1.0.0.
+The first release of Oaken Core as its own project: the pipeline and plugin loader taken out of oaken-mail and made generic. It replaces the
+old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cli`.
 
+- **Pipeline:** Intake (providers submit, formatters split into parts), triage before storage, an ingestor and a store plugin, labels,
+  queues and stages, jobs with leases and retries, a scheduler.
+- **Plugins:** a host with plugin kinds, templates (many instances of one plugin), tags, versions, API and core version ranges;
+  `plugin add`, `plugin remove`, `plugins --kind --tag`; plugins document themselves.
+- **Doors:** the `oaken` CLI, a local HTTP API, an MCP server, and a console (loopback only) that draws every plugin's settings.
+- **Models:** a router with local, LAN and hosted backends, an answer cache and a ledger; confidential items stay local.
+- **Products:** `identity.configure(app, title, prog, daemon)` lets a package wrap core under its own name and home.
 - **Operations:** `plugin_choices` (what an instance offers to pick from, such as a backend's models), `item_rerun` (now registered, and takes a batch),
   `item_enrichments`; an enrichment records how long its enricher took. A rerun gives enrichers the item's text.
 - **Enrichers:** `when` and `unless` in an enricher's table choose which items it runs on (a bare name is a label or tag; `key=value` is exact).
@@ -23,16 +31,3 @@ What a product with a browser UI, and the plugins, needed on top of 1.0.0.
   text to another machine (`off_machine = True`, new on `BaseLLMBackend` and `BaseEmbedder`); the router then treats it as `hosted` and logs an
   error, so a confidential item cannot reach another box through a mistyped locality. A plugin that does not say keeps the owner's word.
 - **Pipeline:** intake recognizes an Oaken envelope; store records, enrich and act contracts with their stage loops; LLM enrichment; `Query.order_by`.
-
-## 1.0.0 (alpha)
-
-The first release of Oaken Core as its own project: the pipeline and plugin loader taken out of oaken-mail and made generic. It replaces the
-old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cli`.
-
-- **Pipeline:** Intake (providers submit, formatters split into parts), triage before storage, an ingestor and a store plugin, labels,
-  queues and stages, jobs with leases and retries, a scheduler.
-- **Plugins:** a host with plugin kinds, templates (many instances of one plugin), tags, versions, API and core version ranges;
-  `plugin add`, `plugin remove`, `plugins --kind --tag`; plugins document themselves.
-- **Doors:** the `oaken` CLI, a local HTTP API, an MCP server, and a console (loopback only) that draws every plugin's settings.
-- **Models:** a router with local, LAN and hosted backends, an answer cache and a ledger; confidential items stay local.
-- **Products:** `identity.configure(app, title, prog, daemon)` lets a package wrap core under its own name and home.

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Guard for the documentation site. Exit status 1 if anything below fails.
 
-    uv run --group docs python docs/tools/check_docs.py
+    uv run --group docs python docs-src/tools/check_docs.py
 
 Builds the site to a temporary directory (twice) and fails on:
 
@@ -15,7 +15,7 @@ Builds the site to a temporary directory (twice) and fails on:
 * output that differs between the two builds (non-determinism);
 * committed HTML in docs/ that differs from a fresh build (run build_site.py and commit).
 
-Extension hook: if ``docs/tools/check_commands.py`` exists it is imported and its
+Extension hook: if ``docs-src/tools/check_commands.py`` exists it is imported and its
 ``check(cfg) -> list[str]`` is called; every string returned is reported as a problem.
 Prompt 20 adds that module, which runs the fenced ``<!-- check -->`` shell blocks in the docs.
 """
@@ -115,7 +115,7 @@ def orphans(cfg: Config) -> list[str]:
         rel = path.relative_to(cfg.docs_dir).as_posix()
         if rel in registered or is_excluded(cfg, rel):
             continue
-        out.append(f"orphan page: docs/{rel} is neither registered in site.toml nor excluded")
+        out.append(f"orphan page: {cfg.docs_dir.name}/{rel} is neither registered in site.toml nor excluded")
     return out
 
 
@@ -213,17 +213,17 @@ def _tree(root: Path) -> dict[str, bytes]:
 
 def _stale(cfg: Config, fresh: Path) -> list[str]:
     """The committed HTML in docs/ must equal what a build produces now."""
-    published = published_files(cfg.docs_dir)
+    published = published_files(cfg.out_dir)
     if not published:
         return []  # never published (e.g. a fixture tree)
     want = _tree(fresh)
     out: list[str] = []
     for rel in sorted(set(want) | set(published)):
-        have = cfg.docs_dir / rel
+        have = cfg.out_dir / rel
         if rel not in want:
             out.append(f"stale published file docs/{rel} (rebuild the site)")
         elif not have.is_file() or have.read_bytes() != want[rel]:
-            out.append(f"docs/{rel} is out of date; run: uv run python docs/tools/build_site.py")
+            out.append(f"docs/{rel} is out of date; run: uv run python docs-src/tools/build_site.py")
     return out
 
 

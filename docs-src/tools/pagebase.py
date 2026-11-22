@@ -39,7 +39,7 @@ def cdn_tags(with_mermaid: bool) -> dict[str, Any]:
     return out
 
 
-# Logo files (docs/tools/brand/) are copied to assets/brand/ on every build. The favicon and touch
+# Logo files (docs-src/tools/brand/) are copied to assets/brand/ on every build. The favicon and touch
 # icon are cut from the logo mark; logo.png is the mark itself, with a transparent background.
 BRAND_DIR = HERE / "brand"
 BRAND_FILES = ("apple-touch-icon.png", "favicon.png", "logo.png")

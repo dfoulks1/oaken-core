@@ -52,6 +52,7 @@ class Page:
 class Config:
     docs_dir: Path
     repo_root: Path
+    out_dir: Path  # where the built site is published (GitHub Pages serves it)
     title: str
     description: str
     repo_url: str
@@ -96,6 +97,7 @@ def load_config(docs_dir: Path, repo_root: Path | None = None) -> Config:
     return Config(
         docs_dir=docs_dir,
         repo_root=repo_root,
+        out_dir=(repo_root / site.get("out", "docs")).resolve(),
         title=site["title"],
         description=site.get("description", ""),
         repo_url=site["repo"].rstrip("/"),

@@ -10,7 +10,7 @@
   Built later the same day: 2b (one result-store helper, `_cached_result`/`_store_result`), 2d (the lazy
   chain: `ingest.triage` runs the first triager, `ingest.triage.<name>` the next), the job-kind names
   in `core/triage.py`, one `MessageTriaged` event, the `llm.triage` stage and the `triager` trace field,
-  and the swarm wire's `triager` entry. Not built: the validators still share `to_result`. Prompt: `docs/prompts/CORE_55-separate-triagers-and-enrichers.md`.
+  and the swarm wire's `triager` entry. Not built: the validators still share `to_result`. Prompt: `docs-src/prompts/CORE_55-separate-triagers-and-enrichers.md`.
 
 ## Context
 

@@ -4,7 +4,7 @@ Goal: a console you cannot lock yourself out of.
 
 Lift from oaken-mail: `plugins/ui.py` (`check_ui`, `reposition`), `api/guard.py`, the Jinja templates
 for config modals, plugin pages, the pipeline and the stage views. Strip mail copy from the templates.
-Read `docs/origin/0018-a-web-ui-contract-for-plugins.md`.
+Read `docs-src/origin/0018-a-web-ui-contract-for-plugins.md`.
 
 Build:
 1. The console is core's. It is not a plugin. It cannot be switched off.

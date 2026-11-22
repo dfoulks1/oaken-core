@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """The software map: a generated page showing what is built and how the pieces layer.
 
-A software map in the style of a layered system diagram. The data lives in docs/softmap.toml, and building the page
+A software map in the style of a layered system diagram. The data lives in docs-src/softmap.toml, and building the page
 fails when the data contradicts the repository or the architecture, so the map cannot drift:
 
 * ids are unique, every layer sits in exactly one stack, every ``uses``/``notifies`` target exists;
@@ -184,7 +184,7 @@ def load(cfg: Config) -> dict[str, Any]:
 
 
 def load_classes(cfg: Config) -> list[dict[str, Any]]:
-    """The generated class relationships (docs/tools/classmap.py); none yet is fine."""
+    """The generated class relationships (docs-src/tools/classmap.py); none yet is fine."""
     path = cfg.docs_dir / "softmap.classes.toml"
     if not path.exists():
         return []
@@ -385,7 +385,7 @@ def chips(names: dict[str, str], ids: list[str], cb: bool = False) -> str:
 
 def prompt_link(cfg: Config, prompt: str) -> str:
     """Badge linking to the build prompt file, or plain text when there is none."""
-    matches = sorted((cfg.repo_root / "docs" / "prompts").glob(f"{prompt}-*.md"))
+    matches = sorted((cfg.docs_dir / "prompts").glob(f"{prompt}-*.md"))
     label = f"prompt {prompt}"
     if not matches:
         return f'<span class="badge text-bg-light border">{esc(label)}</span>'
@@ -574,7 +574,7 @@ def _builder(cfg: Config) -> Page:
     out += [
         "",
         "::: callout",
-        (f"Generated from {src_link(cfg, 'docs/softmap.toml')} by {src_link(cfg, 'docs/tools/softmap.py')}, "
+        (f"Generated from {src_link(cfg, 'docs-src/softmap.toml')} by {src_link(cfg, 'docs-src/tools/softmap.py')}, "
         "which refuses to build if the data breaks the layering rules or disagrees with the repository. "
         "Edit the data in the same change that builds or alters a component."),
         ":::",
@@ -632,7 +632,7 @@ def _builder(cfg: Config) -> Page:
                 "## Class relationships",
                 "",
                 ("Every class that takes part in an in-core inheritance, read from the live package by "
-                f"{src_link(cfg, 'docs/tools/classmap.py')} into {src_link(cfg, 'docs/softmap.classes.toml')}. "
+                f"{src_link(cfg, 'docs-src/tools/classmap.py')} into {src_link(cfg, 'docs-src/softmap.classes.toml')}. "
                 "Subclasses nest under their base; the arrow names a base from outside the package."),
                 "",
                 class_tree_html(classes, {c["path"]: c["name"] for c in comps if c.get("path")}),

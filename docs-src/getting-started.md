@@ -2,7 +2,6 @@
 title = "Set up Oaken Core from scratch"
 subtitle = "From install to a running core and its console"
 lead = "Install core, start it, look at what it runs, add a plugin. Core alone has no product: a first run shows the built-in plugins and an empty pipeline. Each step says how to check it worked."
-badges = [["text-bg-warning", "Alpha"]]
 group = "start"
 order = 10
 description = "A first-time setup of Oaken Core: install, set OAKEN_HOME, oaken start, oaken plugins, oaken plugin add KIND.NAME, and the console on 127.0.0.1:62536."

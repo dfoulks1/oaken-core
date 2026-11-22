@@ -2,7 +2,6 @@
 title = "Store credentials in your keyring"
 subtitle = "Where Oaken keeps a plugin's passwords and tokens"
 lead = "Core never writes a password or token to a file. A plugin asks your operating system's keyring to keep it. This page shows the entry names, the commands, and what happens when there is no keyring."
-badges = [["text-bg-warning", "Alpha"]]
 group = "start"
 order = 11
 description = "How Oaken Core uses the OS keyring: the service and entry names, oaken secret set, status and delete, what config.toml refuses, and what the no-keyring error means."

@@ -718,7 +718,7 @@ wheels = [
 
 [[package]]
 name = "oaken-core"
-version = "1.0.1"
+version = "1.0.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiosqlite" },

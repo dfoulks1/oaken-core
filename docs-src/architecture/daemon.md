@@ -2,7 +2,6 @@
 title = "The daemon and the local API"
 subtitle = "One process, two loopback ports, three ways in"
 lead = "Core runs as one process. It owns the database, the plugins and the job queue. It serves an HTTP API (with MCP on the same port) and a console, each on its own port. The CLI is a client of it. This page covers how it starts and stops, and how it keeps a web page or another program from using it."
-badges = [["text-bg-warning", "Alpha"]]
 group = "concepts"
 order = 27
 description = "The core daemon: startup and shutdown order, the runtime file, the API token, the Host, Origin and content-type guards, event streaming, the console listener, and the threat model."
@@ -143,7 +142,7 @@ The registry has a caller class, which decides whether a person's `confirm` is a
 
 The MCP server mounts at `/mcp` on the API listener as its own surface, with its own token and limits
 (`[api] mcp_max_body_bytes`, `mcp_max_concurrent`), and the mount, not a header, sets its class
-([ADR 0004](repo:docs/origin/0004-mcp-server-in-core.md)). It is on unless `[api] mcp_enabled = false`
+([ADR 0004](repo:docs-src/origin/0004-mcp-server-in-core.md)). It is on unless `[api] mcp_enabled = false`
 (or the `mcp_power` operation turns it off); then it answers 503. A second door at `/mcp/agent` takes
 agent tokens and offers the job tools plus what the agent was granted. With the swarm off, no agent
 token is accepted. A door is exactly its own path.

@@ -2,7 +2,6 @@
 title = "The model router"
 subtitle = "The cheapest honest way to answer"
 lead = "A plugin asks the router a question. The router tries the cache, then a near-duplicate's answer, then a small model with a capped answer, then one larger model. Every rung is counted."
-badges = [["text-bg-warning", "Alpha"]]
 group = "concepts"
 order = 36
 description = "The router ladder (cache, near-duplicate shortcut, capped small model, one escalation), backends and routes, the cache key, the ledger, the daily token budget and Deferred."

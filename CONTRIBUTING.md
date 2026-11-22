@@ -34,9 +34,10 @@ that for development, so a test run never touches your real home.
 ```text
 src/oaken_core/   core: daemon, API, console, operations, jobs, queues, plugin host, store seam
 tests/            core's tests
-docs/             the website sources and generators (docs/tools)
-docs/origin/      the architecture decisions core inherited from oaken-mail
-prompts/          the build prompts, in order
+docs-src/         the knowledge base: Markdown sources, site generator (tools/)
+docs-src/origin/  the architecture decisions core inherited from oaken-mail
+docs-src/prompts/ the build prompts, in order
+docs/             the generated website (committed; GitHub Pages serves it)
 ```
 
 Plugins live in their own repository (`oaken-plugins`) or in a product's. Core never imports
@@ -71,20 +72,20 @@ Contributions produced with generative AI tooling must follow the ASF's
 
 ## Documentation
 
-The website is generated locally from the Markdown in `docs/`, and the generated HTML is committed
-beside it. GitHub Pages serves the `main` branch's `/docs` folder. After changing docs or the
+The website is generated locally from the Markdown in `docs-src/`, and the generated HTML is committed
+in `docs/`. GitHub Pages serves the `main` branch's `/docs` folder. After changing docs or the
 software map, regenerate, check and commit the result:
 
 ```bash
-uv run --group docs python docs/tools/build_site.py    # regenerate the HTML in docs/
-uv run --group docs python docs/tools/check_docs.py    # links, anchors, and "HTML is up to date"
-uv run python docs/tools/classmap.py                   # regenerate docs/softmap.classes.toml
+uv run --group docs python docs-src/tools/build_site.py    # regenerate the HTML in docs/
+uv run --group docs python docs-src/tools/check_docs.py    # links, anchors, and "HTML is up to date"
+uv run python docs-src/tools/classmap.py                   # regenerate docs-src/softmap.classes.toml
 ```
 
 The build records what it generated in `docs/.site-manifest` and only ever replaces those files.
-Register a new page in `docs/site.toml`. Edit `docs/softmap.toml` in the same change that builds or
+Register a new page in `docs-src/site.toml`. Edit `docs-src/softmap.toml` in the same change that builds or
 alters a component: the build fails if it disagrees with the repository. A test fails if
-`docs/softmap.classes.toml` is stale.
+`docs-src/softmap.classes.toml` is stale.
 
 Plugins document themselves (`plugin describe`), and the console builds the plugin docs from that.
 Do not write them by hand.

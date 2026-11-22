@@ -2,7 +2,6 @@
 title = "The swarm"
 subtitle = "Optional extra workers, local or not"
 lead = "Core runs its own workers. If you have the tokens and the hardware, you can also let external AI agents lease jobs from the same queue. It is off by default and you choose, kind by kind, what they may take."
-badges = [["text-bg-warning", "Alpha"]]
 group = "concepts"
 order = 25
 description = "External agents that lease jobs: opt-in config, scoped tokens, quotas, validated results, and the HTTP and MCP doors they work through."

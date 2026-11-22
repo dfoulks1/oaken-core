@@ -117,7 +117,7 @@ async def test_the_providers_tab_offers_the_plus_for_a_provider_that_is_a_templa
 def test_the_class_map_in_the_docs_is_current() -> None:
     import sys
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs" / "tools"))
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "docs-src" / "tools"))
     import classmap
 
-    assert classmap.OUT.read_text() == classmap.render(classmap.collect()), "run: uv run python docs/tools/classmap.py"
+    assert classmap.OUT.read_text() == classmap.render(classmap.collect()), "run: uv run python docs-src/tools/classmap.py"

@@ -18,7 +18,7 @@ SQLite files: `raw.db` (source of truth: raw messages, cursors, jobs, audit log)
 backends, enrichers and vector stores are plugins that interact with core only through
 declared contracts; core never imports provider code.
 
-The full set of working rules lives in `docs/prompts/00-context.md`.
+The full set of working rules lives in `docs-src/prompts/00-context.md`.
 
 ## Consequences
 

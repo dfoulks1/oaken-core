@@ -10,7 +10,7 @@ features — providers, enrichers, operations and, later, job kinds and pipeline
 editing the core package. That only holds if the **public surface** a plugin, a client or an AI
 caller depends on is named, versioned and protected against accidental change.
 
-An audit (`docs/prompts/CORE_34-stabilize-core.md`, Stage 1) found the surface mostly sound but
+An audit (`docs-src/prompts/CORE_34-stabilize-core.md`, Stage 1) found the surface mostly sound but
 **unprotected in shape**: a field renamed on a plugin contract dataclass, a retyped operation
 output, a bumped `PLUGIN_API_VERSION` or a changed streamed event all break out-of-tree code with
 no failing test. Operation *routes* and the OpenAPI document are generated from the registry (so

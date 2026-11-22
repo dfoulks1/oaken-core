@@ -2,7 +2,6 @@
 title = "Prompt safety"
 subtitle = "How outside text reaches a language model without becoming an instruction"
 lead = "Outside text is data. It enters a prompt only inside a fenced block with a fresh random nonce. The instructions are written in code. The answer is JSON that is checked, never run."
-badges = [["text-bg-warning", "Alpha"]]
 group = "concepts"
 order = 38
 description = "UntrustedText and its delimiters, the triage llm plugin as the worked example, structured answers, and the confidential rule: local always, lan on an allowlist, hosted never."

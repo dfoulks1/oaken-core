@@ -7,7 +7,7 @@
 
 A plugin could already contribute the five kinds (provider, embedder, LLM backend, enricher,
 vector store) and, since the operation registry, named operations. The Stage-1 audit
-(`docs/prompts/CORE_34-stabilize-core.md` §3) found three gaps a second developer would hit: a plugin
+(`docs-src/prompts/CORE_34-stabilize-core.md` §3) found three gaps a second developer would hit: a plugin
 could **not** add a background job kind, a pipeline stage, or a scheduled task without editing
 core. Each was a small, additive hook away.
 

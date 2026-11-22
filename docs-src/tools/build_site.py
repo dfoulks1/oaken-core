@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Build the Oaken Core website from docs/ into docs/ (committed, served by GitHub Pages).
 
-    uv run --group docs python docs/tools/build_site.py [--out DIR] [--serve] [--strict]
+    uv run --group docs python docs-src/tools/build_site.py [--out DIR] [--serve] [--strict]
 
 With no --out the generated HTML is written into docs/ next to the Markdown sources, and
 GitHub Pages serves it from the main branch's /docs folder. The generated files are listed in
@@ -172,7 +172,7 @@ def build(cfg: Config, out: Path, strict: bool = False) -> list[str]:
     renderer = Renderer(cfg, pages + [home])
     env = make_env()
 
-    publish = out.resolve() == cfg.docs_dir.resolve()
+    publish = out.resolve() == cfg.out_dir.resolve()
     if not publish:
         if not _is_safe_out(out):
             raise BuildError(
@@ -307,7 +307,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--docs", type=Path, default=default_docs, help="docs directory (site.toml)")
     ap.add_argument("--repo-root", type=Path, default=None)
     ap.add_argument(
-        "--out", type=Path, default=None, help="output dir (default: docs/, the published site)"
+        "--out", type=Path, default=None, help="output dir (default: the site's out dir, docs/)"
     )
     ap.add_argument("--serve", action="store_true", help="serve the result on 127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
@@ -315,7 +315,7 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     try:
         cfg = load_config(args.docs, args.repo_root)
-        out = (args.out or cfg.docs_dir).resolve()
+        out = (args.out or cfg.out_dir).resolve()
         files = build(cfg, out, strict=args.strict)
     except BuildError as exc:
         print(f"error: {exc}", file=sys.stderr)

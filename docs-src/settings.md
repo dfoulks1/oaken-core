@@ -2,7 +2,6 @@
 title = "Settings, storage and the event log"
 subtitle = "Change core's settings, see where the data is, tidy it, and read what happened"
 lead = "Everything here is a command on the running core. It edits one table of config.toml and leaves your comments alone, and it tells you what a change needs before it takes effect."
-badges = [["text-bg-warning", "Alpha"]]
 group = "start"
 order = 12
 description = "oaken settings get and set, config validate and save, reload, storage and vacuum, the answer cache, the event log, the log and the change log."

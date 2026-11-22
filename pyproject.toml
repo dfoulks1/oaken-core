@@ -1,13 +1,12 @@
 [project]
 name = "oaken-core"
-version = "1.0.1"
+version = "1.0.0"
 description = "Oaken Core: an async pipeline and plugin loader. Products (mail, grove) are plugins on it."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE*"]
 readme = "README.md"
 keywords = ["pipeline", "plugins", "async", "mcp", "llm", "local-first"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Framework :: AsyncIO",
     "Operating System :: OS Independent",
@@ -81,6 +80,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/oaken_core"]
+
+# Ship the source, tests and docs sources only: never the repo's local tooling or the generated site.
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/docs-src", "/README.md", "/CHANGELOG.md", "/LICENSE", "/NOTICE*", "/pyproject.toml", "/sqlc.yaml"]
+exclude = ["__pycache__", "*.pyc"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

@@ -69,7 +69,7 @@
 </nav>
 <main id="content" tabindex="-1">
   <header class="cover">
-    <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-warning">Alpha</span></div>
+    <div class="d-flex flex-wrap gap-2 mb-3"></div>
     <h1 class="display-6">The daemon and the local API</h1>
     <p class="lead">Core runs as one process. It owns the database, the plugins and the job queue. It serves an HTTP API (with MCP on the same port) and a console, each on its own port. The CLI is a client of it. This page covers how it starts and stops, and how it keeps a web page or another program from using it.</p>
   </header>
@@ -230,7 +230,7 @@ token from its own proposal, and operations closed to MCP are hidden and refused
 </ul>
 <p>The MCP server mounts at <code>/mcp</code> on the API listener as its own surface, with its own token and limits
 (<code>[api] mcp_max_body_bytes</code>, <code>mcp_max_concurrent</code>), and the mount, not a header, sets its class
-(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs/origin/0004-mcp-server-in-core.md">ADR 0004</a>). It is on unless <code>[api] mcp_enabled = false</code>
+(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0004-mcp-server-in-core.md">ADR 0004</a>). It is on unless <code>[api] mcp_enabled = false</code>
 (or the <code>mcp_power</code> operation turns it off); then it answers 503. A second door at <code>/mcp/agent</code> takes
 agent tokens and offers the job tools plus what the agent was granted. With the swarm off, no agent
 token is accepted. A door is exactly its own path.</p>

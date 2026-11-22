@@ -2,7 +2,7 @@
 title = "Oaken Core"
 subtitle = "An async pipeline and a plugin loader"
 lead = "Oaken Core takes items in, formats them, triages them, stores them and runs the work around them. It has no nouns of its own: a message, a person or a CVE is a plugin's idea. Products are thin coats of plugins over it."
-badges = [["text-bg-warning", "Pre-alpha"], ["text-bg-secondary", "Local-first"], ["text-bg-primary", "Open source"]]
+badges = [["text-bg-secondary", "Local-first"], ["text-bg-primary", "Open source"]]
 description = "An async pipeline and a plugin loader with no nouns: providers, formatters, triagers and ingestors are plugins."
 +++
 
