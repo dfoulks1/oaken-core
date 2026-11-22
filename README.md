@@ -45,5 +45,5 @@ uv sync
 uv run pytest
 ```
 
-The architecture decisions it inherited from oaken-mail are in [`docs-src/origin/`](docs-src/origin/). See [CONTRIBUTING.md](CONTRIBUTING.md)
+The architecture decisions (the first nineteen inherited from oaken-mail) are in [`docs-src/decisions/`](docs-src/decisions/). See [CONTRIBUTING.md](CONTRIBUTING.md)
 (including the rules for AI-assisted contributions) and [SECURITY.md](SECURITY.md). Apache-2.0.

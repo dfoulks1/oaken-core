@@ -229,11 +229,11 @@ take these keys.
 `PLUGIN_API_VERSION` (now 1, in `repo:src/oaken_core/plugins/contracts.py`) is the shape of the
 contracts. A plugin whose `api_version` differs is refused, and the reason shows beside it. Plugin
 authors should set it explicitly, as the example does. `requires_core` is the separate, finer check
-against core's own version. See [ADR 0010](repo:docs-src/origin/0010-the-stable-surface-and-its-versioning.md).
+against core's own version. See [ADR 0010](repo:docs-src/decisions/0010-the-stable-surface-and-its-versioning.md).
 
 ## The UI contract
 
-A plugin declares its console UI as data, never markup ([ADR 0018](repo:docs-src/origin/0018-a-web-ui-contract-for-plugins.md)).
+A plugin declares its console UI as data, never markup ([ADR 0018](repo:docs-src/decisions/0018-a-web-ui-contract-for-plugins.md)).
 Override `ui()` and return a `UiSpec` (`repo:src/oaken_core/plugins/ui.py` checks it):
 
 | Part | Does |

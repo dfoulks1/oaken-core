@@ -123,3 +123,12 @@ async def test_a_rule_can_route_an_item_to_an_action_and_the_tools_say_so() -> N
     ctx = PluginOpContext(plugin="rules", client="cli", actor="test", config={}, clock=FakeClock(), log=None)
     assert [r.route for r in (await t.list_rules(ctx, Nothing())).rules] == [["cve"], []]
     assert (await t.try_item(ctx, TryIn(body="CVE-2026-1"))).route == ["cve"]
+
+
+async def test_a_rule_says_whether_its_answer_is_the_last_word() -> None:
+    t = await started({"rules": [
+        {"name": "settled", "when": {"source": "voltpop"}, "final": True},
+        {"name": "open", "when": {"source": "other"}},
+    ]})
+    settled, open_ = await t.triage(item("x", source="voltpop")), await t.triage(item("x", source="other"))
+    assert settled is not None and settled.final and open_ is not None and not open_.final  # off unless asked for

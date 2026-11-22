@@ -246,7 +246,7 @@ token from its own proposal, and operations closed to MCP are hidden and refused
 </ul>
 <p>The MCP server mounts at <code>/mcp</code> on the API listener as its own surface, with its own token and limits
 (<code>[api] mcp_max_body_bytes</code>, <code>mcp_max_concurrent</code>), and the mount, not a header, sets its class
-(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0004-mcp-server-in-core.md">ADR 0004</a>). It is on unless <code>[api] mcp_enabled = false</code>
+(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/0004-mcp-server-in-core.md">ADR 0004</a>). It is on unless <code>[api] mcp_enabled = false</code>
 (or the <code>mcp_power</code> operation turns it off); then it answers 503. A second door at <code>/mcp/agent</code> takes
 agent tokens and offers the job tools plus what the agent was granted. With the swarm off, no agent
 token is accepted. A door is exactly its own path.</p>

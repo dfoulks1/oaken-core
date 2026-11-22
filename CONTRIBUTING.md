@@ -36,7 +36,7 @@ src/oaken_core/   core: daemon, API, console, operations, jobs, queues, plugin h
 tests/            core's tests
 tools/            QA.sh: rebuild the docs, lint, summarise
 docs-src/         the knowledge base: Markdown sources, site generator (tools/)
-docs-src/origin/  the architecture decisions core inherited from oaken-mail
+docs-src/decisions/ the architecture decisions (0001 to 0019 came from oaken-mail), in MADR
 docs-src/prompts/ the build prompts, in order
 docs-src/PLAN.md  the original build plan and decisions (not on the website)
 docs/             the generated website (committed; GitHub Pages serves it)

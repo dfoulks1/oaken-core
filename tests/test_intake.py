@@ -396,3 +396,19 @@ async def test_a_later_triager_sees_what_an_earlier_one_labelled_and_so_does_the
     await intake.submit("hr", "salary review")
     await kit.runner.drain()
     assert seen == [{"confidential": "true"}]  # the llm triager used to see {} here and call a hosted model
+
+
+async def _model_calls_after_a_rule_says(kit: Kit, final: bool) -> int:
+    model = Model(Verdict("accept"))
+    intake = make(kit, [Rules(Verdict("accept", final=final)), model])
+    await intake.submit("web", "hello")
+    await kit.runner.drain()
+    return model.calls
+
+
+async def test_a_final_verdict_ends_triage_so_no_model_is_asked(kit: Kit) -> None:
+    assert await _model_calls_after_a_rule_says(kit, True) == 0
+
+
+async def test_a_plain_accept_still_lets_the_model_answer(kit: Kit) -> None:
+    assert await _model_calls_after_a_rule_says(kit, False) == 1  # the owner's ruling: an accept does not end triage

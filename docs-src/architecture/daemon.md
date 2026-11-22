@@ -142,7 +142,7 @@ The registry has a caller class, which decides whether a person's `confirm` is a
 
 The MCP server mounts at `/mcp` on the API listener as its own surface, with its own token and limits
 (`[api] mcp_max_body_bytes`, `mcp_max_concurrent`), and the mount, not a header, sets its class
-([ADR 0004](repo:docs-src/origin/0004-mcp-server-in-core.md)). It is on unless `[api] mcp_enabled = false`
+([ADR 0004](repo:docs-src/decisions/0004-mcp-server-in-core.md)). It is on unless `[api] mcp_enabled = false`
 (or the `mcp_power` operation turns it off); then it answers 503. A second door at `/mcp/agent` takes
 agent tokens and offers the job tools plus what the agent was granted. With the swarm off, no agent
 token is accepted. A door is exactly its own path.

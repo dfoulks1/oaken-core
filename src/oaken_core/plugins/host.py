@@ -33,8 +33,8 @@ from oaken_core.clock import Clock
 from oaken_core.db import Database, migrate
 from oaken_core.errors import NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus, PluginHealthChanged
-from oaken_core.labels import LabelError, LabelMaker, LabelStore
 from oaken_core.jobs import scrub_error
+from oaken_core.labels import LabelError, LabelMaker, LabelStore
 from oaken_core.logging import get_logger
 from oaken_core.plugins import catalog, extensions
 from oaken_core.plugins.base import BaseTemplatePlugin, missing_contextual

@@ -117,7 +117,7 @@
 imported or switched on until you add it. It declares no entry points, so there is nothing to uninstall to turn a
 plugin off, and nothing loads by accident.</p>
 <p>Why a second package? Core is the stable foundation, and its surface is versioned and frozen
-(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>). Plugins change more often, one at a time, and
+(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>). Plugins change more often, one at a time, and
 some need heavy libraries. Keeping them out of core means core stays small and releases slowly, and a plugin fix does not
 touch the foundation. <code>oaken-plugins</code> needs core (<code>oaken-core&gt;=1.0.0,&lt;2</code>); core does not need it.</p>
 <p>Plugins are <strong>not</strong> add-ons in the pip sense: there is no <code>oaken-plugins[imap-provider]</code>. An extra can only pull in

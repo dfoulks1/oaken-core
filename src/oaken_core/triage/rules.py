@@ -3,8 +3,9 @@
 
 Ported from oaken-mail's ``rules`` triager, with its conditions made generic: an item is a ``source``, a body
 (text, or JSON) and labels, so a rule says things about those instead of mail headers. Rules run in the order
-listed; the first whose conditions all hold decides, so an item the rules settle costs no model call. An item no
-rule matches passes to the next triager.
+listed; the first whose conditions all hold is this triager's answer. A reject, or a rule with ``final = true``, ends triage, so
+an item that rule settles costs no model call. Any other answer lets the later triagers (a model, say) answer too, and the last to
+answer decides. An item no rule matches passes to the next triager.
 
     [plugins.triager.rules]
     [[plugins.triager.rules.rules]]
@@ -80,12 +81,13 @@ class Rule(BaseModel):
     reason: str = Field(default="", description="Said in the record. Empty: the rule's name.")
     route: list[str] = Field(default_factory=list, description="Action routes this item is owed: the names an action plugin answers. Empty: none.")
     learn: bool = Field(default=False, description="For a reject: remember its fingerprint so near-copies are dropped without a model.")
+    final: bool = Field(default=False, description="When this rule matches, triage ends: no later triager (a model among them) is asked, so an item this rule settles costs no model call. Off: the next triagers still answer, and the last to answer decides.")
 
 
 class RulesConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    rules: list[Rule] = Field(default_factory=list, description="In the order they run. The first match decides.")
+    rules: list[Rule] = Field(default_factory=list, description="In the order they run. The first match is this triager's answer; with final = true it is the last word.")
 
     @model_validator(mode="after")
     def _unique(self) -> "RulesConfig":
@@ -150,7 +152,7 @@ def first_match(item: IntakeItem, rules: list[Rule]) -> Rule | None:
 
 
 def verdict_of(rule: Rule) -> Verdict:
-    return Verdict(rule.action, rule.reason or f"rule {rule.name}", dict(rule.labels), learn=rule.learn and rule.action == "reject", route=tuple(rule.route))
+    return Verdict(rule.action, rule.reason or f"rule {rule.name}", dict(rule.labels), learn=rule.learn and rule.action == "reject", route=tuple(rule.route), final=rule.final)
 
 
 # -- commands ------------------------------------------------------------------------------------

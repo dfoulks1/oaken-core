@@ -45,9 +45,9 @@ def test_scroll_spy_markup(built: Callable[[], Path]) -> None:
     assert 'id="toc"' in html
     assert 'href="#one"' in html
     assert 'id="one"' in html
-    # below 992 px the pane is an offcanvas opened from a top-bar button
-    assert "offcanvas-lg" in html
-    assert 'data-bs-toggle="offcanvas"' in html
+    # the navigation is a top bar; below 992 px it collapses behind a button, and the page's own section list is hidden
+    assert 'class="site-nav' in html
+    assert 'data-bs-toggle="collapse"' in html
 
 
 def test_theme_attribute_and_storage_guard(built: Callable[[], Path]) -> None:
@@ -165,7 +165,7 @@ def test_home_cards_generated_from_registry(built: Callable[[], Path]) -> None:
     assert 'href="deep/beta.html"' in html
     assert "Alpha blurb." in html
     assert "{{doc-cards}}" not in html
-    assert "Star this repo on GitHub" in html
+    assert "View on GitHub" in html
     assert "Pre-alpha" in html
 
 
@@ -212,7 +212,7 @@ def test_strict_fails_on_todo_user(tree: Tree, tmp_path: Path) -> None:
 
 def test_generated_pages_register_and_render(tree: Tree, tmp_path: Path) -> None:
     tree.write(
-        "docs/origin/0001-first.md",
+        "docs/decisions/0001-first.md",
         "# 1. First decision\n\n- Status: accepted\n- Date: 2026-01-02\n",
     )
     tree.write(
@@ -221,14 +221,14 @@ def test_generated_pages_register_and_render(tree: Tree, tmp_path: Path) -> None
         + ('\n[[pages]]\nid = "adr/index"\ngenerated = true\ngroup = "g1"\n'),
     )
     cfg: Config = tree.cfg()
-    cfg.excludes.append("origin/0*.md")
+    cfg.excludes.append("decisions/0*.md")
     out = tmp_path / "gen"
     build_site.build(cfg, out)
     html = read(out, "adr/index.html")
     assert "First decision" in html
     assert "accepted" in html
     assert "2026-01-02" in html
-    assert "blob/main/docs/origin/0001-first.md" in html
+    assert "blob/main/docs/decisions/0001-first.md" in html
 
 
 def test_unregistered_generator_is_an_error(tree: Tree, tmp_path: Path) -> None:

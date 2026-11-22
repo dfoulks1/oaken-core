@@ -12,6 +12,8 @@ import importlib
 import re
 from collections.abc import Callable
 
+from pathlib import Path
+
 from model import BuildError, Config, Page, page_from_meta
 
 Builder = Callable[[Config], Page]
@@ -21,7 +23,7 @@ GENERATOR_MODULES: list[str] = [
     "softmap",
 ]
 
-ADR_DIR = "origin"  # where the decision records live under docs/
+ADR_DIRS = ("decisions",)  # where the decision records live under docs-src/
 _REGISTRY: dict[str, Builder] = {}
 
 
@@ -45,23 +47,26 @@ def load_all() -> None:
         importlib.import_module(name)
 
 
+def _adr_row(path: "Path", cfg: Config) -> tuple[str, str, str, str, str]:
+    """(number, title, status, date, repo path) of one ADR: the older ``- Status:`` bullets, or MADR's front matter."""
+    text = path.read_text(encoding="utf-8")
+    title = re.search(r"^# (?:\d+\.\s*)?(.+)$", text, re.MULTILINE)
+    if text.startswith("---\n"):  # MADR: status and date in a YAML header
+        head = text.split("\n---", 1)[0]
+        status = re.search(r"^status:\s*(.+)$", head, re.MULTILINE)
+        date = re.search(r"^date:\s*(.+)$", head, re.MULTILINE)
+    else:
+        status = re.search(r"^[-*]\s*Status:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
+        date = re.search(r"^[-*]\s*Date:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
+    if not (title and status and date):
+        raise BuildError(f"{path}: an ADR needs a '# Title' heading and a status and a date (bullets, or MADR front matter)")
+    return (path.name[:4], title.group(1).strip(), status.group(1).strip(), date.group(1).strip(), path.relative_to(cfg.repo_root).as_posix())
+
+
 def _adr_index(cfg: Config) -> Page:
-    """Status, title and date of every ADR in docs/<ADR_DIR>/NNNN-*.md."""
-    rows: list[tuple[str, str, str, str, str]] = []
-    adr_dir = cfg.docs_dir / ADR_DIR
-    for path in sorted(adr_dir.glob("[0-9][0-9][0-9][0-9]-*.md")):
-        text = path.read_text(encoding="utf-8")
-        t = re.search(r"^# (?:\d+\.\s*)?(.+)$", text, re.MULTILINE)
-        s = re.search(r"^[-*]\s*Status:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
-        d = re.search(r"^[-*]\s*Date:\s*(.+)$", text, re.MULTILINE | re.IGNORECASE)
-        if not (t and s and d):
-            raise BuildError(
-                f"{path}: an ADR needs a '# N. Title' heading and Status and Date bullets"
-            )
-        rel = path.relative_to(cfg.repo_root).as_posix()
-        rows.append(
-            (path.name[:4], t.group(1).strip(), s.group(1).strip(), d.group(1).strip(), rel)
-        )
+    """Status, title and date of every ADR in docs-src/<ADR_DIRS>/NNNN-*.md, in number order."""
+    paths = [p for d in ADR_DIRS for p in (cfg.docs_dir / d).glob("[0-9][0-9][0-9][0-9]-*.md")]
+    rows = [_adr_row(p, cfg) for p in sorted(paths, key=lambda p: p.name)]
     lines = [
         "## Decisions",
         "",

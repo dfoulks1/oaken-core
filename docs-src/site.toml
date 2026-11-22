@@ -2,7 +2,7 @@
 # otherwise check_docs.py reports it as an orphan.
 
 # Globs (relative to docs-src/, '*' crosses '/') that are not site content. docs-src/tools/** is always excluded.
-exclude = ["origin/**", "prompts/**", "tools/**", "PLAN.md"]
+exclude = ["decisions/**", "prompts/**", "tools/**", "PLAN.md"]
 
 [site]
 title = "Oaken Core"

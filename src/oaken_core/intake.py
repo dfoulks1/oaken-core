@@ -105,6 +105,7 @@ class Verdict:
     # Reject and learn: embed the item (vector and hash only) and do nothing else. Needs a reject.
     learn: bool = False
     route: tuple[str, ...] = ()  # action routes this item is owed (ADR 0019); empty routes nowhere
+    final: bool = False  # this answer ends triage: the triagers after it, a model among them, are not asked. A reject always does.
 
 
 class Triager(Protocol):
@@ -331,7 +332,7 @@ class Intake:
                     continue
                 who, verdict = Actor("system", t.name), v
                 said.append((who, v))
-                if v.kind == "reject":
+                if v.kind == "reject" or v.final:
                     break
         except Exception:
             if not (

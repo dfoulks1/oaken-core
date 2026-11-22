@@ -23,7 +23,7 @@ imported or switched on until you add it. It declares no entry points, so there 
 plugin off, and nothing loads by accident.
 
 Why a second package? Core is the stable foundation, and its surface is versioned and frozen
-([ADR 0010](repo:docs-src/origin/0010-the-stable-surface-and-its-versioning.md)). Plugins change more often, one at a time, and
+([ADR 0010](repo:docs-src/decisions/0010-the-stable-surface-and-its-versioning.md)). Plugins change more often, one at a time, and
 some need heavy libraries. Keeping them out of core means core stays small and releases slowly, and a plugin fix does not
 touch the foundation. `oaken-plugins` needs core (`oaken-core>=1.0.0,<2`); core does not need it.
 

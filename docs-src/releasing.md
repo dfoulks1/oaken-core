@@ -29,7 +29,7 @@ thing: a small package on top of both. It is not part of this release.
 
 ## Versions and the pin
 
-- Core and plugins version independently. Core follows [the stable surface](repo:docs-src/origin/0010-the-stable-surface-and-its-versioning.md):
+- Core and plugins version independently. Core follows [the stable surface](repo:docs-src/decisions/0010-the-stable-surface-and-its-versioning.md):
   a breaking change to a plugin contract, an operation, a config key or a CLI command needs a new major.
 - Raise the floor in `oaken-plugins` (`pyproject.toml`) only when it needs something core added. Say what
   in a comment beside the pin.

@@ -16,8 +16,8 @@
     </div>
 {% if page.lead %}    <p class="lead">{{ page.lead }}</p>
 {% endif %}    <div class="d-flex flex-wrap gap-2 justify-content-center">
-      <a class="btn btn-brand" href="getting-started.html">Get started</a>
-{% if has_demo %}      <a class="btn btn-outline-secondary" href="demo-core/index.html">Try the demo</a>
+{% if nav and nav[0].pages %}      <a class="btn btn-brand" href="{{ nav[0].pages[0].href }}">Get started</a>
+{% endif %}{% if has_demo %}      <a class="btn btn-outline-secondary" href="demo-core/index.html">Try the demo</a>
 {% endif %}      <a class="btn btn-outline-secondary" href="{{ site.repo_url }}">View on GitHub</a>
     </div>
   </header>

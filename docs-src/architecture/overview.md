@@ -23,7 +23,7 @@ One process does the work. It offers four doors over the same operation registry
 
 Every operation is defined once, with a permission class. The API, the CLI and MCP are generated
 from that registry, so they cannot drift apart. See [operations](operations.md) and
-[ADR 0004](repo:docs-src/origin/0004-mcp-server-in-core.md).
+[ADR 0004](repo:docs-src/decisions/0004-mcp-server-in-core.md).
 
 ```mermaid
 flowchart TD

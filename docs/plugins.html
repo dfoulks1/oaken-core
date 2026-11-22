@@ -396,10 +396,10 @@ take these keys.</p>
 <p><code>PLUGIN_API_VERSION</code> (now 1, in <code>repo:src/oaken_core/plugins/contracts.py</code>) is the shape of the
 contracts. A plugin whose <code>api_version</code> differs is refused, and the reason shows beside it. Plugin
 authors should set it explicitly, as the example does. <code>requires_core</code> is the separate, finer check
-against core's own version. See <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>.</p>
+against core's own version. See <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>.</p>
 </section>
 <section id="the-ui-contract" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>The UI contract</h2></div>
-<p>A plugin declares its console UI as data, never markup (<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0018-a-web-ui-contract-for-plugins.md">ADR 0018</a>).
+<p>A plugin declares its console UI as data, never markup (<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/0018-a-web-ui-contract-for-plugins.md">ADR 0018</a>).
 Override <code>ui()</code> and return a <code>UiSpec</code> (<code>repo:src/oaken_core/plugins/ui.py</code> checks it):</p>
 <div class="table-responsive"><table class="table table-sm table-striped align-middle">
 <thead>
