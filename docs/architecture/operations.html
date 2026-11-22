@@ -181,6 +181,45 @@ because its token's own scope bounds it. Anything else needs a grant by name or 
 the ceiling stays above any grant. A revoke or a changed grant applies at once.</p>
 <p>The person's MCP door also has a master switch, <code>[api] mcp_enabled</code>. Results over MCP are cut at
 <code>[api] mcp_max_result_bytes</code> (256000), and a result that holds outside text is fenced as data.</p>
+<h3 id="the-confidential-gate">The confidential gate</h3>
+<p>Exposure says which operations an MCP client may call. It does not say whether the client may be
+handed an item labelled <code>confidential</code>, and an MCP client can be a hosted model. So each caller also
+carries a clearance, <code>CallerContext.confidential</code>, set by its door and never by anything it sends:</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Door</th>
+<th>Cleared for confidential items</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>CLI, console, core itself</td>
+<td>yes</td>
+</tr>
+<tr>
+<td>The person's MCP door (<code>/mcp</code>)</td>
+<td>only if <code>[api] mcp_confidential = true</code> (default <code>false</code>)</td>
+</tr>
+<tr>
+<td>The agent door (<code>/mcp/agent</code>)</td>
+<td>only if the agent's <code>locality</code> is <code>local</code> (default <code>hosted</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>mcp_confidential</code> is set by hand in <code>config.toml</code>. Turn it on only when every client that holds the
+MCP token runs its model on this machine. An agent's <code>locality</code> is set by the person in <code>agent_create</code>.</p>
+<p>An uncleared caller gets nothing from a confidential item:</p>
+<ul>
+<li><code>item_show</code>, <code>item_get</code> and <code>label_get</code> refuse it with <code>confidential_withheld</code>, before anything is
+read, and so does a <code>label_set</code> proposal (it would show the value it replaces);</li>
+<li><code>label_find</code> and <code>log_list</code> leave its rows out;</li>
+<li>plugin operations are offered only if they declare <code>confidential_aware</code> (see
+<a href="../plugins.html#commands">plugins</a>); the rest are not offered, with the same answer as an operation
+that is switched off.</li>
+</ul>
+<p>A handler that reads items calls <code>ctx.withhold_confidential(subject_id)</code> or
+<code>ctx.confidential_among(subject_ids)</code> on its <code>OpContext</code>.</p>
 </section>
 <section id="plugin-operations" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Plugin operations</h2></div>
 <p>A plugin can offer operations, named <code>&lt;plugin&gt;.&lt;name&gt;</code>. They get the same gate, the same audit and

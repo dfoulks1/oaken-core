@@ -93,6 +93,10 @@ class Operation(Generic[In, Out]):
     # An agent may call it with no grant, because the token's own scope bounds it (the job protocol:
     # claim, heartbeat, complete, fail). Every other operation an agent calls must be granted.
     agent_ok: bool = False
+    # The handler honours ``ctx.caller.may_see_confidential`` itself (or returns no item content). A
+    # plugin operation that does not say so is not offered to an MCP caller that may not see
+    # confidential items; core's own operations check in their handlers.
+    confidential_aware: bool = False
 
     def __post_init__(self) -> None:
         base = self.name.split(PLUGIN_SEP, 1)

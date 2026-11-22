@@ -37,6 +37,8 @@ dependencies = [
 dev = [
     "pytest",
     "pytest-asyncio",
+    "ruff",
+    "mypy",
     "openapi-spec-validator",
     "sqlc-bin>=1.31.1.post1",
 ]

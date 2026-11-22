@@ -31,3 +31,12 @@ old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cl
   text to another machine (`off_machine = True`, new on `BaseLLMBackend` and `BaseEmbedder`); the router then treats it as `hosted` and logs an
   error, so a confidential item cannot reach another box through a mistyped locality. A plugin that does not say keeps the owner's word.
 - **Pipeline:** intake recognizes an Oaken envelope; store records, enrich and act contracts with their stage loops; LLM enrichment; `Query.order_by`.
+- **Agents:** an agent now has a `locality` (`local`, `lan` or `hosted`), stated by the person in `agent_create` and shown by `agent_list`.
+  It defaults to `hosted`, the strictest, and existing agents become `hosted`. Only a `local` agent may be handed confidential content. New
+  `oaken_core.confidential` holds the one rule for what is confidential and who may see it (migration 0010).
+- **MCP:** a confidential gate on both MCP doors. A caller now carries a clearance for confidential items, set by its door: the person's
+  `/mcp` door only with the new `[api] mcp_confidential = true` (default `false`), the agent door only for a `local` agent. An uncleared
+  client gets `confidential_withheld` from `item_show`, `item_get`, `label_get` and a `label_set` proposal on a confidential item, and
+  `label_find` and `log_list` leave such items out. Plugin commands reach an uncleared client only if they declare
+  `@command(..., confidential_aware=True)` and honour the new `PluginOpContext.confidential`. **Behaviour change:** an MCP client that read confidential items before needs the setting (or a
+  `local` agent), and plugin commands that do not declare `confidential_aware` drop out of an uncleared client's tool list.

@@ -39,6 +39,7 @@ class Agent:
     last_seen_at: str | None
     revoked_at: str | None
     operations_json: str
+    locality: str
 
 
 @dataclasses.dataclass()

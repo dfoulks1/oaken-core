@@ -92,6 +92,13 @@ bases = ["PermissionDenied"]
 doc = "A confidential call has no backend it may reach. The router refuses; it never falls back to"
 
 [[classes]]
+name = "ConfidentialWithheld"
+module = "oaken_core.errors"
+path = ""
+bases = ["PermissionDenied"]
+doc = "The item is labelled confidential and this caller's door has not cleared it for such items"
+
+[[classes]]
 name = "ConfigError"
 module = "oaken_core.errors"
 path = ""

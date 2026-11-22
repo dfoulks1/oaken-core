@@ -63,6 +63,9 @@ class LogListOut(BaseModel):
            input=LogListIn, output=LogListOut, mcp="off", group="log")  # fmt: skip
 async def log_list(ctx: OpContext, inp: LogListIn) -> LogListOut:
     rows = await ctx.svc.changelog.rows(ctx.svc.db, inp.subject_id, inp.key, inp.limit)
+    if not ctx.caller.may_see_confidential:  # a label value can be read off a confidential item: leave its rows out
+        hidden = await ctx.confidential_among(r.subject_id for r in rows)
+        rows = [r for r in rows if r.subject_id not in hidden]
     return LogListOut(rows=[LogRowOut(**{k: getattr(r, k) for k in LogRowOut.model_fields}) for r in rows])
 
 
