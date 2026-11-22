@@ -11,7 +11,6 @@ empty reference pages are not wanted.
 import importlib
 import re
 from collections.abc import Callable
-
 from pathlib import Path
 
 from model import BuildError, Config, Page, page_from_meta
