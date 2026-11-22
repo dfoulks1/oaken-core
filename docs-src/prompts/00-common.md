@@ -2,7 +2,7 @@
 
 AI-generated, unreviewed by a human.
 
-Repo: `~/local/oaken-core`. Read `PLAN.md`. It holds the decisions. Do not reopen them.
+Repo: `~/local/oaken-core`. Read `docs-src/PLAN.md`. It holds the decisions. Do not reopen them.
 
 Core is an async pipeline and a plugin loader. It has no nouns. No message. No person.
 

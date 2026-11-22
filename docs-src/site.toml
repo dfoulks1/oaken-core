@@ -1,8 +1,8 @@
-# Site registry. Every Markdown file under docs/ must be listed here or excluded below,
+# Site registry. Every Markdown file under docs-src/ must be listed here or excluded below,
 # otherwise check_docs.py reports it as an orphan.
 
-# Globs (relative to docs/, '*' crosses '/') that are not site content. docs-src/tools/** is always excluded.
-exclude = ["origin/*.md"]
+# Globs (relative to docs-src/, '*' crosses '/') that are not site content. docs-src/tools/** is always excluded.
+exclude = ["origin/**", "prompts/**", "tools/**", "PLAN.md"]
 
 [site]
 title = "Oaken Core"

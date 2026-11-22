@@ -10,7 +10,7 @@ Build:
    No mail word. No person word. In core or in either fake.
 3. A parity test: every operation reaches the doors its mode says.
 4. A snapshot of the JSON Schema for every operation and contract. A change fails until updated on purpose.
-5. A property test per invariant in `PLAN.md`.
+5. A property test per invariant in `docs-src/PLAN.md`.
 6. The standalone test: the suite passes with no oaken plugin and no model backend.
 
 Done when:

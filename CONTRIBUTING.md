@@ -38,6 +38,7 @@ tools/            QA.sh: rebuild the docs, lint, summarise
 docs-src/         the knowledge base: Markdown sources, site generator (tools/)
 docs-src/origin/  the architecture decisions core inherited from oaken-mail
 docs-src/prompts/ the build prompts, in order
+docs-src/PLAN.md  the original build plan and decisions (not on the website)
 docs/             the generated website (committed; GitHub Pages serves it)
 ```
 
