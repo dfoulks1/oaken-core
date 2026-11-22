@@ -86,5 +86,9 @@ id = "releasing"
 file = "releasing.md"
 
 [[pages]]
+id = "promises"
+file = "promises.md"
+
+[[pages]]
 id = "adr/index"
 generated = true

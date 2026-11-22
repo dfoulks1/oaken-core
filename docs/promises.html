@@ -1,0 +1,186 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What 1.0 promises · Oaken Core</title>
+<meta name="description" content="The compatibility contract of oaken-core 1.x: the plugin API, operations, CLI exit codes, HTTP paths, config keys, database migrations and plugin module paths that are frozen, and what is not.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="What 1.0 promises · Oaken Core">
+<meta property="og:description" content="The compatibility contract of oaken-core 1.x: the plugin API, operations, CLI exit codes, HTTP paths, config keys, database migrations and plugin module paths that are frozen, and what is not.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-nav" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+
+
+<nav class="site-nav navbar navbar-expand-lg" aria-label="Site">
+  <div class="container-fluid px-3 px-lg-4">
+    <a class="brand navbar-brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNav" aria-controls="siteNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="siteNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Start</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a></li>
+            <li><a class="doc-link" href="keyring.html">Store credentials in your keyring</a></li>
+            <li><a class="doc-link" href="settings.html">Settings, storage and the event log</a></li>
+            <li><a class="doc-link" href="using-plugins.html">Using plugins</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Concepts</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="architecture/overview.html">Architecture overview</a></li>
+            <li><a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a></li>
+            <li><a class="doc-link" href="architecture/software-map.html">Software map</a></li>
+            <li><a class="doc-link" href="architecture/swarm.html">The swarm</a></li>
+            <li><a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a></li>
+            <li><a class="doc-link" href="plugins.html">Writing a plugin</a></li>
+            <li><a class="doc-link" href="architecture/router.html">The model router</a></li>
+            <li><a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a></li>
+            <li><a class="doc-link" href="architecture/operations.html">Operations</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Project</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="releasing.html">Releasing Oaken</a></li>
+            <li><a class="doc-link current" href="promises.html" aria-current="page">What 1.0 promises</a></li>
+            <li><a class="doc-link" href="adr/index.html">Architecture decisions</a></li>
+          </ul>
+        </li>
+      </ul>
+      <ul class="navbar-nav align-items-lg-center">
+        <li class="nav-item"><a class="nav-link" href="https://github.com/dfoulks1/oaken-core">GitHub</a></li>
+        <li class="nav-item"><button class="theme btn btn-sm btn-outline-secondary ms-lg-2" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-3 px-lg-4">
+<div class="docs-grid with-toc">
+<aside class="docs-toc d-none d-lg-block" id="toc" aria-label="On this page"><div class="sticky">
+  <div class="label">On this page</div><nav class="nav flex-column">
+    <a class="nav-link" href="#frozen-in-1x"><span class="num">1</span>Frozen in 1.x</a>
+    <a class="nav-link" href="#not-frozen"><span class="num">2</span>Not frozen</a>
+    <a class="nav-link" href="#how-a-break-is-handled"><span class="num">3</span>How a break is handled</a>
+    <a class="nav-link" href="#versions-of-core-and-plugins-together"><span class="num">4</span>Versions of core and plugins together</a>
+  </nav></div></aside>
+<main id="content" tabindex="-1">
+  <nav class="crumbs" aria-label="breadcrumb"><a href="index.html">Home</a> <span aria-hidden="true">/</span> What 1.0 promises</nav>
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"></div>
+    <h1 class="display-6">What 1.0 promises</h1>
+    <p class="lead">1.0 is a promise about a short list of surfaces. Anything on the list keeps working across every 1.x release. Anything off it can change in a minor release, and the changelog will say so.</p>
+  </header>
+<p>Core and <code>oaken-plugins</code> follow semantic versioning. A change that breaks something
+on the frozen list waits for 2.0. A new operation, setting, kind or optional field is not a break and may
+arrive in any 1.x.</p>
+
+<section id="frozen-in-1x" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>Frozen in 1.x</h2></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Surface</th>
+<th>What is frozen</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Plugin API</strong></td>
+<td><code>PLUGIN_API_VERSION = 1</code>. The members each kind requires (<code>oaken_core.plugins.kinds</code>), the lifecycle (<code>start</code>, <code>stop</code>, <code>health</code>), the contract types in <code>oaken_core.plugins.contracts</code>, <code>Verdict</code> and the intake envelope fields, and the <code>requires_core</code> range check. A plugin written for API 1 loads on every 1.x.</td>
+</tr>
+<tr>
+<td><strong>Entry-point groups</strong></td>
+<td>The group names (<code>oaken_core.triagers</code>, <code>oaken_core.llm_backends</code>, ...) and the kind names.</td>
+</tr>
+<tr>
+<td><strong>Operations</strong></td>
+<td>The name, the permission class, the input fields and the output fields of every built-in operation. New optional inputs and new output fields may appear.</td>
+</tr>
+<tr>
+<td><strong>CLI</strong></td>
+<td>Command names, flag names and the exit codes 0 to 5 (see <a href="architecture/operations.html#cli-exit-codes">Operations</a>). Human-readable text is not frozen: use <code>--json</code>.</td>
+</tr>
+<tr>
+<td><strong>HTTP API</strong></td>
+<td>The paths under <code>/v1/</code> (<code>health</code>, <code>operations</code>, <code>operations/{name}</code>, <code>openapi.json</code>, <code>events</code>, <code>trace/stream</code>, <code>agent/jobs/*</code>), the error <code>code</code> values and the status each maps to, and the <code>/mcp</code> and <code>/mcp/agent</code> doors.</td>
+</tr>
+<tr>
+<td><strong>Configuration</strong></td>
+<td>Every documented key of <code>config.toml</code>, with its meaning and default. A key may gain values. A key is deprecated for a whole minor series before it is removed in 2.0.</td>
+</tr>
+<tr>
+<td><strong>Environment</strong></td>
+<td><code>OAKEN_HOME</code>, <code>OAKEN_URL</code>, <code>OAKEN_TOKEN_FILE</code>, <code>OAKEN_STATE_DIR</code>.</td>
+</tr>
+<tr>
+<td><strong>Data</strong></td>
+<td>Migrations only add. A 1.x core opens the database any earlier 1.x wrote and migrates it forward. There is no downgrade.</td>
+</tr>
+<tr>
+<td><strong>Confidentiality</strong></td>
+<td>The label <code>confidential</code>, the three gates (router locality, MCP clearance, agent locality) and the rule that a gate refuses when in doubt. A release may tighten a gate and never loosen one.</td>
+</tr>
+<tr>
+<td><strong><code>oaken-plugins</code> names</strong></td>
+<td>The distribution name, the module path <code>oaken_plugins.&lt;kind&gt;_&lt;name&gt;</code>, each plugin's class name and its <code>[plugins.&lt;kind&gt;.&lt;name&gt;]</code> settings keys. A plugin that is retired stays importable for the whole 1.x series.</td>
+</tr>
+</tbody>
+</table></div>
+</section>
+<section id="not-frozen" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Not frozen</h2></div>
+<ul>
+<li><strong>The Python import API.</strong> <code>import oaken_core</code> is how the tests and the plugin contract reach core, not a
+library you embed against yet. Only what is under <em>Plugin API</em> above is stable. Everything else
+(<code>oaken_core.app</code>, <code>oaken_core.jobs</code>, ...) may change in a minor release.</li>
+<li><strong>Output text</strong>: log lines, error messages, console pages, the generated docs.</li>
+<li><strong>Internals</strong>: table names, queue and job internals, trace event shapes, the console's HTML.</li>
+<li><strong>Defaults of tuning values</strong>: timeouts, limits, leases, rate limits. They may change when measured.</li>
+<li><strong>Plugin catalog contents.</strong> A new plugin may appear in any <code>oaken-plugins</code> 1.x. A plugin's behaviour may
+improve. Its settings keys do not change meaning.</li>
+<li><strong>Optional extras</strong> (<code>oaken-plugins[imap]</code> and the rest): the libraries behind them move with their own
+releases.</li>
+</ul>
+</section>
+<section id="how-a-break-is-handled" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>How a break is handled</h2></div>
+<ol>
+<li><strong>Deprecate first.</strong> The old form keeps working and logs a warning that names its replacement.</li>
+<li><strong>Say so.</strong> The <a href="https://github.com/dfoulks1/oaken-core/blob/main/CHANGELOG.md">changelog</a> has a <em>Deprecated</em> entry the release that starts it.</li>
+<li><strong>Remove in the next major.</strong> Never in a minor.</li>
+</ol>
+<p>A security fix is the one exception. If a frozen behaviour is the hole, it changes in a patch release and the
+changelog and the advisory say what and why.</p>
+</section>
+<section id="versions-of-core-and-plugins-together" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Versions of core and plugins together</h2></div>
+<p><code>oaken-plugins</code> 1.x depends on <code>oaken-core&gt;=1.0.0,&lt;2</code>. A plugin may need a newer 1.x core and says so with
+<code>requires_core</code>; <code>oaken plugin add</code> refuses it with that reason. See <a href="releasing.html">Releasing</a> for the pin and
+<a href="using-plugins.html#versions-and-compatibility">Using plugins</a> for what the user sees.</p>
+</section>
+
+
+  <div class="prevnext d-flex justify-content-between gap-3">
+    <a class="btn btn-outline-secondary" href="releasing.html">&larr; Releasing Oaken</a>
+    <a class="btn btn-outline-secondary" href="adr/index.html">Architecture decisions &rarr;</a>
+  </div>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>
