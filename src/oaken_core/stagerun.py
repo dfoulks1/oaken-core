@@ -143,7 +143,9 @@ class StageRunner:
     async def _onward(self, p: StagePayload, after: str | None, priority: int = PRIORITY_INGEST) -> None:
         """Queue the enricher stage after ``after`` (the first when None); with none left, the actions."""
         stages = self._stages("enricher")
-        nxt = stages if after is None else stages[stages.index(after) + 1 :]
+        # ``after`` is not a stage when a job was requeued to another queue or its stage was removed: start from the first,
+        # because enrichments replace the old answer, where skipping ahead would lose enrichers.
+        nxt = stages if after is None or after not in stages else stages[stages.index(after) + 1 :]
         for stage in nxt:  # a stage nobody in it selects for this item gets no job: nothing to lease, nothing to skip later
             if any(selected(p.labels, *self.selector_of(name)) for name, _ in self.enrichers_for(stage)):
                 await self.jobs.enqueue(ENRICH_KIND, p, subject=p.subject_id, queue=stage, actor=SYSTEM, priority=priority)

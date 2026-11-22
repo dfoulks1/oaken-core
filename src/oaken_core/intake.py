@@ -382,16 +382,20 @@ class Intake:
             raise Unavailable(
                 "intake has no ingest hook; nothing can store this item yet"
             )
-        real = await self.ingest(
-            IntakeItem(p.subject_id, p.source, p.body, p.labels, p.key, p.parts)
-        )
+        # A retry after a later step failed must not store the item again: the log row on the provisional subject says what it became.
+        # shortcut: a crash between ingest and that row can still store twice, closed only by an ingestor that dedupes by key.
+        row = await self.db.fetchone("SELECT new_value FROM change_log WHERE subject_id = ? AND key = 'intake' AND op = 'ingested'", (p.subject_id,))
+        if row is not None:
+            real = row["new_value"]
+        else:
+            real = await self.ingest(IntakeItem(p.subject_id, p.source, p.body, p.labels, p.key, p.parts))
+            async with self.db.transaction() as tx:
+                await self.changelog.append(
+                    tx, actor=Actor("system", p.by), subject_id=real, key="intake", op="ingest",
+                    new=json.dumps({"from": p.subject_id, "source": p.source, "verdict": p.verdict, "reason": p.reason}),
+                )  # fmt: skip
+                await self.changelog.append(tx, actor=Actor("system", p.by), subject_id=p.subject_id, key="intake", op="ingested", new=real)
         await self.labels.move(p.subject_id, real)
-        async with self.db.transaction() as tx:
-            await self.changelog.append(
-                tx, actor=Actor("system", p.by), subject_id=real, key="intake", op="ingest",
-                new=json.dumps({"from": p.subject_id, "source": p.source, "verdict": p.verdict,
-                                "reason": p.reason}),
-            )  # fmt: skip
         if self.router is not None and await self._wants(
             "embed", real, self.jobs.settings.embed_by_default
         ):
@@ -400,7 +404,7 @@ class Intake:
                 EMBED_KIND, EmbedPayload(subject_id=real, text=item_text(item), confidential=p.labels.get("confidential") == "true"),
                 subject=real, queue=EMBED, actor=Actor("system", p.by),
             )  # fmt: skip
-        if self.on_stored is not None:
+        if self.on_stored is not None and p.verdict != "reject":  # a reject is never passed on, kept or not
             from oaken_core.stagerun import StagePayload
 
             await self.on_stored(StagePayload(**{**p.model_dump(include=set(StagePayload.model_fields)), "subject_id": real}))

@@ -22,9 +22,12 @@ from oaken_core.cron import parse_cron
 from oaken_core.db import Database
 from oaken_core.errors import ConfigError
 from oaken_core.jobs import PRIORITY_INGEST, Jobs
+from oaken_core.logging import get_logger
 from oaken_core.queues import DEFAULT
 
 MAX_SLEEP_SECONDS = 30.0
+RETRY_SECONDS = 60.0  # a schedule that cannot fire waits this long before its next try, so it never spins
+log = get_logger("oaken_core.scheduler")
 
 
 def _next_run(spec_kind: str, spec: str, after: datetime, anchor: datetime) -> datetime:
@@ -128,33 +131,43 @@ class Scheduler:
         return parse_ts(row["next_run"]) if row else None
 
     async def tick(self) -> int:
-        """Enqueue every schedule that is due now. Returns how many fired."""
+        """Enqueue every schedule that is due now. Returns how many fired. Each one runs in its own transaction, so a schedule that
+        cannot fire (a queue that is gone, a spec that no longer parses) is logged and postponed and never stops the others."""
         now = self.clock.now()
+        due = await self.db.fetchall("SELECT name FROM schedules WHERE next_run <= ? ORDER BY next_run, name", (fmt_ts(now),))
+        fired = 0
+        for d in due:
+            try:
+                fired += await self._fire(d["name"], now)
+            except Exception as exc:  # noqa: BLE001 - one bad schedule must not end the scheduler
+                log.error("schedule failed to fire", schedule=d["name"], error=str(exc))
+                await self._postpone(d["name"], now)
+        return fired
+
+    async def _fire(self, name: str, now: datetime) -> int:
         changes = []
         async with self.db.transaction() as tx:
-            due = await tx.fetchall(
-                "SELECT * FROM schedules WHERE next_run <= ? ORDER BY next_run, name",
-                (fmt_ts(now),),
-            )
-            for r in due:
-                slot = r["next_run"]
-                _, change = await self.jobs.enqueue_in(
-                    tx,
-                    r["kind"],
-                    r["payload_json"],
-                    queue=r["queue"],
-                    subject=r["subject"],
-                    priority=r["priority"],
-                    dedupe_key=f"schedule:{r['name']}:{slot}",
-                )
-                changes.append(change)
-                nxt = _next_run(r["spec_kind"], r["spec"], now, parse_ts(slot))
-                await tx.execute(
-                    "UPDATE schedules SET next_run = ?, updated_at = ? WHERE name = ?",
-                    (fmt_ts(nxt), fmt_ts(now), r["name"]),
-                )
+            r = await tx.fetchone("SELECT * FROM schedules WHERE name = ? AND next_run <= ?", (name, fmt_ts(now)))
+            if r is None:  # deleted, or moved on, since the list was read
+                return 0
+            slot = r["next_run"]
+            _, change = await self.jobs.enqueue_in(
+                tx, r["kind"], r["payload_json"], queue=r["queue"], subject=r["subject"], priority=r["priority"],
+                dedupe_key=f"schedule:{name}:{slot}",
+            )  # fmt: skip
+            changes.append(change)
+            nxt = _next_run(r["spec_kind"], r["spec"], now, parse_ts(slot))
+            await tx.execute("UPDATE schedules SET next_run = ?, updated_at = ? WHERE name = ?", (fmt_ts(nxt), fmt_ts(now), name))
         await self.jobs.announce(*changes)
-        return len(due)
+        return 1
+
+    async def _postpone(self, name: str, now: datetime) -> None:
+        try:
+            async with self.db.transaction() as tx:
+                await tx.execute("UPDATE schedules SET next_run = ?, updated_at = ? WHERE name = ?",
+                                 (fmt_ts(now + timedelta(seconds=RETRY_SECONDS)), fmt_ts(now), name))  # fmt: skip
+        except Exception as exc:  # noqa: BLE001 - the loop must survive even this
+            log.error("schedule could not be postponed", schedule=name, error=str(exc))
 
     # -- running in the background ----------------------------------------------------------
     def start(self) -> None:
@@ -171,11 +184,14 @@ class Scheduler:
 
     async def _loop(self) -> None:
         while not self._stop.is_set():
-            await self.tick()
-            row = await self.db.fetchone("SELECT MIN(next_run) AS t FROM schedules")
             timeout = MAX_SLEEP_SECONDS
-            if row and row["t"]:
-                wait = (parse_ts(row["t"]) - self.clock.now()).total_seconds()
-                timeout = min(MAX_SLEEP_SECONDS, max(wait, 0.05))
+            try:
+                await self.tick()
+                row = await self.db.fetchone("SELECT MIN(next_run) AS t FROM schedules")
+                if row and row["t"]:
+                    wait = (parse_ts(row["t"]) - self.clock.now()).total_seconds()
+                    timeout = min(MAX_SLEEP_SECONDS, max(wait, 0.05))
+            except Exception as exc:  # noqa: BLE001 - a storage error is logged and retried, never the end of scheduling
+                log.error("scheduler tick failed", error=str(exc))
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(self._stop.wait(), timeout)

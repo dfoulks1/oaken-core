@@ -229,7 +229,7 @@ class LabelStore:
             rows = await tx.fetchall(sql, args)
             if key is not None:
                 self.maker.check_writer(key, actor)
-            rows = [r for r in rows if self.maker.get(r["key"]).may_write(actor)]  # a sweep leaves a guarded key alone
+            rows = [r for r in rows if self._may_sweep(r["key"], actor)]  # a sweep leaves a guarded key alone
             for r in rows:
                 await tx.execute(
                     "DELETE FROM labels WHERE subject_id = ? AND key = ? AND layer = ?",
@@ -240,6 +240,12 @@ class LabelStore:
                     old=r["value"],
                 )  # fmt: skip
         return len(rows)
+
+    def _may_sweep(self, key: str, actor: Actor) -> bool:
+        try:
+            return self.maker.get(key).may_write(actor)
+        except LabelError:  # a key nothing defines any more (its config table or plugin is gone) has no guard, and must not stop a reject
+            return True
 
     async def move(self, src: str, dst: str) -> int:
         """Move every label of ``src`` to ``dst``, both layers, keeping who set each and when

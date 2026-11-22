@@ -211,3 +211,13 @@ async def test_a_label_with_writers_is_refused_to_anyone_else_and_a_sweep_leaves
     await labels.clear_machine("s1", Actor("system", "other"))  # a retriage sweep
     assert await labels.get("s1", "send") == "yes"  # the human's value; and the machine's was left too
     assert (await labels.layers("s1", "send")) == {"human": "yes", "machine": "no"}
+
+
+async def test_a_sweep_clears_a_label_whose_key_nothing_defines_any_more(labels: LabelStore, core_db: Database) -> None:
+    await labels.set(S, "heat", "hot", SYSTEM)
+    await core_db.execute(  # a label left behind by a config table or plugin that has since been removed
+        "INSERT INTO labels (subject_id, key, layer, value, actor_kind, actor, at) VALUES (?,?,?,?,?,?,?)",
+        (S, "gone", "machine", "x", "system", "old", "2026-01-01T00:00:00Z"),
+    )
+    assert await labels.clear_machine(S, SYSTEM) == 2  # used to raise LabelError for "gone", so a reject could never finish
+    assert await labels.all(S) == {}

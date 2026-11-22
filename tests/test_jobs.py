@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
+import asyncio
 from datetime import timedelta
 from typing import Any
 
@@ -233,3 +234,49 @@ async def test_the_idle_wait_queries_never_scan_the_jobs_table(kit: Kit) -> None
     ):
         plan = " ".join(r["detail"] for r in await kit.db.fetchall("EXPLAIN QUERY PLAN " + sql, ("default",) if "?" in sql else ()))
         assert "SCAN jobs" not in plan.replace("SCAN jobs USING", "") and "USING" in plan, f"{sql}: {plan}"
+
+
+async def test_a_wake_set_after_the_seq_was_read_is_never_lost() -> None:
+    from oaken_core.jobs import _Wake
+
+    wake = _Wake()
+    seen = wake.seq
+    wake.set()  # lands between a worker's read and its wait (another worker used to erase this)
+    await asyncio.wait_for(wake.wait(seen, 30.0), 1.0)  # returns at once, not after 30s
+
+
+async def test_one_wake_reaches_every_waiting_worker() -> None:
+    from oaken_core.jobs import _Wake
+
+    wake = _Wake()
+    waiters = [asyncio.create_task(wake.wait(wake.seq, 30.0)) for _ in range(3)]
+    await asyncio.sleep(0)
+    wake.set()
+    await asyncio.wait_for(asyncio.gather(*waiters), 1.0)
+
+
+async def test_a_storage_error_in_claim_does_not_end_the_worker(kit: Kit) -> None:
+    real, calls = kit.jobs.claim, {"n": 0}
+
+    async def flaky(*a, **kw):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("database is locked")
+        return await real(*a, **kw)
+
+    kit.jobs.claim = flaky  # type: ignore[method-assign]
+    kit.runner._sleep = lambda s: asyncio.sleep(0)  # type: ignore[assignment]
+    async def ok(payload: Ping, job: Any) -> Pong:
+        return Pong(n=payload.n)
+
+    kit.runner.register("k", Ping, ok, result_model=Pong)
+    await kit.jobs.enqueue("k", Ping())
+    kit.runner.start()
+    try:
+        for _ in range(200):
+            await asyncio.sleep(0.01)
+            if kit.runner.processed:
+                break
+        assert kit.runner.processed == 1  # the worker survived the error and ran the job
+    finally:
+        await kit.runner.stop()

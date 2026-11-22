@@ -345,3 +345,38 @@ async def test_a_format_that_fails_or_matches_nothing_can_be_held_in_intakes_fai
     await kit.runner.drain()
     assert len(stored) == 2  # the one nobody handled is formatted and goes on; the unparseable one fails again
     assert len(await kit.jobs.query(kind=FORMAT_KIND, status="failed")) == 1
+
+
+async def test_a_retry_after_ingest_does_not_store_the_item_twice(kit: Kit) -> None:
+    kit.jobs.settings = JobsSettings(backoff_jitter=0, backoff_base_seconds=1)
+    stored: list = []  # type: ignore[type-arg]
+    calls = {"n": 0}
+
+    async def on_stored(payload) -> None:  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("the stage queue is not ready")  # a step after ingest fails once
+
+    intake = make(kit, [Rules(Verdict("accept"))], stored)
+    intake.on_stored = on_stored
+    prov = await intake.submit("web", "hello")
+    await kit.runner.drain()
+    kit.clock.advance(seconds=60)
+    await kit.runner.drain()  # the retry
+    assert len(stored) == 1  # ingested once, not once per attempt
+    assert calls["n"] == 2
+    assert await kit.labels.all(prov) == {}
+
+
+async def test_a_kept_reject_is_stored_but_not_passed_on(kit: Kit) -> None:
+    stored, passed = [], []  # type: ignore[var-annotated]
+
+    async def on_stored(payload) -> None:  # type: ignore[no-untyped-def]
+        passed.append(payload)
+
+    intake = make(kit, [Rules(Verdict("reject", "junk", route=("forward",)))], stored)
+    intake.on_stored = on_stored
+    await intake.submit("web", "keep me anyway", labels={"store": "true"})
+    await kit.runner.drain()
+    assert len(stored) == 1  # kept, as the store label asked
+    assert passed == []  # but never enriched or acted on

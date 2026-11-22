@@ -12,6 +12,7 @@ from oaken_core.operations.caller import CallerContext
 from oaken_core.plugins.base import BaseAction, BaseEnricher, BaseTriager
 from oaken_core.plugins.host import PluginTables
 from oaken_core.settings import Settings
+from oaken_core.stagerun import StagePayload
 from oaken_core.stages import ActionResult, ActionTarget, Enrichment, EnrichTarget
 from oaken_core.store import SqliteStore
 
@@ -91,3 +92,15 @@ def test_a_rerun_batch_names_each_message_once_and_needs_at_least_one() -> None:
     assert _rerun_targets(ItemRerunIn(id="a", ids=["b", "a", "c"], stage="enrich")) == ["a", "b", "c"]
     with pytest.raises(InvalidInput):
         _rerun_targets(ItemRerunIn(stage="enrich"))
+
+
+async def test_a_job_finishing_outside_any_enricher_stage_starts_over_instead_of_failing(tmp_path: Path) -> None:
+    SEEN.clear()
+    core = await make(tmp_path)
+    try:
+        payload = StagePayload(subject_id="real-1", source="s", body="hello", routes=["save"])
+        await core.stages._onward(payload, "default")  # a job that was requeued to the default queue; used to raise ValueError
+        await core.runner.drain()
+        assert SEEN == [("save", {"chars": 5})]  # enriched from the first stage, then acted on
+    finally:
+        await core.host.stop()

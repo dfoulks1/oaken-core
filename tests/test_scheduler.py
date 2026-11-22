@@ -25,3 +25,14 @@ async def test_missed_runs_collapse_into_one(kit: Kit) -> None:
     kit.clock.advance(seconds=600)  # ten periods missed
     assert await sched.tick() == 1
     assert len(await kit.jobs.query(kind="k")) == 1
+
+
+async def test_a_schedule_that_cannot_fire_is_postponed_and_does_not_stop_the_others(kit: Kit) -> None:
+    sched = Scheduler(kit.db, kit.jobs, kit.clock)
+    await sched.add("bad", "k", Ping(), every=timedelta(seconds=60))
+    await sched.add("good", "k", Ping(), every=timedelta(seconds=60))
+    await kit.db.execute("UPDATE schedules SET spec_kind = 'cron', spec = 'not a cron' WHERE name = 'bad'")  # a hand-edited spec
+    kit.clock.advance(seconds=61)
+    assert await sched.tick() == 1  # "good" fired, "bad" did not raise out of tick
+    assert len(await kit.jobs.query(kind="k")) == 1
+    assert await sched.next_run("bad") > kit.clock.now() + timedelta(seconds=30)  # postponed, not spinning

@@ -221,6 +221,33 @@ class Metrics:
 REQUEUEABLE = ("queued", "failed", "cancelled")
 
 
+class _Wake:
+    """A wake-up every idle worker sees. One shared ``asyncio.Event`` lost signals: a worker clearing it before its claim erased the
+    wake another worker (of another queue) was about to wait for. Each waiter gets its own event, and ``seq`` lets one that
+    read it before a claim see a signal that arrived during the claim."""
+
+    def __init__(self) -> None:
+        self.seq = 0
+        self._waiters: set[asyncio.Event] = set()
+
+    def set(self) -> None:
+        self.seq += 1
+        for e in self._waiters:
+            e.set()
+
+    async def wait(self, since: int, timeout: float) -> None:
+        """Return when ``set`` was called after ``since`` was read, or after ``timeout`` seconds."""
+        if self.seq != since:
+            return
+        e = asyncio.Event()
+        self._waiters.add(e)
+        try:
+            with contextlib.suppress(TimeoutError):
+                await asyncio.wait_for(e.wait(), timeout)
+        finally:
+            self._waiters.discard(e)
+
+
 class Jobs:
     def __init__(
         self,
@@ -247,7 +274,7 @@ class Jobs:
         self.result_models: dict[str, type[BaseModel]] = {}  # a job's result needs a schema
         self.adoptable: set[str] = set()  # kinds whose follow-up core runs on an agent's result (``JobRunner.register(adopt=)``)
         self._rng = rng or random.Random()  # noqa: S311 (retry jitter, not security)
-        self.wake = asyncio.Event()  # set whenever work may have become runnable
+        self.wake = _Wake()  # set whenever work may have become runnable
 
     # -- producing --------------------------------------------------------------------------
     async def route(self, subject: str | None, queue: str | None = None) -> str:
@@ -960,25 +987,31 @@ class JobRunner:
     # -- workers ----------------------------------------------------------------------------
     async def _worker(self, name: str, queue: str, idle_exit: bool) -> None:
         while not self._stopping:
-            self.jobs.wake.clear()
-            job = await self.jobs.claim(name, queue, list(self._registry), self._limits())
-            if job is None:
+            seen = self.jobs.wake.seq  # read before the claim: a signal that lands during it is not lost
+            try:
+                job = await self.jobs.claim(name, queue, list(self._registry), self._limits())
+                if job is None:
+                    if idle_exit:
+                        return
+                    await self._idle_wait(queue, seen)
+                    continue
+                await self._execute(job, name)
+            except Exception as exc:  # a storage error must not end this worker for good
                 if idle_exit:
-                    return
-                await self._idle_wait(queue)
+                    raise
+                log.error("worker failed; retrying", worker=name, queue=queue, error=type(exc).__name__)
+                await self._sleep(1.0)
                 continue
-            await self._execute(job, name)
             self.processed += 1
             self.jobs.wake.set()  # a finished job may free a concurrency slot
 
-    async def _idle_wait(self, queue: str) -> None:
+    async def _idle_wait(self, queue: str, seen: int) -> None:
         cap = min(self.jobs.settings.lease_seconds / 2, 30.0)
         due = await self.jobs.next_due(queue)  # this queue's: another queue's backlog is not this worker's to wake for
         timeout = cap
         if due is not None:
             timeout = min(cap, max((due - self.jobs.clock.now()).total_seconds(), 0.25))
-        with contextlib.suppress(TimeoutError):
-            await asyncio.wait_for(self.jobs.wake.wait(), timeout)
+        await self.jobs.wake.wait(seen, timeout)
 
     async def _execute(self, job: Job, worker: str) -> None:
         q = self.jobs
