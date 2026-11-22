@@ -91,6 +91,7 @@ exclude = ["__pycache__", "*.pyc"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["error::pytest.PytestUnraisableExceptionWarning"]  # a transport or task left open shows up as a failure, not a warning
 testpaths = ["tests"]
 
 [tool.ruff]

@@ -68,3 +68,6 @@ old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cl
   - Plugin status details (`plugin_list`, offered over MCP) are scrubbed of secrets like a job's last error.
   - Typing words into a number box in the console shows a message instead of "something went wrong inside core".
   - An extension directory or its `src/` that anyone may write to is skipped, not only a root that is.
+  - The socket provider waits for its connections to finish closing when it stops, and when it probes a path, so a half-closed transport
+    is no longer garbage-collected after the server is gone (an error inside asyncio on Python 3.13 and later). The tests now fail
+    on that.

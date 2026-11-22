@@ -189,15 +189,20 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
             os.unlink(path)
             return
         w.close()
+        with contextlib.suppress(Exception):
+            await w.wait_closed()  # let the probe's connection finish closing before the caller goes on
         raise PluginError(f"{path} is already being listened on")
 
     async def stop(self) -> None:
         server, self.server = self.server, None
         if server is not None:
             server.close()
-            for w in list(self._writers):
+            writers = list(self._writers)
+            for w in writers:
                 w.close()
-            with contextlib.suppress(Exception):
+            with contextlib.suppress(Exception):  # wait until each connection has really closed: a transport left half-closed is
+                # garbage-collected after the server is gone, and on Python 3.13 and later that raises inside asyncio
+                await asyncio.gather(*(w.wait_closed() for w in writers), return_exceptions=True)
                 await server.wait_closed()
         if self._made_path:
             with contextlib.suppress(FileNotFoundError):
@@ -236,6 +241,7 @@ class SocketProvider(BaseTemplatePlugin, BaseProvider):
             self._writers.discard(writer)
             with contextlib.suppress(Exception):
                 writer.close()
+                await writer.wait_closed()
 
     async def _lines(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
