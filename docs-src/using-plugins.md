@@ -52,7 +52,9 @@ oaken plugin add formatter.ini          # shows what it would change
 oaken plugin add formatter.ini --yes    # does it
 ```
 
-A change made through any door is a proposal until you confirm it, so the first command only says what it would do.
+A change made through any door is a proposal until you confirm it, so the first command only says what it would do. To describe the
+change it has to read the plugin's class, so the preview imports that one plugin module, as the confirmed command does. Only add
+code you trust.
 With `--yes`, core:
 
 1. imports that one plugin module (the only time a plugin from the catalog is imported),

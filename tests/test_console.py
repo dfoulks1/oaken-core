@@ -1272,3 +1272,10 @@ def test_check_ui_refuses_a_tab_that_is_not_a_short_plain_label_or_follows_nothi
     assert check_ui(ok) == []
     assert any("tab must be" in p for p in check_ui(UiSpec(pages=(UiPage("rules", "Rules", load="rules_load", tab="<b>x</b>"),))))
     assert any("tab_after" in p for p in check_ui(UiSpec(pages=(UiPage("rules", "Rules", load="rules_load", tab="Sieve", tab_after="nowhere"),))))
+
+
+async def test_words_in_a_number_box_are_an_error_message_not_a_500(rig: Rig) -> None:
+    for path, form in (("/ui/queues/add", {"name": "x", "kind": "triager", "workers": "many"}),
+                       ("/ui/schedules/new", {"name": "t", "kind": "k", "every_seconds": "soon"})):
+        out = await rig.post(path, **form)
+        assert out.status_code == 422 and "number" in out.text  # a message about the box, not "something went wrong inside core"

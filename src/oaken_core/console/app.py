@@ -114,6 +114,14 @@ Handler = Callable[[Request], Awaitable[Response]]
 _PROCESS_TOKEN = secrets.token_urlsafe(32)
 
 
+def _number(kind: type[int] | type[float], text: str, field: str) -> Any:
+    """A number from a form box. Typing words in it is an error to show next to the box, not a crash."""
+    try:
+        return kind(text)
+    except ValueError:
+        raise InvalidInput(f"{field} must be a {'whole number' if kind is int else 'number'}, not {text!r}") from None
+
+
 def _unfit(out: dict[str, Any]) -> str:
     return "Loads, but these stay disabled until fixed: " + "; ".join(out["warnings"])
 
@@ -983,11 +991,11 @@ class Console:
             form.get("cron", "").strip(),
         )
         when = {
-            **({"every_seconds": float(every)} if every else {}),
+            **({"every_seconds": _number(float, every, "every_seconds")} if every else {}),
             **({"cron": cron} if cron else {}),
         }  # blank on an edit: keep the timing
         common = {"kind": form.get("kind", "").strip(), "payload": form.get("payload", "").strip() or "{}", "queue": form.get("queue", "default"),
-                  "priority": int(form.get("priority") or 50)}  # fmt: skip
+                  "priority": _number(int, form.get("priority") or "50", "priority")}  # fmt: skip
         payload = {
             "new": {"name": name, **common, **when},
             "edit": {"name": name, **common, **when},
@@ -1262,7 +1270,7 @@ class Console:
         """The "Add a stage" form: a queue for one analyzer kind. A change, so it shows what it will do first."""
         title = form.get("label", "").strip()
         payload = {"name": form.get("name", "").strip() or title, "kind": form.get("kind", ""), "label": title,
-                   "workers": int(form.get("workers") or 1)}  # fmt: skip
+                   "workers": _number(int, form.get("workers") or "1", "workers")}  # fmt: skip
         out = await self._gated("queue_new", payload, form, request.url.path)
         if isinstance(out, Response):
             return out
@@ -1336,7 +1344,7 @@ class Console:
             )  # the click is the confirmation
             return RedirectResponse(self._back(f"/stage/{name}"), 303)
         payload = {"edit": {"queue": name, "label": form.get("label", "").strip(), "description": form.get("description", "").strip(),
-                            **({"workers": int(form["workers"])} if form.get("workers") else {})},  # no box, no change: a stage with nothing parallel has none
+                            **({"workers": _number(int, form["workers"], "workers")} if form.get("workers") else {})},  # no box, no change: a stage with nothing parallel has none
                    "rename": {"queue": name, "to": form.get("to", "")}, "delete": {"queue": name}}[verb]  # fmt: skip
         out = await self._gated(f"queue_{verb}", payload, form, request.url.path)
         if isinstance(out, Response):

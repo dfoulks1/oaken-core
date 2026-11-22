@@ -112,6 +112,17 @@ async def test_the_host_finds_plugins_in_extensions_directories_and_skips_a_worl
     assert [e.name for e in extensions.entry_points([str(good), str(bad), str(tmp_path / "missing")], "oaken_core.enrichers")] == ["x"]
 
 
+def test_a_world_writable_plugin_directory_or_its_src_is_skipped_too(tmp_path: Path) -> None:
+    for name, wide_dir, wide_src in (("ok", False, False), ("wide-dir", True, False), ("wide-src", False, True)):
+        d = tmp_path / name
+        (d / "src").mkdir(parents=True)
+        (d / "pyproject.toml").write_text('[project.entry-points."oaken_core.enrichers"]\n' + f'{name} = "m:X"\n')
+        d.chmod(0o777 if wide_dir else 0o755)
+        (d / "src").chmod(0o777 if wide_src else 0o755)
+    tmp_path.chmod(0o755)
+    assert [e.name for e in extensions.entry_points([str(tmp_path)], "oaken_core.enrichers")] == ["ok"]
+
+
 async def test_every_plugin_operation_names_its_target_as_kind_dot_name(rig: Rig, oaken_home: Path) -> None:  # noqa: F811
     call = rig.core.client.call
     await add(rig)

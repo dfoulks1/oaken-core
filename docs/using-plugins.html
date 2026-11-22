@@ -138,7 +138,9 @@ commands, and an example for <code>config.toml</code>.</p>
 <div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>formatter.ini<span class="w">          </span><span class="c1"># shows what it would change</span>
 oaken<span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>formatter.ini<span class="w"> </span>--yes<span class="w">    </span><span class="c1"># does it</span>
 </code></pre></div>
-<p>A change made through any door is a proposal until you confirm it, so the first command only says what it would do.
+<p>A change made through any door is a proposal until you confirm it, so the first command only says what it would do. To describe the
+change it has to read the plugin's class, so the preview imports that one plugin module, as the confirmed command does. Only add
+code you trust.
 With <code>--yes</code>, core:</p>
 <ol>
 <li>imports that one plugin module (the only time a plugin from the catalog is imported),</li>

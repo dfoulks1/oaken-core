@@ -505,3 +505,19 @@ async def test_a_plugin_that_declares_a_template_is_one_in_its_own_table_whateve
         assert Account.started == ["work:work"]  # and never inherits the template's account
     finally:
         await host.stop()
+
+
+async def test_a_plugins_error_text_is_scrubbed_before_it_is_listed(tmp_path: Path, clock: FakeClock) -> None:
+    class Leaky(stub("enricher")):  # type: ignore[misc]
+        config_model = None
+
+        async def start(self, ctx: Any) -> None:
+            raise RuntimeError("login failed: password=hunter2 for https://mail.example")
+
+    host = make(tmp_path, clock, [STORE, ("enricher", "leaky", Leaky)], {"enricher": {"leaky": {"x": 1}}})
+    await host.start()
+    try:
+        detail = {s.name: s for s in host.statuses()}["leaky"].detail
+        assert "hunter2" not in detail and "start() failed" in detail  # what went wrong stays; the secret does not
+    finally:
+        await host.stop()

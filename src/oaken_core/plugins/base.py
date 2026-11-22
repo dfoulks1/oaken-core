@@ -48,7 +48,7 @@ from oaken_core.plugins.contracts import (
     UiTemplate,
     VectorItem,
 )
-from oaken_core.trace import brief, trace_context
+from oaken_core.trace import brief, trace_context, withheld
 
 if TYPE_CHECKING:
     from oaken_core.plugins.contracts import Query, Record
@@ -88,7 +88,8 @@ def _traced(method: str, fn: Callable[..., Any]) -> Callable[..., Any]:
         if ctx is None or not ctx.tracing():
             return await fn(self, *args, **kwargs)
         kind = _TRACE_KIND.get(method, f"{ctx.kind}.{method}")
-        asked = {"args": brief(list(args)), **({"kwargs": brief(kwargs)} if kwargs else {})}
+        private = withheld()  # a confidential item's prompt, text and answer never go to the trace file: the call, its time and its error do
+        asked = {"args": "<withheld: confidential>"} if private else {"args": brief(list(args)), **({"kwargs": brief(kwargs)} if kwargs else {})}
         started = time.monotonic()
         with trace_context(plugin_kind=ctx.kind, plugin=ctx.name):
             try:
@@ -96,7 +97,7 @@ def _traced(method: str, fn: Callable[..., Any]) -> Callable[..., Any]:
             except BaseException as exc:
                 ctx.trace(kind, **asked, error=type(exc).__name__, ms=round((time.monotonic() - started) * 1000))
                 raise
-            ctx.trace(kind, **asked, result=_shape(method, result), ms=round((time.monotonic() - started) * 1000))
+            ctx.trace(kind, **asked, result="<withheld: confidential>" if private else _shape(method, result), ms=round((time.monotonic() - started) * 1000))
             return result
 
     @functools.wraps(fn)

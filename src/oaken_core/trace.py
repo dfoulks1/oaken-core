@@ -30,6 +30,11 @@ from oaken_core.events import EventBus, TraceEvent
 _CONTEXT: ContextVar[dict[str, Any] | None] = ContextVar("trace_context", default=None)
 
 
+def withheld() -> bool:
+    """True while a confidential item is being worked on: a plugin call's text is then left out of the trace."""
+    return bool((_CONTEXT.get() or {}).get("confidential"))
+
+
 @contextmanager
 def trace_context(**fields: Any) -> Iterator[None]:
     token = _CONTEXT.set(

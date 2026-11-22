@@ -166,3 +166,17 @@ async def test_every_llm_backend_has_a_models_command_from_available_models() ->
     ops = {o.name: o for o in Lists().operations()}
     assert "models" in ops
     assert (await ops["models"].handler(None, None)).models == ["a"]
+
+
+async def test_a_confidential_items_text_and_answer_are_left_out_of_the_trace(tmp_path: Path) -> None:
+    from oaken_core.trace import trace_context
+
+    t = tracer(tmp_path)
+    llm = StubBackend({"answer": "The salary is 90000."})
+    await llm.start(traced("llm_backend", t))
+    with trace_context(confidential=True):  # the router sets this for a confidential call
+        await llm.generate(LLMRequest("Be brief.", ("Summarise:", UntrustedText("the salary memo")), think=False))
+    (row,) = t.tail(10)
+    text = str(row)
+    assert "salary" not in text and "withheld" in text  # no prompt, no answer
+    assert row["data"]["plugin"] == "qwen" and isinstance(row["data"]["ms"], int)  # but that it happened, and how long, stays

@@ -46,6 +46,7 @@ from oaken_core.router.store import (
     SpendRow,
 )
 from oaken_core.settings import RouterSettings
+from oaken_core.trace import trace_context
 from oaken_core.untrusted import UntrustedText
 
 log = get_logger("oaken_core.router")
@@ -272,6 +273,12 @@ class Router:
     ) -> T:
         """The validated answer to ``request``. A bad answer, after the one escalation, raises
         ``AIBackendError`` and stores nothing."""
+        with trace_context(confidential=True if call.confidential else None):  # the trace leaves a confidential item's text out
+            return await self._ask(route, call, request, output)
+
+    async def _ask(
+        self, route: Route, call: Call, request: LLMRequest, output: type[T]
+    ) -> T:
         pick = None if route.model else self.resolve(route, call)
         model = route.model or (pick.model if pick else "")
         models = [model, *([route.escalate_model] if route.escalate_model else [])]
@@ -371,9 +378,10 @@ class Router:
                 raise AIBackendError(
                     f"{call.analyzer}: the answer was not valid ({problem})"
                 )
-            await self._store(
-                call, pick.model, first[1]
-            )  # low confidence, nothing bigger to ask
+            if not route.escalate_backend:  # no bigger model is configured: this is the answer that stands
+                await self._store(call, pick.model, first[1])
+            # else one is, but is over budget or not usable right now: answer, but do not cache the weak answer, or it is served
+            # for good and the escalation never happens once the budget resets or the backend returns
             return first[0]
         await self.ledger.add(call.analyzer, pick.model, pick.name, escalations=1)
         second, problem = await self._call(
@@ -555,9 +563,10 @@ class Router:
     ) -> list[list[float]]:
         entry = self._embedder(confidential)
         async with self._gate(replace(entry, name=f"embed:{entry.name}")):
-            vecs = await asyncio.wait_for(
-                entry.plugin.embed(list(texts)), self.settings.call_timeout_seconds
-            )
+            with trace_context(confidential=True if confidential else None):
+                vecs = await asyncio.wait_for(
+                    entry.plugin.embed(list(texts)), self.settings.call_timeout_seconds
+                )
         dims = int(entry.plugin.dimensions)
         if len(vecs) != len(texts) or any(len(v) != dims for v in vecs):
             raise AIBackendError(

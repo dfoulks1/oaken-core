@@ -23,6 +23,12 @@ PACKAGE = "oaken_plugins"  # the one distribution of plugins; see ``plugins.cata
 GROUP_PREFIX = "oaken_core."  # a plugin made for another Oaken (``oaken.providers``) is not ours to load
 
 
+def _open_to_all(path: Path) -> bool:
+    """Whether anyone on the machine may write to ``path``: a stranger's file there would run as the daemon.
+    shortcut: group-writable is allowed, since a private group per user (the usual default) makes every directory so; check the group's members if that stops being true."""
+    return bool(path.stat().st_mode & stat.S_IWOTH)
+
+
 def plugin_dirs(roots: Sequence[str]) -> list[Path]:
     """The plugin directories under each root: a directory with a ``pyproject.toml``. A root that is missing, or that
     anyone may write to (a stranger's file would run as the daemon), is skipped and logged."""
@@ -35,7 +41,13 @@ def plugin_dirs(roots: Sequence[str]) -> list[Path]:
         if base.stat().st_mode & stat.S_IWOTH:
             log.error("extensions directory is world-writable: skipped", path=str(base))
             continue
-        found += [d for d in sorted(base.iterdir()) if d.is_dir() and (d / "pyproject.toml").is_file()]
+        for d in sorted(base.iterdir()):
+            if not (d.is_dir() and (d / "pyproject.toml").is_file()):
+                continue
+            if _open_to_all(d) or ((d / "src").is_dir() and _open_to_all(d / "src")):  # the directory itself and its src/ are what gets imported
+                log.error("plugin directory is world-writable: skipped", path=str(d))
+                continue
+            found.append(d)
     return found
 
 
@@ -45,7 +57,7 @@ def prepare(roots: Sequence[str]) -> None:
     for root in roots:
         base = Path(root).expanduser()
         src = str(base / "src")
-        if (base / "src" / PACKAGE).is_dir() and not base.stat().st_mode & stat.S_IWOTH and src not in sys.path:
+        if (base / "src" / PACKAGE).is_dir() and not _open_to_all(base) and not _open_to_all(base / "src") and src not in sys.path:
             sys.path.append(src)
     for d in plugin_dirs(roots):
         src = str(d / "src")

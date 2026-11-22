@@ -61,3 +61,10 @@ old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cl
   - **Queues:** `queue_rename` carries the plugins pinned to the stage (`stage = ...`) and schedules with it. `queue_delete` is refused while
     a plugin or schedule names the queue. `job_list` leaves out a confidential item's jobs, and `queue_list` and `queue_get` hide
     `last_error`, for a caller not cleared for confidential items (an MCP client).
+  - A low-confidence answer that could not be escalated (over budget, or the bigger backend is down) is no longer cached for good: it
+    is answered but not stored, so the escalation happens once it can.
+  - **Trace:** with `[log] trace` on, the prompt, text and answer of a confidential item are left out (`<withheld: confidential>`); the
+    call, its plugin, its time and its error are still recorded.
+  - Plugin status details (`plugin_list`, offered over MCP) are scrubbed of secrets like a job's last error.
+  - Typing words into a number box in the console shows a message instead of "something went wrong inside core".
+  - An extension directory or its `src/` that anyone may write to is skipped, not only a root that is.

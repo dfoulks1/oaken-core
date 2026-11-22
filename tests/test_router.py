@@ -526,3 +526,13 @@ def test_a_typo_in_a_backends_concurrency_does_not_take_the_router_down() -> Non
 
     host = SimpleNamespace(tables=SimpleNamespace(table=lambda kind, name: {"concurrency": "two"}), usable=lambda kind: {})
     assert HostDirectory(host, RouterSettings())._entry("llm_backend", "x", None).concurrency == 1
+
+
+async def test_a_weak_answer_that_could_not_be_escalated_is_not_cached_for_good(core_db: Database, clock: FakeClock) -> None:
+    router, d = rig(core_db, clock)
+    desk, big = d.add("desk", StubBackend(answer("weak", 0.2))), StubBackend(answer("sure", 0.95))
+    route = Route("desk", "m", escalate_backend="big", escalate_model="m2")
+    assert (await router.ask(route, call("h1"), req(), Answer)).label == "weak"  # no "big" backend yet: the weak answer is all there is
+    assert (await router.ask(route, call("h1"), req(), Answer)).label == "weak" and len(desk.calls) == 2  # not served from cache
+    d.add("big", big)
+    assert (await router.ask(route, call("h1"), req(), Answer)).label == "sure"  # and once it can, it escalates

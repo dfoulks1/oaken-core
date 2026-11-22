@@ -34,6 +34,7 @@ from oaken_core.db import Database, migrate
 from oaken_core.errors import NotFound, PluginError, Unavailable
 from oaken_core.events import EventBus, PluginHealthChanged
 from oaken_core.labels import LabelError, LabelMaker, LabelStore
+from oaken_core.jobs import scrub_error
 from oaken_core.logging import get_logger
 from oaken_core.plugins import catalog, extensions
 from oaken_core.plugins.base import BaseTemplatePlugin, missing_contextual
@@ -1565,7 +1566,7 @@ class PluginHost:
                 api=r.info.api_version if r.info else 0,
                 started=r.started,
                 healthy=r.healthy,
-                detail=r.detail,
+                detail=scrub_error(r.detail),  # a plugin's own error text can quote a URL with a token: statuses are offered over MCP
                 enabled=not r.disabled and self._enabled_by_table(r),
                 enabled_default=self._enabled_default(r.instance),
                 loadpath=r.loadpath,
