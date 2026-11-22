@@ -138,3 +138,9 @@ def test_an_every_few_minutes_schedule_is_unaffected_by_the_zone() -> None:
     often = parse_cron("*/15 * * * *")
     at = _utc(2026, 3, 8, 6, 50)
     assert often.next_after(at, NEW_YORK) == often.next_after(at) == _utc(2026, 3, 8, 7, 0)
+
+
+def test_a_step_wildcard_in_a_day_field_is_not_a_restriction() -> None:
+    spec = parse_cron("0 9 */2 * 1")  # every other day of the month, if it is a Monday: AND, as standard cron has it
+    assert not spec.days_restricted and spec.weekdays_restricted
+    assert nxt("0 9 */2 * 1", at(2026, 11, 14)) == at(2026, 11, 23, 9)  # Mon the 16th is an even day: skipped; Mon the 23rd is odd

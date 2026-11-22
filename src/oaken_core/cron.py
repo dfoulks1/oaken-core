@@ -124,6 +124,6 @@ def parse_cron(expr: str) -> CronSpec:
         days=_field(dom, 1, 31, {}, expr),
         months=_field(month, 1, 12, _MONTHS, expr),
         weekdays=frozenset(0 if d == 7 else d for d in weekdays),
-        days_restricted=dom != "*",
-        weekdays_restricted=dow != "*",
+        days_restricted=not dom.startswith("*"),  # */2 is as unrestricted as *: cron joins the two day fields with OR only when both are restricted
+        weekdays_restricted=not dow.startswith("*"),
     )

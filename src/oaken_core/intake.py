@@ -128,6 +128,19 @@ def item_text(item: IntakeItem) -> str:
 IngestFn = Callable[[IntakeItem], Awaitable[SubjectId]]
 
 
+MAX_HOPS = 8  # an item re-submitted this many times is going round in a loop
+
+
+def _hops(value: Any) -> int:
+    try:
+        n = max(0, int(value or 0))
+    except (TypeError, ValueError):
+        raise InvalidInput(f"envelope hops must be a whole number, not {value!r}") from None
+    if n > MAX_HOPS:
+        raise InvalidInput(f"envelope hops {n} is past the limit of {MAX_HOPS}: this item is going round in a loop")
+    return n
+
+
 class Intake:
     def __init__(
         self,
@@ -194,7 +207,7 @@ class Intake:
             format, key = format or env.get("format"), key or env.get("key")  # what the sender says about the body
             if trusted:  # only from inside core: an outsider's labels, parent and hops could steer an item or dodge a loop guard
                 labels = {**{str(k): str(v) for k, v in dict(env.get("labels") or {}).items()}, **(labels or {})}
-                parent, hops = env.get("parent"), max(0, int(env.get("hops") or 0))
+                parent, hops = env.get("parent"), _hops(env.get("hops"))
                 if env.get("rerun") is not None:  # not a new item: a stored one is sent on to a later stage, bypassing the ones between
                     return await self.rerun(parent, env["rerun"])
         subject = new_subject_id()
@@ -303,13 +316,17 @@ class Intake:
     async def _triage_job(self, p: IntakePayload, job: Job) -> IntakeResult:
         item = IntakeItem(p.subject_id, p.source, p.body, p.labels, p.key, p.parts)
         who, verdict, said = SYSTEM, None, []
+
+        def stamped() -> dict[str, str]:  # the labels the triagers have answered so far, over the ones the item came in with
+            return {**p.labels, **{k: v for _, r in said for k, v in r.labels.items()}}
+
         try:
             for t in self._order(
                 job.queue
             ):  # the logicians' bar: any no ends it, and the last to answer decides
                 v = await t.triage(
-                    replace(item, verdicts={a.label: r for a, r in said})
-                )
+                    replace(item, verdicts={a.label: r for a, r in said}, labels=stamped())
+                )  # a later triager sees what an earlier one labelled (``confidential`` above all), not only the submit-time labels
                 if v is None:
                     continue
                 who, verdict = Actor("system", t.name), v
@@ -327,6 +344,11 @@ class Intake:
             )
             verdict = Verdict("unsure", "triage failed")
             said.append((who, verdict))
+        # The labels go to the store below, which stays the source of truth, and into the envelope here, so the stages after this one
+        # (enrich, embed, learn, a model call) read them from the payload instead of asking the store for every action.
+        # shortcut: a person's later edit in the console is not in the envelope; the store has it, the next triage reads it.
+        p = p.model_copy(update={"labels": stamped()})
+        item = replace(item, labels=p.labels)
         if verdict is None:
             stages = self._stages()
             if job.queue in stages and stages.index(job.queue) + 1 < len(

@@ -117,6 +117,7 @@ class RuntimeFile:
         self.path, self.clock, self.version = path, clock, version
         self.pid = os.getpid()
         self._held = False
+        self._lock_fd: int | None = None
         self._started: datetime = clock.now()
 
     def _payload(self, port: int, console_port: int = 0) -> str:
@@ -137,6 +138,7 @@ class RuntimeFile:
         process is gone is replaced."""
         self._started = self.clock.now()
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock()
         for _ in range(2):
             try:
                 _private_write(self.path, self._payload(0), exclusive=True)
@@ -151,6 +153,23 @@ class RuntimeFile:
             self._held = True
             return
         raise Conflict("another core is starting; try again")
+
+    def _lock(self) -> None:
+        """Hold an exclusive lock for as long as this process lives. Two starters that both find a stale file would otherwise each
+        delete the other's new one and both run; only the holder of this lock may replace the file. Where ``fcntl`` is missing
+        (Windows) the exclusive create below is all there is. shortcut: that fallback keeps the old race, upgrade with msvcrt."""
+        try:
+            import fcntl
+        except ImportError:
+            return
+        fd = os.open(self.path.with_name(self.path.name + ".lock"), os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(fd)
+            other = self.read()
+            raise Conflict(f"core is already running (pid {other.get('pid') if other else 'unknown'})") from None
+        self._lock_fd = fd
 
     def publish(self, port: int, console_port: int = 0) -> None:
         """Say where core listens. Written to a sibling and renamed, so a reader sees the old file
@@ -171,3 +190,6 @@ class RuntimeFile:
         if other is None or other.get("pid") == self.pid:
             with contextlib.suppress(FileNotFoundError):
                 self.path.unlink()
+        if self._lock_fd is not None:  # closing it drops the lock; the lock file stays, so nobody races its creation
+            os.close(self._lock_fd)
+            self._lock_fd = None

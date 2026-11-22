@@ -224,8 +224,8 @@ class Guard:
         assert surface is not None or is_public  # noqa: S101
 
         if mutating and surface is not None:
-            who = headers.get("x-oaken-client", "") if surface.client is None else surface.client
-            key = f"{surface.name}:{getattr(principal, 'id', '')}:{who[:32]}"
+            # the principal and the surface's own name for its client; never the X-Oaken-Client header, which the caller sets and could rotate
+            key = f"{surface.name}:{getattr(principal, 'id', '')}:{surface.client or ''}"
             wait = p.limiter.take(key)
             if wait > 0:
                 await _send_json(

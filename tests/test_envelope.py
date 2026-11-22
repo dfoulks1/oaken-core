@@ -87,3 +87,13 @@ async def test_an_outside_rerun_is_ignored_and_the_item_is_an_ordinary_arrival(t
     core.intake.rerun_hook = hook
     await core.intake.submit("socket", {"oaken": 1, "body": "x", "parent": "s-1", "rerun": {"stage": "enrich"}})
     assert len(await core.runner.jobs.query(kind="intake.format")) == 1
+
+
+async def test_a_bad_or_runaway_hops_is_refused_not_a_500(tmp_path: Path) -> None:
+    import pytest
+
+    from oaken_core.errors import InvalidInput
+
+    for bad in ("x", 99):
+        with pytest.raises(InvalidInput):
+            await payload(tmp_path, {**ENV, "hops": bad}, trusted=True)

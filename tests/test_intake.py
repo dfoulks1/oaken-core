@@ -380,3 +380,19 @@ async def test_a_kept_reject_is_stored_but_not_passed_on(kit: Kit) -> None:
     await kit.runner.drain()
     assert len(stored) == 1  # kept, as the store label asked
     assert passed == []  # but never enriched or acted on
+
+
+async def test_a_later_triager_sees_what_an_earlier_one_labelled_and_so_does_the_store_payload(kit: Kit) -> None:
+    seen: list = []  # type: ignore[type-arg]
+
+    class Peek(Rules):
+        name, rank = "peek", 90
+
+        async def triage(self, item):  # type: ignore[no-untyped-def]
+            seen.append(dict(item.labels))
+
+    first = Rules(Verdict("accept", labels={"confidential": "true"}))
+    intake = make(kit, [first, Peek(None)])
+    await intake.submit("hr", "salary review")
+    await kit.runner.drain()
+    assert seen == [{"confidential": "true"}]  # the llm triager used to see {} here and call a hosted model

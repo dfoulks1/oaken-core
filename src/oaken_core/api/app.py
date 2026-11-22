@@ -263,7 +263,7 @@ class Api:
 
     async def events(self, request: Request) -> Response:
         raw = request.headers.get("last-event-id", "")
-        last = int(raw) if raw.isdigit() else None
+        last = int(raw) if raw.isascii() and raw.isdigit() else None  # not "²", which isdigit() accepts and int() refuses
         stream = self.ring.stream(last, self.cfg.heartbeat_seconds)
         return StreamingResponse(stream, media_type="text/event-stream", headers=SSE_HEADERS)
 

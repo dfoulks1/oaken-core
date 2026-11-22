@@ -99,3 +99,14 @@ def test_the_rate_limiter_is_a_token_bucket_per_client() -> None:
     assert limiter.take("b") == 0, "another client has its own bucket"
     now[0] += 1.0
     assert limiter.take("a") == 0
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="flock")
+def test_two_starters_cannot_both_hold_the_runtime_file(tmp_path: Path) -> None:
+    first, second = make(tmp_path / "runtime.json"), make(tmp_path / "runtime.json")
+    first.claim()
+    with pytest.raises(Conflict):
+        second.claim()  # the lock, not the pid check: it holds even when the file looks stale
+    first.release()
+    second.claim()  # released: the next starter may take it
+    second.release()
