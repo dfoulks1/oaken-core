@@ -76,6 +76,12 @@ daily_tokens = 200000    # 0 (the default): no budget
 escalate = { backend = "big", model = "qwen3-72b" }
 ```
 
+A **cache store** or **vector store** plugin gets the same treatment. It counts as this machine unless its table says
+`locality = "hosted"` (or `"lan"`), or the plugin sets `off_machine = True`. A confidential item is never cached in, or
+embedded into, a store that is not local: its answer goes to core's own cache, and a call that needs the vector store is
+refused with `ConfidentialRefused`. If your store is backed by a remote service, say so in its table. Confidential answers also
+live in a collection of their own, so a public near-copy is never answered from one.
+
 Who may answer a confidential item is in [prompt safety](prompt-safety.md).
 
 ## The cache key

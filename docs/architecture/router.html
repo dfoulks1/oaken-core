@@ -159,6 +159,11 @@ plugins judge by the address in <code>base_url</code>, so a server reached throu
 <span class="n">daily_tokens</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="mi">200000</span><span class="w">    </span><span class="c1"># 0 (the default): no budget</span>
 <span class="n">escalate</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="n">backend</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"big"</span><span class="p">,</span><span class="w"> </span><span class="n">model</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="s2">"qwen3-72b"</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
+<p>A <strong>cache store</strong> or <strong>vector store</strong> plugin gets the same treatment. It counts as this machine unless its table says
+<code>locality = &quot;hosted&quot;</code> (or <code>&quot;lan&quot;</code>), or the plugin sets <code>off_machine = True</code>. A confidential item is never cached in, or
+embedded into, a store that is not local: its answer goes to core's own cache, and a call that needs the vector store is
+refused with <code>ConfidentialRefused</code>. If your store is backed by a remote service, say so in its table. Confidential answers also
+live in a collection of their own, so a public near-copy is never answered from one.</p>
 <p>Who may answer a confidential item is in <a href="prompt-safety.html">prompt safety</a>.</p>
 </section>
 <section id="the-cache-key" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>The cache key</h2></div>

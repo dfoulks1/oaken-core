@@ -460,3 +460,69 @@ async def test_a_budget_belongs_to_one_analyzer_and_an_over_budget_one_does_not_
     assert first.label == "unsure" and big.calls == []  # over budget after it: no escalation, keep the small answer
     assert (await router.ask(Route("desk", "s", daily_tokens=100), other, req(), Answer)).label == "unsure"  # its own budget
     assert len(small.calls) == 2
+
+
+class RemoteStores(Dir):
+    """A directory whose vector store and cache store are on another machine."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.cache_plugin: Any = None
+
+    def vectors_locality(self) -> str:
+        return "hosted"
+
+    def cache_locality(self, name: str) -> str:
+        return "hosted"
+
+    def cache(self, name: str) -> Any:
+        return self.cache_plugin
+
+
+async def test_a_confidential_item_never_reaches_a_vector_store_on_another_machine(core_db: Database, clock: FakeClock) -> None:
+    d = RemoteStores()
+    router = Router(core_db, clock, RouterSettings(), d)
+    d.add("desk", StubBackend(answer()))
+    d.vec()
+    with pytest.raises(ConfidentialRefused):
+        await router.ask(Route("desk", "m"), call(needs_vec=True, text=TEXT, confidential=True), req(), Answer)
+    assert d.store is not None and d.store.items == {}  # nothing was written to it
+    assert (await router.ask(Route("desk", "m"), call(needs_vec=True, text=TEXT), req(), Answer)).label == "ok"  # a public item may
+
+
+async def test_a_confidential_answer_is_cached_in_core_not_in_a_store_on_another_machine(core_db: Database, clock: FakeClock) -> None:
+    from oaken_core.router.store import AnswerCache
+
+    class Recording(AnswerCache):
+        puts = 0
+
+        async def put(self, key: str, entry: Any) -> None:
+            Recording.puts += 1
+            await super().put(key, entry)
+
+    d = RemoteStores()
+    d.cache_plugin = Recording(core_db, clock)
+    router = Router(core_db, clock, RouterSettings(cache_store="remote"), d)
+    d.add("desk", StubBackend(answer()))
+    await router.ask(Route("desk", "m"), call("a", confidential=True), req(), Answer)
+    assert Recording.puts == 0  # kept in core's own cache
+    await router.ask(Route("desk", "m"), call("b"), req(), Answer)
+    assert Recording.puts == 1  # a public answer may go to the configured store
+
+
+async def test_a_public_near_copy_is_not_answered_from_a_confidential_item(core_db: Database, clock: FakeClock) -> None:
+    router, d = rig(core_db, clock, near_duplicate_score=0.9)
+    be, _ = d.add("desk", StubBackend(answer("secret-summary"))), d.vec()
+    route = Route("desk", "m")
+    await router.ask(route, call("h1", needs_vec=True, text=TEXT, confidential=True), req(TEXT), Answer)
+    await router.ask(route, call("h2", needs_vec=True, text=TEXT + " thanks"), req(TEXT), Answer)
+    assert len(be.calls) == 2  # the near-copy got its own answer, not the confidential item's
+
+
+def test_a_typo_in_a_backends_concurrency_does_not_take_the_router_down() -> None:
+    from types import SimpleNamespace
+
+    from oaken_core.router.router import HostDirectory
+
+    host = SimpleNamespace(tables=SimpleNamespace(table=lambda kind, name: {"concurrency": "two"}), usable=lambda kind: {})
+    assert HostDirectory(host, RouterSettings())._entry("llm_backend", "x", None).concurrency == 1

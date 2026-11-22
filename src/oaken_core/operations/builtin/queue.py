@@ -10,6 +10,7 @@ granted.
 import json
 import os
 import re
+import tomllib
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -55,7 +56,8 @@ class QueueListOut(BaseModel):
 async def queue_list(ctx: OpContext, inp: Empty) -> QueueListOut:
     hidden = {q.name for q in ctx.svc.queues.all() if q.hidden}
     rows = await ctx.svc.jobs.stats()
-    return QueueListOut(queues=[QueueRow(**r.__dict__) for r in rows if r.queue not in hidden])
+    clear = ctx.caller.may_see_confidential  # a last error can quote a confidential item's text: an uncleared caller (MCP) is not shown it
+    return QueueListOut(queues=[QueueRow(**(r.__dict__ if clear else {**r.__dict__, "last_error": None})) for r in rows if r.queue not in hidden])
 
 
 class QueueRef(BaseModel):
@@ -171,7 +173,8 @@ class JobListOut(BaseModel):
 async def job_list(ctx: OpContext, inp: JobListIn) -> JobListOut:
     jobs = await ctx.svc.jobs.query(status=inp.status, kind=inp.kind, queue=inp.queue,
                                      subject=inp.subject, limit=inp.limit)  # fmt: skip
-    return JobListOut(jobs=[_row(j) for j in jobs])
+    hidden = await ctx.confidential_among(j.subject for j in jobs if j.subject)  # empty for a caller cleared for confidential items
+    return JobListOut(jobs=[_row(j) for j in jobs if j.subject not in hidden])
 
 
 class JobRef(BaseModel):
@@ -402,7 +405,7 @@ async def queue_get(ctx: OpContext, inp: QueueRef) -> QueueDetailOut:
     return QueueDetailOut(
         queue=spec.name, title=spec.title, kind=spec.kind, description=spec.description, workers=spec.workers,
         paused=st.paused, queued=st.queued, running=st.running, failed=st.failed,
-        oldest_queued_seconds=st.oldest_queued_seconds, last_error=st.last_error,
+        oldest_queued_seconds=st.oldest_queued_seconds, last_error=st.last_error if ctx.caller.may_see_confidential else None,
         window_seconds=m.window_seconds, succeeded_in_window=m.succeeded, failed_in_window=m.failed,
         avg_turnaround_seconds=m.avg_turnaround_seconds)  # fmt: skip
 
@@ -483,6 +486,17 @@ async def queue_edit(ctx: OpContext, inp: QueueEditIn) -> QueueChangeOut:
     return QueueChangeOut(name=inp.queue, reloading=reloading, note=note)
 
 
+def _stage_users(text: str, queue: str) -> list[tuple[str, str]]:
+    """``(kind, name)`` of every plugin table in the config text pinned to this stage (``stage = "<queue>"``)."""
+    plugins = tomllib.loads(text).get("plugins", {})
+    return [(k, n) for k, tables in plugins.items() if isinstance(tables, dict)
+            for n, t in tables.items() if isinstance(t, dict) and t.get("stage") == queue]  # fmt: skip
+
+
+async def _schedule_users(ctx: OpContext, queue: str) -> list[str]:
+    return [r["name"] for r in await ctx.svc.db.fetchall("SELECT name FROM schedules WHERE queue = ?", (queue,))]
+
+
 async def _delete_plan(ctx: OpContext, inp: QueueRef) -> str:
     """The config text without the queue. ``Conflict`` while it still holds jobs (queued or running):
     they would be stranded with no workers. Finished and failed rows stay as history."""
@@ -491,6 +505,9 @@ async def _delete_plan(ctx: OpContext, inp: QueueRef) -> str:
     if st.queued or st.running:
         raise Conflict(f"queue {inp.queue!r} still has {st.queued} queued and {st.running} running jobs: "
                        "pause it and requeue them (queue_requeue --to), or let them finish")  # fmt: skip
+    users = [f"{k}.{n}" for k, n in _stage_users(text, inp.queue)] + [f"schedule {n}" for n in await _schedule_users(ctx, inp.queue)]
+    if users:  # a plugin pinned to a stage that is gone would silently never run, and a schedule would feed a queue nobody works
+        raise Conflict(f"queue {inp.queue!r} is still named by {', '.join(users)}: move them to another queue first")
     new = remove_table(text, ["queues", inp.queue])
     try:
         _check_text(ctx, new)
@@ -534,6 +551,8 @@ def _rename_plan(ctx: OpContext, inp: QueueRenameIn) -> tuple[str, str, dict[str
     if new in {q.name for q in ctx.svc.queues.all()}:
         raise Conflict(f"queue {new!r} already exists")
     out = set_table(remove_table(text, ["queues", inp.queue]), ["queues", new], table)
+    for kind, name in _stage_users(text, inp.queue):  # a plugin pinned to this stage follows it, or it would never run again
+        out = set_table(out, ["plugins", kind, name], {**get_table(out, ["plugins", kind, name]), "stage": new})
     try:
         _check_text(ctx, out)
     except ConfigError as exc:
@@ -565,6 +584,7 @@ async def queue_rename(ctx: OpContext, inp: QueueRenameIn) -> QueueChangeOut:
     async with ctx.svc.db.transaction() as tx:  # the file is written last, inside it: a failed write rolls the rows back
         await tx.execute("UPDATE jobs SET queue = ? WHERE queue = ?", (new, inp.queue))
         await tx.execute("UPDATE queue_state SET queue = ? WHERE queue = ?", (new, inp.queue))
+        await tx.execute("UPDATE schedules SET queue = ? WHERE queue = ?", (new, inp.queue))
         await tx.execute("UPDATE labels SET value = ? WHERE key = 'queue' AND value = ?", (new, inp.queue))  # shortcut: no change-log row per subject; add one if an audit of label moves is wanted
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)

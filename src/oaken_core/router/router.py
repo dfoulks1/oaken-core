@@ -179,7 +179,12 @@ class HostDirectory:
                 name=name,
             )
             locality = "hosted"
-        return Entry(name, plugin, locality, max(1, int(table.get("concurrency", 1))))  # type: ignore[arg-type]
+        try:
+            concurrency = max(1, int(table.get("concurrency", 1)))  # type: ignore[call-overload]
+        except (TypeError, ValueError):  # plugin tables are untyped: one typo must not take every backend down
+            log.error("bad concurrency; using 1", kind=kind, name=name, value=str(table.get("concurrency")))
+            concurrency = 1
+        return Entry(name, plugin, locality, concurrency)  # type: ignore[arg-type]
 
     def backends(self) -> Mapping[str, Entry]:
         up = self.host.usable("llm_backend")
@@ -201,6 +206,22 @@ class HostDirectory:
             if self.settings.vector_store
             else next(iter(up.values()), None)
         )
+
+    def _store_locality(self, kind: str, name: str) -> str:
+        """A cache or vector store is on this machine unless its table says otherwise (``locality``) or the plugin says it reaches
+        another machine (``off_machine``). core's own sqlite stores need no word; one backed by a remote service does."""
+        if getattr(self.host.usable(kind).get(name), "off_machine", None) is True:
+            return "hosted"
+        locality = self.host.tables.table(kind, name).get("locality", "local")
+        return str(locality) if locality in LOCALITIES else "hosted"
+
+    def cache_locality(self, name: str) -> str:
+        return self._store_locality("cache_store", name)
+
+    def vectors_locality(self) -> str:
+        up = self.host.usable("vector_store")
+        name = self.settings.vector_store or next(iter(up), "")
+        return self._store_locality("vector_store", name)
 
 
 class Router:
@@ -444,18 +465,27 @@ class Router:
     def cache(self) -> Any:
         """The answer cache: the ``cache_store`` plugin named in ``[router] cache_store`` while it is healthy,
         else core's own."""
+        return self._cache(False)
+
+    def _cache(self, confidential: bool) -> Any:
+        """As ``cache``, but a confidential call only uses a plugin store that is on this machine: otherwise core's own."""
         name = self.settings.cache_store
         lookup = getattr(
             self.directory, "cache", None
         )  # a stand-in directory (tests) may not offer one
         plugin = lookup(name) if name and lookup else None
-        return plugin if plugin is not None else self.builtin_cache
+        if plugin is None:
+            return self.builtin_cache
+        where = getattr(self.directory, "cache_locality", None)
+        if confidential and where is not None and where(name) != "local":
+            return self.builtin_cache  # an answer to a confidential item must not be handed to a store on another machine
+        return plugin
 
     async def _lookup(
         self, call: Call, key: str, models: list[str], output: type[T]
     ) -> tuple[T, CacheEntry] | None:
         for model in models:
-            cache = self.cache
+            cache = self._cache(call.confidential)
             entry = await cache.get(cache.key(call.analyzer, call.version, key, model))
             if entry is None:
                 continue
@@ -468,7 +498,7 @@ class Router:
         return None
 
     async def _store(self, call: Call, model: str, entry: CacheEntry) -> None:
-        cache = self.cache
+        cache = self._cache(call.confidential)
         await cache.put(
             cache.key(call.analyzer, call.version, call.content_hash, model), entry
         )
@@ -477,7 +507,7 @@ class Router:
         self, call: Call, models: list[str], output: type[T], vector: list[float]
     ) -> tuple[T, CacheEntry] | None:
         """The stored answer of a near-duplicate, when one is close enough and still cached."""
-        for hit in await self._query(self._answers(call), vector, 2):
+        for hit in await self._query(self._answers(call), vector, 2, call.confidential):
             if (
                 hit.key != call.content_hash
                 and hit.score >= self.settings.near_duplicate_score
@@ -486,10 +516,11 @@ class Router:
         return None
 
     def _answers(self, call: Call) -> str:
-        return f"answers:{call.analyzer}:{call.version}"
+        # confidential answers have a collection of their own: a public near-copy must not be handed an answer derived from one
+        return f"answers:{call.analyzer}:{call.version}" + (":confidential" if call.confidential else "")
 
     async def _remember(self, call: Call, vector: list[float]) -> None:
-        await self._upsert(self._answers(call), call.content_hash, vector)
+        await self._upsert(self._answers(call), call.content_hash, vector, call.confidential)
 
     # -- embeddings: the only way an analyzer reaches the vector index --------------------------
     def _embedder(self, confidential: bool) -> Entry:
@@ -502,10 +533,13 @@ class Router:
             )
         return entry
 
-    def _vectors(self) -> Any:
+    def _vectors(self, confidential: bool = False) -> Any:
         store = self.directory.vectors()
         if store is None:
             raise Deferred("no healthy vector store", self.settings.wait_seconds)
+        where = getattr(self.directory, "vectors_locality", None)
+        if confidential and where is not None and where() != "local":
+            raise ConfidentialRefused("the vector store reaches another machine, so it may not hold a confidential item's vector")
         return store
 
     def vec_ready(self) -> bool:
@@ -537,13 +571,13 @@ class Router:
             f"{name}:{e.plugin.model_id}" if e and e.plugin else name
         )  # a model's vectors never mix with another's
 
-    async def _query(self, collection: str, vector: list[float], k: int) -> list[Hit]:
+    async def _query(self, collection: str, vector: list[float], k: int, confidential: bool = False) -> list[Hit]:
         return list(
-            await self._vectors().query(self._collection(collection), tuple(vector), k)
+            await self._vectors(confidential).query(self._collection(collection), tuple(vector), k)
         )
 
-    async def _upsert(self, collection: str, key: str, vector: list[float]) -> None:
-        await self._vectors().upsert(
+    async def _upsert(self, collection: str, key: str, vector: list[float], confidential: bool = False) -> None:
+        await self._vectors(confidential).upsert(
             self._collection(collection), [VectorItem(key, tuple(vector))]
         )
 
@@ -562,14 +596,14 @@ class Router:
             if isinstance(query, str)
             else list(query)
         )
-        return await self._query(collection, vec, k)
+        return await self._query(collection, vec, k, confidential)
 
     async def remember(
         self, collection: str, key: str, text: str, *, confidential: bool = False
     ) -> None:
         """Add ``text``'s vector to ``collection`` under ``key`` (a content hash)."""
         await self._upsert(
-            collection, key, (await self.embed([text], confidential=confidential))[0]
+            collection, key, (await self.embed([text], confidential=confidential))[0], confidential
         )
 
     # -- junk: reject and learn ----------------------------------------------------------------

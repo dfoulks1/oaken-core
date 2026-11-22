@@ -43,3 +43,21 @@ old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cl
 - **Swarm:** `job_claim` no longer hands a confidential job to an agent that is not `local`. The claim skips, in its own transaction, a job
   whose subject's effective `confidential` label is `true` or whose payload says it is confidential; the job waits for a local agent or
   core's own workers. Before, any agent allowed a kind received every job of it, confidential or not.
+- **Fixes from the pre-1.0 code review:**
+  - A schedule that cannot fire is logged and postponed, and never stops the scheduler or the other schedules.
+  - A retry after a later intake step failed no longer stores the item twice. A kept reject is stored but not enriched or acted on.
+  - A job finishing in a queue that is not an enricher stage starts the stages over instead of raising.
+  - Workers no longer lose wake-ups, and a storage error no longer ends a worker.
+  - A sweep clears a label whose key is no longer defined, so a reject can finish.
+  - The labels a triager sets now reach the triagers after it and the stages after triage, not only the store. A rule that labels an item
+    `confidential` now protects it from a later model call.
+  - `hops` in an envelope must be a whole number and at most 8. The rate limit no longer keys on the caller-set `X-Oaken-Client` header.
+    Two starting cores cannot both take the runtime file (`flock`). `*/2` in a cron day field is no longer a restriction. A bad
+    `Last-Event-ID` is not a 500.
+  - **Router:** a cache or vector store that is not local (`locality`, or `off_machine`) never holds a confidential item's answer or vector.
+    **Behaviour change:** with such a vector store a confidential call is refused with `ConfidentialRefused`; its answers use core's cache.
+    Confidential answers have their own near-duplicate collection. A bad `concurrency` in a backend's table counts as 1 and no longer
+    breaks every call.
+  - **Queues:** `queue_rename` carries the plugins pinned to the stage (`stage = ...`) and schedules with it. `queue_delete` is refused while
+    a plugin or schedule names the queue. `job_list` leaves out a confidential item's jobs, and `queue_list` and `queue_get` hide
+    `last_error`, for a caller not cleared for confidential items (an MCP client).

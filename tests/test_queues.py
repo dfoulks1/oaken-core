@@ -281,3 +281,47 @@ async def test_queue_rename_moves_the_file_history_and_labels_and_waits_for_idle
     assert list(saved()["queues"]) == ["sorting_hat"] and saved()["queues"]["sorting_hat"]["kind"] == "triager"
     assert (await ops.kit.db.fetchone("SELECT queue FROM jobs"))["queue"] == "sorting_hat"
     assert (await ops.kit.db.fetchone("SELECT value FROM labels"))["value"] == "sorting_hat"
+
+
+def _pin(plugin: str, stage: str) -> None:
+    path = paths.config_dir() / "config.toml"
+    path.write_text(path.read_text() + f'\n[plugins.triager.{plugin}]\nstage = "{stage}"\n')
+
+
+async def test_a_rename_carries_the_plugins_pinned_to_the_stage_and_its_schedules(ops: Ops) -> None:
+    from datetime import timedelta
+
+    from oaken_core.scheduler import Scheduler
+
+    from .test_jobs import Ping
+
+    cli = await _added(ops, label="Triage")
+    _pin("rules", "triage")
+    await Scheduler(ops.kit.db, ops.kit.jobs, ops.kit.clock).add("tidy", "k", Ping(), every=timedelta(seconds=60), queue="triage")
+    await ops.client.call("queue_rename", {"queue": "triage", "to": "sorting hat"}, cli, confirm=True)
+    assert saved()["plugins"]["triager"]["rules"]["stage"] == "sorting_hat"  # it used to be left on a stage that no longer exists, and never ran
+    assert (await ops.kit.db.fetchone("SELECT queue FROM schedules"))["queue"] == "sorting_hat"
+
+
+async def test_a_queue_cannot_be_deleted_while_a_plugin_or_a_schedule_names_it(ops: Ops) -> None:
+    cli = await _added(ops)
+    _pin("rules", "triage")
+    with pytest.raises(Conflict, match="triager.rules"):
+        await ops.client.call("queue_delete", {"queue": "triage"}, cli, confirm=True)
+    assert "triage" in saved()["queues"]
+
+
+async def test_an_mcp_client_does_not_see_a_confidential_items_jobs_or_a_queues_last_error(ops: Ops) -> None:
+    from oaken_core.actors import SYSTEM
+
+    cli = await _added(ops)
+    await ops.svc.labels.set("secret-1", "confidential", "true", SYSTEM)
+    await ops.svc.jobs.enqueue("t.work", "{}", queue="triage", subject="secret-1")
+    await ops.svc.jobs.enqueue("t.work", "{}", queue="triage", subject="public-1", dedupe_key="b")
+    await ops.kit.db.execute("UPDATE jobs SET status = 'failed', last_error = 'ValidationError: input_value=the salary memo'")
+    mcp = CallerContext.mcp("me")
+    seen = (await ops.client.call("job_list", {}, mcp)).output.jobs  # type: ignore[union-attr]
+    assert [j.subject for j in seen] == ["public-1"]
+    assert len((await ops.client.call("job_list", {}, cli)).output.jobs) == 2  # type: ignore[union-attr]
+    assert (await ops.client.call("queue_get", {"queue": "triage"}, mcp)).output.last_error is None  # type: ignore[union-attr]
+    assert "salary memo" in ((await ops.client.call("queue_get", {"queue": "triage"}, cli)).output.last_error or "")  # type: ignore[union-attr]
