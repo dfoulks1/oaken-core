@@ -12,7 +12,3 @@ description = "An async pipeline and a plugin loader with no nouns: providers, f
 - **Nothing happens by accident.** Every step is a durable job, and a change made through any door (CLI, API, MCP, console) is a proposal until a person confirms it.
 - **Outside text is data.** Text from outside is never an instruction to the system or to a model.
 - **Plugins describe themselves.** A plugin declares its settings, its row, and whether it is a template; the console draws the same row everywhere.
-
-## The documents
-
-{{doc-cards}}
