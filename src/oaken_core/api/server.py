@@ -39,7 +39,7 @@ class ApiServer:
 
     @property
     def port(self) -> int:
-        for server in self._server.servers:
+        for server in getattr(self._server, "servers", ()):  # uvicorn sets it in startup()
             for sock in server.sockets:
                 return int(sock.getsockname()[1])
         return self.api.cfg.port
