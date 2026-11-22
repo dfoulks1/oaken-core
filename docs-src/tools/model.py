@@ -154,7 +154,7 @@ def _include_files(cfg: Config, body: str, where: str) -> str:
             raise BuildError(f"{where}: {{{{file:{m.group(1)}}}}} is not a file in the repository")
         return "````markdown\n" + f.read_text(encoding="utf-8").rstrip("\n") + "\n````"
 
-    return re.sub(r"^\{\{file:(.+?)\}\}$", one, body, flags=re.M)
+    return re.sub(r"^\{\{file:(.+?)\}\}$", one, body, flags=re.MULTILINE)
 
 
 def page_from_markdown(cfg: Config, entry: dict[str, Any]) -> Page:
