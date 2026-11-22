@@ -224,6 +224,38 @@ can decide whether a later one runs. With no `when` and no `unless` the enricher
 An item no enricher of a stage selects gets no job in that stage and moves straight on. Only enrichers
 take these keys.
 
+## What a plugin ships
+
+A plugin carries its own record of why it is the way it is. In `oaken-plugins` that is a `docs/` folder in the plugin's
+subpackage; in your own package it sits beside `pyproject.toml`.
+
+```text
+oaken_plugins/triager_kev/
+  __init__.py          the plugin: docstring, kind, name, tags, config model
+  docs/
+    README.md          what it is for, its settings, an example, known limits
+    decisions/         why it works this way: one MADR file per decision
+      0001-short-title.md
+    prompts/           the prompts it was built with, in order, and the prompts it sends
+      01-short-name.md
+```
+
+The site pages for plugins (this page, [Using plugins](using-plugins.md)) live in `oaken-core` and are the only public
+documentation. A plugin's `docs/` is the internal record. It is not on the website, and the plugin's own settings and
+commands document themselves through `plugin describe`.
+
+Use the templates in core, and copy them rather than inventing a shape:
+
+- **Decisions:** [`docs-src/decisions/TEMPLATE.md`](repo:docs-src/decisions/TEMPLATE.md). MADR: context, drivers,
+  options, outcome, consequences, confirmation. Number files `0001-`, `0002-` within the plugin. Never edit an
+  accepted decision's text: a change is a new decision that supersedes it.
+- **Prompts:** [`docs-src/prompts/TEMPLATE.md`](repo:docs-src/prompts/TEMPLATE.md). Context, goal, read first, scope,
+  constraints, steps, done when, questions, report back. Say in the first line that AI wrote it and whether a person
+  has reviewed it.
+
+Write a decision when you choose between options a later reader would otherwise reopen: a rule's finality, what
+counts as confidential, which library. Write a prompt for any job an agent did, so the work can be reproduced.
+
 ## The plugin API version
 
 `PLUGIN_API_VERSION` (now 1, in `repo:src/oaken_core/plugins/contracts.py`) is the shape of the

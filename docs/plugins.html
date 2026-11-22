@@ -77,11 +77,12 @@
     <a class="nav-link" href="#what-a-base-class-gives-you"><span class="num">3</span>What a base class gives you</a>
     <a class="nav-link" href="#template-plugins"><span class="num">4</span>Template plugins</a>
     <a class="nav-link" href="#choosing-which-items-an-enricher-runs-on"><span class="num">5</span>Choosing which items an enricher runs on</a>
-    <a class="nav-link" href="#the-plugin-api-version"><span class="num">6</span>The plugin API version</a>
-    <a class="nav-link" href="#the-ui-contract"><span class="num">7</span>The UI contract</a>
-    <a class="nav-link" href="#testing"><span class="num">8</span>Testing</a>
-    <a class="nav-link" href="#registering-it"><span class="num">9</span>Registering it</a>
-    <a class="nav-link" href="#what-the-host-does"><span class="num">10</span>What the host does</a>
+    <a class="nav-link" href="#what-a-plugin-ships"><span class="num">6</span>What a plugin ships</a>
+    <a class="nav-link" href="#the-plugin-api-version"><span class="num">7</span>The plugin API version</a>
+    <a class="nav-link" href="#the-ui-contract"><span class="num">8</span>The UI contract</a>
+    <a class="nav-link" href="#testing"><span class="num">9</span>Testing</a>
+    <a class="nav-link" href="#registering-it"><span class="num">10</span>Registering it</a>
+    <a class="nav-link" href="#what-the-host-does"><span class="num">11</span>What the host does</a>
   </nav></div></aside>
 <main id="content" tabindex="-1">
   <nav class="crumbs" aria-label="breadcrumb"><a href="index.html">Home</a> <span aria-hidden="true">/</span> Writing a plugin</nav>
@@ -393,13 +394,40 @@ can decide whether a later one runs. With no <code>when</code> and no <code>unle
 An item no enricher of a stage selects gets no job in that stage and moves straight on. Only enrichers
 take these keys.</p>
 </section>
-<section id="the-plugin-api-version" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>The plugin API version</h2></div>
+<section id="what-a-plugin-ships" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>What a plugin ships</h2></div>
+<p>A plugin carries its own record of why it is the way it is. In <code>oaken-plugins</code> that is a <code>docs/</code> folder in the plugin's
+subpackage; in your own package it sits beside <code>pyproject.toml</code>.</p>
+<div class="code"><pre class="highlight"><code class="language-text">oaken_plugins/triager_kev/
+  __init__.py          the plugin: docstring, kind, name, tags, config model
+  docs/
+    README.md          what it is for, its settings, an example, known limits
+    decisions/         why it works this way: one MADR file per decision
+      0001-short-title.md
+    prompts/           the prompts it was built with, in order, and the prompts it sends
+      01-short-name.md
+</code></pre></div>
+<p>The site pages for plugins (this page, <a href="using-plugins.html">Using plugins</a>) live in <code>oaken-core</code> and are the only public
+documentation. A plugin's <code>docs/</code> is the internal record. It is not on the website, and the plugin's own settings and
+commands document themselves through <code>plugin describe</code>.</p>
+<p>Use the templates in core, and copy them rather than inventing a shape:</p>
+<ul>
+<li><strong>Decisions:</strong> <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/TEMPLATE.md"><code>docs-src/decisions/TEMPLATE.md</code></a>. MADR: context, drivers,
+options, outcome, consequences, confirmation. Number files <code>0001-</code>, <code>0002-</code> within the plugin. Never edit an
+accepted decision's text: a change is a new decision that supersedes it.</li>
+<li><strong>Prompts:</strong> <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/prompts/TEMPLATE.md"><code>docs-src/prompts/TEMPLATE.md</code></a>. Context, goal, read first, scope,
+constraints, steps, done when, questions, report back. Say in the first line that AI wrote it and whether a person
+has reviewed it.</li>
+</ul>
+<p>Write a decision when you choose between options a later reader would otherwise reopen: a rule's finality, what
+counts as confidential, which library. Write a prompt for any job an agent did, so the work can be reproduced.</p>
+</section>
+<section id="the-plugin-api-version" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>The plugin API version</h2></div>
 <p><code>PLUGIN_API_VERSION</code> (now 1, in <code>repo:src/oaken_core/plugins/contracts.py</code>) is the shape of the
 contracts. A plugin whose <code>api_version</code> differs is refused, and the reason shows beside it. Plugin
 authors should set it explicitly, as the example does. <code>requires_core</code> is the separate, finer check
 against core's own version. See <a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>.</p>
 </section>
-<section id="the-ui-contract" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>The UI contract</h2></div>
+<section id="the-ui-contract" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>The UI contract</h2></div>
 <p>A plugin declares its console UI as data, never markup (<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/decisions/0018-a-web-ui-contract-for-plugins.md">ADR 0018</a>).
 Override <code>ui()</code> and return a <code>UiSpec</code> (<code>repo:src/oaken_core/plugins/ui.py</code> checks it):</p>
 <div class="table-responsive"><table class="table table-sm table-striped align-middle">
@@ -436,7 +464,7 @@ Override <code>ui()</code> and return a <code>UiSpec</code> (<code>repo:src/oake
 the plugin's own operations. Core owns the HTML, escaping and CSRF. If <code>check_ui</code> finds a problem, core
 ignores the spec and builds the settings modal from the schema. Without <code>ui()</code>, that is what you get.</p>
 </section>
-<section id="testing" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>Testing</h2></div>
+<section id="testing" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>Testing</h2></div>
 <p>Contract suites live in <code>repo:src/oaken_core/testing/contracts.py</code>. There is one for each of four
 kinds: <code>EmbedderContract</code>, <code>LLMContract</code>, <code>VectorStoreContract</code> and <code>CacheContract</code>. Use one as a
 pytest mixin and override the fixture:</p>
@@ -452,7 +480,7 @@ the host's own validity rules too. Other kinds have no suite yet: test them as t
 <p><code>repo:src/oaken_core/router/stub.py</code> gives a scripted <code>StubBackend</code>, a <code>StubEmbedder</code> and
 <code>MemoryVectors</code> for testing code that uses a model, with no network.</p>
 </section>
-<section id="registering-it" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>Registering it</h2></div>
+<section id="registering-it" class="doc-section"><div class="section-head"><span class="section-num">10</span><h2>Registering it</h2></div>
 <p>Add an entry point in your package's <code>pyproject.toml</code>, in the group of your kind. The entry-point
 name is the plugin's name. Core's own plugins do exactly this.</p>
 <div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[project.entry-points.</span><span class="s2">"oaken_core.triagers"</span><span class="k">]</span>
@@ -462,7 +490,7 @@ name is the plugin's name. Core's own plugins do exactly this.</p>
 writes the config table. <code>oaken plugins</code> lists the plugins in the <code>oaken-plugins</code> package and your
 <code>[extensions] dirs</code>, with <code>--kind</code> and <code>--tag</code> filters.</p>
 </section>
-<section id="what-the-host-does" class="doc-section"><div class="section-head"><span class="section-num">10</span><h2>What the host does</h2></div>
+<section id="what-the-host-does" class="doc-section"><div class="section-head"><span class="section-num">11</span><h2>What the host does</h2></div>
 <ul>
 <li><strong>Load.</strong> Imports the plugin and checks it: <code>api_version</code>, <code>requires_core</code>, the members of its
 kind, its commands, jobs and UI. It reports every problem at once.</li>
