@@ -1,0 +1,22 @@
+{# SPDX-License-Identifier: Apache-2.0 #}
+{# The one navigation bar, shared by the home page and every doc page. A group is a dropdown of its pages. #}
+<nav class="site-nav navbar navbar-expand-lg" aria-label="Site">
+  <div class="container-fluid px-3 px-lg-4">
+    <a class="brand navbar-brand" href="{{ home_href }}"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> {{ site.title|upper }}</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNav" aria-controls="siteNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="siteNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+{% for g in nav %}        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle{% if g.pages|selectattr('current')|list %} active{% endif %}" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">{{ g.name }}</a>
+          <ul class="dropdown-menu">
+{% for p in g.pages %}            <li><a class="doc-link{% if p.current %} current{% endif %}" href="{{ p.href }}"{% if p.current %} aria-current="page"{% endif %}>{{ p.title }}</a></li>
+{% endfor %}          </ul>
+        </li>
+{% endfor %}      </ul>
+      <ul class="navbar-nav align-items-lg-center">
+        <li class="nav-item"><a class="nav-link" href="{{ site.repo_url }}">GitHub</a></li>
+        <li class="nav-item"><button class="theme btn btn-sm btn-outline-secondary ms-lg-2" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></li>
+      </ul>
+    </div>
+  </div>
+</nav>

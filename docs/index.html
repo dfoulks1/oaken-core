@@ -18,25 +18,66 @@
 <script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
 
 </head>
-<body class="home">
+<body class="home has-nav">
 <a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
-<main id="content" tabindex="-1">
-  <header class="cover">
-    <div class="d-flex justify-content-between align-items-start">
-      <div class="d-flex flex-wrap gap-2 mb-3"><span class="badge text-bg-secondary">Local-first</span><span class="badge text-bg-primary">Open source</span></div>
-      <button class="btn btn-sm btn-outline-secondary" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button>
+
+
+<nav class="site-nav navbar navbar-expand-lg" aria-label="Site">
+  <div class="container-fluid px-3 px-lg-4">
+    <a class="brand navbar-brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNav" aria-controls="siteNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="siteNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Start</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a></li>
+            <li><a class="doc-link" href="keyring.html">Store credentials in your keyring</a></li>
+            <li><a class="doc-link" href="settings.html">Settings, storage and the event log</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Concepts</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="architecture/overview.html">Architecture overview</a></li>
+            <li><a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a></li>
+            <li><a class="doc-link" href="architecture/software-map.html">Software map</a></li>
+            <li><a class="doc-link" href="architecture/swarm.html">The swarm</a></li>
+            <li><a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a></li>
+            <li><a class="doc-link" href="plugins.html">Writing a plugin</a></li>
+            <li><a class="doc-link" href="architecture/router.html">The model router</a></li>
+            <li><a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a></li>
+            <li><a class="doc-link" href="architecture/operations.html">Operations</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Project</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="releasing.html">Releasing Oaken</a></li>
+            <li><a class="doc-link" href="adr/index.html">Architecture decisions</a></li>
+          </ul>
+        </li>
+      </ul>
+      <ul class="navbar-nav align-items-lg-center">
+        <li class="nav-item"><a class="nav-link" href="https://github.com/dfoulks1/oaken-core">GitHub</a></li>
+        <li class="nav-item"><button class="theme btn btn-sm btn-outline-secondary ms-lg-2" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></li>
+      </ul>
     </div>
+  </div>
+</nav>
+
+<main id="content" tabindex="-1">
+  <header class="cover hero">
+    <div class="d-flex flex-wrap gap-2 mb-3 justify-content-center"><span class="badge text-bg-secondary">Local-first</span><span class="badge text-bg-primary">Open source</span></div>
     <div class="masthead">
       <span class="mark logo" aria-hidden="true"></span>
       <h1 class="display-5">OAKEN CORE</h1>
     </div>
-    <div class="d-flex flex-wrap gap-2 mb-3">
-      <a class="btn btn-warning fw-semibold" href="https://github.com/dfoulks1/oaken-core">&#9733; Star this repo on GitHub</a>
-      <a class="btn btn-outline-secondary" href="https://github.com/dfoulks1/oaken-core">View on GitHub</a>
-      <a class="btn btn-outline-secondary" href="https://github.com/dfoulks1/oaken-core/issues/new">Report an issue</a>
-      <a class="btn btn-outline-secondary" href="https://github.com/dfoulks1/oaken-core/blob/main/LICENSE">Apache-2.0 license</a>
-    </div>
     <p class="lead">Oaken Core takes items in, formats them, triages them, stores them and runs the work around them. It has no nouns of its own: a message, a person or a CVE is a plugin&#39;s idea. Products are thin coats of plugins over it.</p>
+    <div class="d-flex flex-wrap gap-2 justify-content-center">
+      <a class="btn btn-brand" href="getting-started.html">Get started</a>
+      <a class="btn btn-outline-secondary" href="https://github.com/dfoulks1/oaken-core">View on GitHub</a>
+    </div>
   </header>
 <h2 id="what-it-is-for">What it is for</h2>
 <ul>

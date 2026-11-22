@@ -18,6 +18,15 @@ They are separate projects with separate versions. `oaken-plugins` depends on co
 (`oaken-core>=1.0.0,<2`) and core never imports a plugin. A product (a mail client, a CRM) is a third
 thing: a small package on top of both. It is not part of this release.
 
+## Names on PyPI
+
+- `oaken-core` is already on PyPI (0.1.0 and 0.2.0, the old oaken-mail bundle), so 1.0.0 is a new release of an existing
+  project, uploaded with the token of the account that owns it. `oaken` and `oaken-cli` exist too (retired by 1.0.0).
+- `oaken-plugins` was free when checked on 2026-11-22 (`/simple/oaken-plugins/` returned 404).
+- Do not trust `/pypi/<name>/json` alone: it is 404 for a project that exists but has no files. Check `/simple/<name>/`
+  (200 means the name is taken) before building a release around a name. The first upload registers the name to the
+  account that holds the token.
+
 ## Versions and the pin
 
 - Core and plugins version independently. Core follows [the stable surface](repo:docs-src/origin/0010-the-stable-surface-and-its-versioning.md):

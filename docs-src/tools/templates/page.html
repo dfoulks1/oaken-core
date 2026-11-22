@@ -7,33 +7,17 @@
 {{ page.extra_css|safe }}
 </style>
 {% endif %}</head>
-<body class="has-pane" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<body class="has-nav" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
 <a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
-<header class="topbar d-lg-none">
-  <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="offcanvas" data-bs-target="#toc" aria-controls="toc">&#9776; Menu</button>
-  <span class="brand"><span class="mark" aria-hidden="true" style="width:24px;height:24px"></span> {{ site.title|upper }}</span>
-</header>
-<nav class="sidebar offcanvas-lg offcanvas-start" tabindex="-1" id="toc" aria-label="Navigation">
-  <div class="offcanvas-header d-lg-none">
-    <span class="offcanvas-title fw-bold">Menu</span>
-    <button type="button" class="btn-close" data-bs-dismiss="offcanvas" data-bs-target="#toc" aria-label="Close menu"></button>
-  </div>
-  <div class="offcanvas-body"><div class="sidebar-inner">
-    <div class="top"><a class="brand" href="{{ home_href }}"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> {{ site.title|upper }}</a>
-      <button class="theme" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></div>
-    <div class="what">{{ page.subtitle }}</div>
-    <div class="docnav"><a class="home-link" href="{{ home_href }}">&#8962; Home</a>
-{% for g in nav %}      <div class="label">{{ g.name }}</div>
-{% for p in g.pages %}      <a class="doc-link{% if p.current %} current{% endif %}" href="{{ p.href }}"{% if p.current %} aria-current="page"{% endif %}>{{ p.title }}</a>
-{% endfor %}{% endfor %}    </div>
-    <div class="gh"><div class="label">GitHub</div>
-      <a href="{{ site.repo_url }}">Repository</a><a href="{{ site.repo_url }}/issues/new">Report an issue</a><a class="star" href="{{ site.repo_url }}">&#9733; Star this repo</a></div>
-{% if rendered.sections %}    <div class="sections"><div class="label">On this page</div><nav class="nav flex-column" aria-label="On this page">
-{% for s in rendered.sections %}      <a class="nav-link" href="#{{ s.id }}"><span class="num">{{ loop.index }}</span>{{ s.title_text }}</a>
-{% endfor %}    </nav></div>
-{% endif %}  </div></div>
-</nav>
-<main id="content" tabindex="-1">
+{% include "_navbar.html" %}
+<div class="container-fluid px-3 px-lg-4">
+<div class="docs-grid{% if rendered.sections %} with-toc{% endif %}">
+{% if rendered.sections %}<aside class="docs-toc d-none d-lg-block" id="toc" aria-label="On this page"><div class="sticky">
+  <div class="label">On this page</div><nav class="nav flex-column">
+{% for s in rendered.sections %}    <a class="nav-link" href="#{{ s.id }}"><span class="num">{{ loop.index }}</span>{{ s.title_text }}</a>
+{% endfor %}  </nav></div></aside>
+{% endif %}<main id="content" tabindex="-1">
+  <nav class="crumbs" aria-label="breadcrumb"><a href="{{ home_href }}">Home</a> <span aria-hidden="true">/</span> {{ page.title }}</nav>
   <header class="cover">
     <div class="d-flex flex-wrap gap-2 mb-3">{% for cls, text in page.badges %}<span class="badge {{ cls }}">{{ text }}</span>{% endfor %}</div>
     <h1 class="display-6">{{ page.title }}</h1>
@@ -42,8 +26,15 @@
 {{ rendered.intro_html|safe }}
 {% for s in rendered.sections %}<section id="{{ s.id }}" class="doc-section"><div class="section-head"><span class="section-num">{{ loop.index }}</span><h2>{{ s.title_html|safe }}</h2></div>
 {{ s.body_html|safe }}</section>
-{% endfor %}  <footer>{{ footer }}</footer>
+{% endfor %}
+{% set flat = nav|map(attribute='pages')|sum(start=[]) %}{% set ns = namespace(i=-1) %}{% for p in flat %}{% if p.current %}{% set ns.i = loop.index0 %}{% endif %}{% endfor %}
+{% if ns.i >= 0 and (ns.i > 0 or ns.i < flat|length - 1) %}  <div class="prevnext d-flex justify-content-between gap-3">
+{% if ns.i > 0 %}    <a class="btn btn-outline-secondary" href="{{ flat[ns.i - 1].href }}">&larr; {{ flat[ns.i - 1].title }}</a>{% else %}    <span></span>{% endif %}
+{% if ns.i < flat|length - 1 %}    <a class="btn btn-outline-secondary" href="{{ flat[ns.i + 1].href }}">{{ flat[ns.i + 1].title }} &rarr;</a>{% endif %}
+  </div>
+{% endif %}  <footer>{{ footer }}</footer>
 </main>
+</div></div>
 {% include "_footer_scripts.html" %}
 {% if page.extra_js %}<script>
 {{ page.extra_js|safe }}
