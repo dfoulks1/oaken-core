@@ -27,7 +27,7 @@ id = "project"
 name = "Project"
 
 [check]
-allow_hosts = ["www.apache.org"]
+allow_hosts = ["www.apache.org", "adr.github.io"]
 
 [[pages]]
 id = "getting-started"
@@ -36,6 +36,10 @@ file = "getting-started.md"
 [[pages]]
 id = "using-plugins"
 file = "using-plugins.md"
+
+[[pages]]
+id = "plugin-docs"
+file = "plugin-docs.md"
 
 [[pages]]
 id = "keyring"

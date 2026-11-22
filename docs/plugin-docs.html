@@ -1,0 +1,236 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documenting a plugin · Oaken Core</title>
+<meta name="description" content="The documentation a plugin ships (README, decisions, prompts), with the ADR (MADR) and prompt templates to copy.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Documenting a plugin · Oaken Core">
+<meta property="og:description" content="The documentation a plugin ships (README, decisions, prompts), with the ADR (MADR) and prompt templates to copy.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-nav" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+
+
+<nav class="site-nav navbar navbar-expand-lg" aria-label="Site">
+  <div class="container-fluid px-3 px-lg-4">
+    <a class="brand navbar-brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNav" aria-controls="siteNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="siteNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Start</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a></li>
+            <li><a class="doc-link" href="keyring.html">Store credentials in your keyring</a></li>
+            <li><a class="doc-link" href="settings.html">Settings, storage and the event log</a></li>
+            <li><a class="doc-link" href="using-plugins.html">Using plugins</a></li>
+            <li><a class="doc-link current" href="plugin-docs.html" aria-current="page">Documenting a plugin</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Concepts</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="architecture/overview.html">Architecture overview</a></li>
+            <li><a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a></li>
+            <li><a class="doc-link" href="architecture/software-map.html">Software map</a></li>
+            <li><a class="doc-link" href="architecture/swarm.html">The swarm</a></li>
+            <li><a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a></li>
+            <li><a class="doc-link" href="plugins.html">Writing a plugin</a></li>
+            <li><a class="doc-link" href="architecture/router.html">The model router</a></li>
+            <li><a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a></li>
+            <li><a class="doc-link" href="architecture/operations.html">Operations</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Project</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="releasing.html">Releasing Oaken</a></li>
+            <li><a class="doc-link" href="promises.html">What 1.0 promises</a></li>
+            <li><a class="doc-link" href="adr/index.html">Architecture decisions</a></li>
+          </ul>
+        </li>
+      </ul>
+      <ul class="navbar-nav align-items-lg-center">
+        <li class="nav-item"><a class="nav-link" href="https://github.com/dfoulks1/oaken-core">GitHub</a></li>
+        <li class="nav-item"><button class="theme btn btn-sm btn-outline-secondary ms-lg-2" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-3 px-lg-4">
+<div class="docs-grid with-toc">
+<aside class="docs-toc d-none d-lg-block" id="toc" aria-label="On this page"><div class="sticky">
+  <div class="label">On this page</div><nav class="nav flex-column">
+    <a class="nav-link" href="#what-a-plugin-ships"><span class="num">1</span>What a plugin ships</a>
+    <a class="nav-link" href="#the-decision-template"><span class="num">2</span>The decision template</a>
+    <a class="nav-link" href="#the-prompt-template"><span class="num">3</span>The prompt template</a>
+  </nav></div></aside>
+<main id="content" tabindex="-1">
+  <nav class="crumbs" aria-label="breadcrumb"><a href="index.html">Home</a> <span aria-hidden="true">/</span> Documenting a plugin</nav>
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"></div>
+    <h1 class="display-6">Documenting a plugin</h1>
+    <p class="lead">A plugin carries its own record: a README, the decisions that shaped it and the prompts it was built with. Copy the two templates below, fill them in and keep them with the plugin.</p>
+  </header>
+
+<section id="what-a-plugin-ships" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>What a plugin ships</h2></div>
+<div class="code"><pre class="highlight"><code class="language-text">oaken_plugins/triager_kev/
+  __init__.py          the plugin: docstring, kind, name, tags, config model
+  docs/
+    README.md          what it is for, its settings, an example, known limits
+    decisions/         why it works this way: one decision per file
+      0001-short-title.md
+    prompts/           the prompts it was built with, in order
+      01-short-name.md
+</code></pre></div>
+<p>In <code>oaken-plugins</code> the folder sits in the plugin's subpackage. In your own package it sits beside <code>pyproject.toml</code>.
+The settings and commands of a plugin document themselves (<code>plugin describe</code>), so the README does not repeat them.
+These pages and <a href="plugins.html">Writing a plugin</a> are the public documentation. A plugin's <code>docs/</code> is its internal record.</p>
+<p>Write a <strong>decision</strong> when you choose between options a later reader would otherwise reopen: a rule's finality,
+what counts as confidential, which library. Never edit an accepted decision's text: a change is a new decision that
+supersedes it. Write a <strong>prompt</strong> for any job an agent did, so the work can be reproduced. Say in its first line that
+AI wrote it and whether a person has reviewed it.</p>
+</section>
+<section id="the-decision-template" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>The decision template</h2></div>
+<p>Decisions use <a href="https://adr.github.io/madr/">MADR</a>. Number the files <code>0001-</code>, <code>0002-</code> within the plugin.</p>
+<div class="code"><pre class="highlight"><code class="language-markdown">---
+status: proposed
+date: YYYY-MM-DD
+<span class="gu">decision-makers: the people who decided</span>
+<span class="gu">---</span>
+
+<span class="gh"># The decision, as a short title</span>
+
+<span class="gu">## Context and Problem Statement</span>
+
+The situation and the question that needs an answer, in two or three sentences.
+
+<span class="gu">## Decision Drivers</span>
+
+<span class="k">*</span><span class="w"> </span>a force or concern that shapes the choice
+<span class="k">*</span><span class="w"> </span>another one
+
+<span class="gu">## Considered Options</span>
+
+<span class="k">*</span><span class="w"> </span>option one
+<span class="k">*</span><span class="w"> </span>option two
+<span class="k">*</span><span class="w"> </span>option three
+
+<span class="gu">## Decision Outcome</span>
+
+Chosen option: "option one", because it meets the drivers best (say how).
+
+<span class="gu">### Consequences</span>
+
+<span class="k">*</span><span class="w"> </span>Good, because …
+<span class="k">*</span><span class="w"> </span>Bad, because …
+
+<span class="gu">### Confirmation</span>
+
+How the team will know the decision was carried out (a review, a test, a check).
+
+<span class="gu">## Pros and Cons of the Options</span>
+
+<span class="gu">### option one</span>
+
+<span class="k">*</span><span class="w"> </span>Good, because …
+<span class="k">*</span><span class="w"> </span>Bad, because …
+
+<span class="gu">### option two</span>
+
+<span class="k">*</span><span class="w"> </span>Good, because …
+<span class="k">*</span><span class="w"> </span>Bad, because …
+
+<span class="gu">## More Information</span>
+
+Links, related decisions, and when to revisit this one.
+
+---
+
+This layout follows MADR, Markdown Architectural Decision Records (https://adr.github.io/madr/). <span class="sb">`adr-index.py`</span>
+reads the <span class="sb">`status:`</span> line; <span class="sb">`adr-check.py`</span> checks only that a status is present.
+</code></pre></div>
+</section>
+<section id="the-prompt-template" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>The prompt template</h2></div>
+<p>One prompt, one job. Number the files in the order they were run.</p>
+<div class="code"><pre class="highlight"><code class="language-markdown"><span class="gh"># Title: the job, as a short sentence</span>
+
+&lt;!-- Copy this file to prompts/NN-short-name.md. One prompt, one job. Delete these comments. --&gt;
+
+AI-generated, unreviewed by a human. &lt;!-- Drop this line once a person has read it. --&gt;
+
+<span class="gu">## Context</span>
+
+Who is asking and why, in two or three sentences. The model, the tool and the date it was written with. What it
+builds on (a repository, a commit, an ADR by number). Anything an agent starting cold must know.
+
+<span class="gu">## Goal</span>
+
+The outcome, in one or two sentences. State what is true when the job is done, not the steps.
+
+<span class="gu">## Read first</span>
+
+<span class="k">-</span><span class="w"> </span>the files, docs and ADRs to read before touching anything (paths, not summaries)
+<span class="k">-</span><span class="w"> </span>the decisions that are settled. Say "do not reopen them".
+
+<span class="gu">## Scope</span>
+
+<span class="k">-</span><span class="w"> </span><span class="gs">**In:**</span> what this job changes.
+<span class="k">-</span><span class="w"> </span><span class="gs">**Out:**</span> what it must not touch, and what it leaves for a later prompt.
+
+<span class="gu">## Constraints</span>
+
+<span class="k">-</span><span class="w"> </span>Smallest complete change. Name what you skipped.
+<span class="k">-</span><span class="w"> </span>Every Python file starts with <span class="sb">`# SPDX-License-Identifier: Apache-2.0`</span>.
+<span class="k">-</span><span class="w"> </span>Tests use synthetic data, never the network, a model server or real content.
+<span class="k">-</span><span class="w"> </span>Do not commit or push. The owner confirms the provenance trailer first.
+<span class="k">-</span><span class="w"> </span>&lt;!-- the constraints specific to this job: versions, files, interfaces that must not change --&gt;
+
+<span class="gu">## Steps</span>
+
+<span class="k">1.</span> A step an agent can do and check. Name the test or command that shows it worked.
+<span class="k">2.</span> The next step.
+
+<span class="gu">## Done when</span>
+
+<span class="k">- [ ]</span> the checks that must pass (<span class="sb">`tools/QA.sh`</span>, a named test)
+<span class="k">- [ ]</span> the docs that must change with the code
+<span class="k">- [ ]</span> the ADR written or amended, if a decision was made
+
+<span class="gu">## Questions</span>
+
+Put open questions in one block at the end: numbered, one bold line each, your default beside it.
+
+<span class="gu">## Report back</span>
+
+What changed, what you skipped, what you did not verify, and any risk the owner must know.
+</code></pre></div>
+</section>
+
+
+  <div class="prevnext d-flex justify-content-between gap-3">
+    <a class="btn btn-outline-secondary" href="using-plugins.html">&larr; Using plugins</a>
+    <a class="btn btn-outline-secondary" href="architecture/overview.html">Architecture overview &rarr;</a>
+  </div>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>

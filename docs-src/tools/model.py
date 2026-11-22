@@ -144,6 +144,19 @@ def _badges(raw: Any, where: str) -> list[tuple[str, str]]:
     return out
 
 
+def _include_files(cfg: Config, body: str, where: str) -> str:
+    """Replace a line ``{{file:path/from/repo/root}}`` with that file in a code fence, so a page can show a template
+    that lives in the repository without a second copy to keep in step."""
+
+    def one(m: re.Match[str]) -> str:
+        f = (cfg.repo_root / m.group(1)).resolve()
+        if not f.is_file() or cfg.repo_root.resolve() not in f.parents:
+            raise BuildError(f"{where}: {{{{file:{m.group(1)}}}}} is not a file in the repository")
+        return "````markdown\n" + f.read_text(encoding="utf-8").rstrip("\n") + "\n````"
+
+    return re.sub(r"^\{\{file:(.+?)\}\}$", one, body, flags=re.M)
+
+
 def page_from_markdown(cfg: Config, entry: dict[str, Any]) -> Page:
     """Read the Markdown file named by a registry entry; entry keys override front matter."""
     pid = entry["id"]
@@ -156,6 +169,7 @@ def page_from_markdown(cfg: Config, entry: dict[str, Any]) -> Page:
     if not path.is_file():
         raise BuildError(f"page {pid!r}: source file {path} does not exist")
     meta, body = split_front_matter(path.read_text(encoding="utf-8"), str(path))
+    body = _include_files(cfg, body, str(path))
     meta.update({k: v for k, v in entry.items() if k in FRONT_KEYS})
     title = meta.get("title")
     m = re.match(r"\s*# (.+)\n", body)

@@ -240,3 +240,16 @@ def test_unregistered_generator_is_an_error(tree: Tree, tmp_path: Path) -> None:
     with pytest.raises(BuildError, match="no generator exists"):
         build_site.build(tree.cfg(), tmp_path / "x")
     assert generated.get("adr/index") is not None
+
+
+def test_file_include_shows_a_repo_file_in_a_fence(tree: Tree, built: Callable[[], Path]) -> None:
+    tree.write("tpl.md", "# Template\n\nfill me in\n")
+    tree.append("docs/alpha.md", "\n{{file:tpl.md}}\n")
+    html = read(built(), "alpha.html")
+    assert "fill me in" in html and "{{file:" not in html
+
+
+def test_file_include_refuses_a_missing_or_outside_file(tree: Tree) -> None:
+    tree.append("docs/alpha.md", "\n{{file:../outside.md}}\n")
+    with pytest.raises(BuildError, match="not a file in the repository"):
+        build_site.collect_pages(tree.cfg())
