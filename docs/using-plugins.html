@@ -1,0 +1,279 @@
+
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+<head>
+
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Using plugins · Oaken Core</title>
+<meta name="description" content="How to use Oaken plugins: the oaken-plugins package, oaken plugins and plugin add, config.toml, templates and instances, extras, secrets, extension folders and version checks.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Using plugins · Oaken Core">
+<meta property="og:description" content="How to use Oaken plugins: the oaken-plugins package, oaken plugins and plugin add, config.toml, templates and instances, extras, secrets, extension folders and version checks.">
+<meta property="og:site_name" content="Oaken Core">
+<link rel="icon" type="image/png" href="assets/brand/favicon.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+<link rel="stylesheet" href="assets/site.css">
+<script>(function(){var r=document.documentElement;r.classList.add('js');var t=null;try{t=localStorage.getItem('oaken-theme');}catch(e){}if(t!=='light'&&t!=='dark'){t=window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}r.setAttribute('data-bs-theme',t);})();</script>
+
+</head>
+<body class="has-nav" data-bs-spy="scroll" data-bs-target="#toc" data-bs-root-margin="0px 0px -40%" data-bs-smooth-scroll="true" tabindex="0">
+<a class="skip visually-hidden-focusable" href="#content">Skip to content</a>
+
+
+<nav class="site-nav navbar navbar-expand-lg" aria-label="Site">
+  <div class="container-fluid px-3 px-lg-4">
+    <a class="brand navbar-brand" href="index.html"><span class="mark" aria-hidden="true" style="width:28px;height:28px"></span> OAKEN CORE</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#siteNav" aria-controls="siteNav" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>
+    <div class="collapse navbar-collapse" id="siteNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle active" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Start</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="getting-started.html">Set up Oaken Core from scratch</a></li>
+            <li><a class="doc-link" href="keyring.html">Store credentials in your keyring</a></li>
+            <li><a class="doc-link" href="settings.html">Settings, storage and the event log</a></li>
+            <li><a class="doc-link current" href="using-plugins.html" aria-current="page">Using plugins</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Concepts</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="architecture/overview.html">Architecture overview</a></li>
+            <li><a class="doc-link" href="architecture/jobs.html">Events, jobs and the scheduler</a></li>
+            <li><a class="doc-link" href="architecture/software-map.html">Software map</a></li>
+            <li><a class="doc-link" href="architecture/swarm.html">The swarm</a></li>
+            <li><a class="doc-link" href="architecture/daemon.html">The daemon and the local API</a></li>
+            <li><a class="doc-link" href="plugins.html">Writing a plugin</a></li>
+            <li><a class="doc-link" href="architecture/router.html">The model router</a></li>
+            <li><a class="doc-link" href="architecture/prompt-safety.html">Prompt safety</a></li>
+            <li><a class="doc-link" href="architecture/operations.html">Operations</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">Project</a>
+          <ul class="dropdown-menu">
+            <li><a class="doc-link" href="releasing.html">Releasing Oaken</a></li>
+            <li><a class="doc-link" href="adr/index.html">Architecture decisions</a></li>
+          </ul>
+        </li>
+      </ul>
+      <ul class="navbar-nav align-items-lg-center">
+        <li class="nav-item"><a class="nav-link" href="https://github.com/dfoulks1/oaken-core">GitHub</a></li>
+        <li class="nav-item"><button class="theme btn btn-sm btn-outline-secondary ms-lg-2" id="themeToggle" type="button" aria-label="Toggle dark mode">Theme</button></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+
+<div class="container-fluid px-3 px-lg-4">
+<div class="docs-grid with-toc">
+<aside class="docs-toc d-none d-lg-block" id="toc" aria-label="On this page"><div class="sticky">
+  <div class="label">On this page</div><nav class="nav flex-column">
+    <a class="nav-link" href="#two-packages-one-catalog"><span class="num">1</span>Two packages, one catalog</a>
+    <a class="nav-link" href="#find-a-plugin"><span class="num">2</span>Find a plugin</a>
+    <a class="nav-link" href="#add-a-plugin"><span class="num">3</span>Add a plugin</a>
+    <a class="nav-link" href="#configure-a-plugin"><span class="num">4</span>Configure a plugin</a>
+    <a class="nav-link" href="#template-plugins-and-instances"><span class="num">5</span>Template plugins and instances</a>
+    <a class="nav-link" href="#tags-and-kinds"><span class="num">6</span>Tags and kinds</a>
+    <a class="nav-link" href="#extras"><span class="num">7</span>Extras</a>
+    <a class="nav-link" href="#secrets"><span class="num">8</span>Secrets</a>
+    <a class="nav-link" href="#turn-a-plugin-off-and-on"><span class="num">9</span>Turn a plugin off and on</a>
+    <a class="nav-link" href="#your-own-plugins"><span class="num">10</span>Your own plugins</a>
+    <a class="nav-link" href="#versions-and-compatibility"><span class="num">11</span>Versions and compatibility</a>
+    <a class="nav-link" href="#if-a-plugin-does-not-start"><span class="num">12</span>If a plugin does not start</a>
+  </nav></div></aside>
+<main id="content" tabindex="-1">
+  <nav class="crumbs" aria-label="breadcrumb"><a href="index.html">Home</a> <span aria-hidden="true">/</span> Using plugins</nav>
+  <header class="cover">
+    <div class="d-flex flex-wrap gap-2 mb-3"></div>
+    <h1 class="display-6">Using plugins</h1>
+    <p class="lead">Core is the pipeline and the plugin host. What an item is, where it comes from and what happens to it are plugins. This page is how you use them: how they are packaged, how you add one, how it is configured, and what to do when one does not start.</p>
+  </header>
+
+<section id="two-packages-one-catalog" class="doc-section"><div class="section-head"><span class="section-num">1</span><h2>Two packages, one catalog</h2></div>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Package</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>oaken-core</code></td>
+<td>The pipeline, the plugin host, the operations, the CLI, the API, the MCP door and the console. It also carries a few built-in plugins, so intake works with nothing else installed (<code>socket</code>, <code>dedupe</code>, <code>rules</code>, <code>llm</code>, <code>items</code>).</td>
+</tr>
+<tr>
+<td><code>oaken-plugins</code></td>
+<td>The plugins you add for your own use: providers, formatters, triagers, enrichers, ingestors, model backends and more. One distribution, with a subpackage per plugin.</td>
+</tr>
+</tbody>
+</table></div>
+<div class="code"><pre class="highlight"><code class="language-bash">pip<span class="w"> </span>install<span class="w"> </span>oaken-core<span class="w"> </span>oaken-plugins
+</code></pre></div>
+<p>Installing <code>oaken-plugins</code> changes nothing in a running core. It puts the plugin code on disk, and no plugin is
+imported or switched on until you add it. It declares no entry points, so there is nothing to uninstall to turn a
+plugin off, and nothing loads by accident.</p>
+<p>Why a second package? Core is the stable foundation, and its surface is versioned and frozen
+(<a href="https://github.com/dfoulks1/oaken-core/blob/main/docs-src/origin/0010-the-stable-surface-and-its-versioning.md">ADR 0010</a>). Plugins change more often, one at a time, and
+some need heavy libraries. Keeping them out of core means core stays small and releases slowly, and a plugin fix does not
+touch the foundation. <code>oaken-plugins</code> needs core (<code>oaken-core&gt;=1.0.0,&lt;2</code>); core does not need it.</p>
+<p>Plugins are <strong>not</strong> add-ons in the pip sense: there is no <code>oaken-plugins[imap-provider]</code>. An extra can only pull in
+a library, not switch a plugin on (see <a href="#extras">Extras</a>). Adding a plugin is <code>oaken plugin add</code>.</p>
+</section>
+<section id="find-a-plugin" class="doc-section"><div class="section-head"><span class="section-num">2</span><h2>Find a plugin</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugins<span class="w">                           </span><span class="c1"># everything in oaken-plugins you can add, with a one-line summary</span>
+oaken<span class="w"> </span>plugins<span class="w"> </span>--kind<span class="w"> </span>provider<span class="w"> </span>--tag<span class="w"> </span>mail<span class="w">  </span><span class="c1"># narrow it by kind and by what it is for</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span>describe<span class="w"> </span>formatter.ini<span class="w">     </span><span class="c1"># the plugin's own documentation</span>
+</code></pre></div>
+<p><code>oaken plugins</code> reads the installed package without importing any plugin. Each plugin is named <code>KIND.NAME</code>, for example
+<code>formatter.ini</code> or <code>triager.spamfilter</code>. Folders listed in <code>[extensions] dirs</code> appear first
+(see <a href="#your-own-plugins">Your own plugins</a>).</p>
+<p><code>plugin describe</code> is the plugin's own page: what it is, how to set it up, its settings with types and defaults, its
+commands, and an example for <code>config.toml</code>.</p>
+</section>
+<section id="add-a-plugin" class="doc-section"><div class="section-head"><span class="section-num">3</span><h2>Add a plugin</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>formatter.ini<span class="w">          </span><span class="c1"># shows what it would change</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>formatter.ini<span class="w"> </span>--yes<span class="w">    </span><span class="c1"># does it</span>
+</code></pre></div>
+<p>A change made through any door is a proposal until you confirm it, so the first command only says what it would do.
+With <code>--yes</code>, core:</p>
+<ol>
+<li>imports that one plugin module (the only time a plugin from the catalog is imported),</li>
+<li>writes its class path into <code>config.toml</code>,</li>
+<li>reloads, and starts the plugin.</li>
+</ol>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.formatter.ini]</span>
+<span class="n">class</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"oaken_plugins.formatter_ini:IniFormatter"</span>
+</code></pre></div>
+<p><code>oaken plugin add</code> takes a plugin's name, an entry-point name, or a class path (<code>pkg.module:Class</code>). <code>--name</code> gives an
+instance its own name and <code>--config</code> sets its settings up front as JSON. Secrets are refused there (see
+<a href="#secrets">Secrets</a>).</p>
+</section>
+<section id="configure-a-plugin" class="doc-section"><div class="section-head"><span class="section-num">4</span><h2>Configure a plugin</h2></div>
+<p>Settings live in <code>config.toml</code>, in the plugin's table, <code>[plugins.&lt;kind&gt;.&lt;name&gt;]</code>. Edit the file, or ask core:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugin<span class="w"> </span>config_get<span class="w"> </span>formatter.ini<span class="w">     </span><span class="c1"># the settings as written</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span>config_set<span class="w"> </span>formatter.ini<span class="w"> </span>...<span class="w"> </span><span class="c1"># change them; core reloads</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span><span class="nb">test</span><span class="w"> </span>formatter.ini<span class="w"> </span>--config<span class="w"> </span><span class="s1">'{...}'</span><span class="w">   </span><span class="c1"># try settings on a throwaway copy; nothing is saved</span>
+</code></pre></div>
+<p><code>config_set</code> does not keep a backup of the old file. <code>oaken config save</code> keeps a <code>.bak</code>. The settings a plugin accepts, with
+their types, defaults and which are required, are in <code>plugin describe</code>.</p>
+<p>A table that sets options for a plugin <code>oaken-plugins</code> offers loads it with no <code>class</code> line and no <code>plugin add</code>:</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.formatter.rfc822]</span>
+<span class="n">strip_attachments</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">true</span>
+</code></pre></div>
+<p>If a plugin's module fails to load, core logs an error and carries on. A broken plugin never stops startup.</p>
+</section>
+<section id="template-plugins-and-instances" class="doc-section"><div class="section-head"><span class="section-num">5</span><h2>Template plugins and instances</h2></div>
+<p>Some plugins are <strong>templates</strong>: a template runs only as named instances, each with its own settings. One instance per mail
+account, per agent, or per set of criteria. <code>provider.gmail</code>, <code>provider.imap</code> and <code>provider.smtp</code> are templates, and so is
+the built-in <code>llm</code> triager.</p>
+<p>An instance is a table that names its template with <code>plugin</code>:</p>
+<div class="code"><pre class="highlight"><code class="language-toml"><span class="k">[plugins.triager.llm_fast]</span>
+<span class="n">plugin</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"llm"</span>
+<span class="n">stage</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"signal_triage"</span>
+<span class="n">criteria</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"A company that could buy a vector database."</span>
+</code></pre></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugin<span class="w"> </span>add<span class="w"> </span>triager.llm<span class="w"> </span>--name<span class="w"> </span>llm_fast<span class="w"> </span>--config<span class="w"> </span><span class="s1">'{"criteria": "..."}'</span><span class="w"> </span>--yes
+oaken<span class="w"> </span>plugin<span class="w"> </span>remove<span class="w"> </span>triager.llm_fast<span class="w"> </span>--yes<span class="w">   </span><span class="c1"># removes the instance and its table; the template stays</span>
+</code></pre></div>
+<p>Run bare, a template does nothing. The settings it needs to be an instance are listed under <code>contextual</code> in
+<code>plugin describe</code>.</p>
+</section>
+<section id="tags-and-kinds" class="doc-section"><div class="section-head"><span class="section-num">6</span><h2>Tags and kinds</h2></div>
+<p>Every plugin has a <strong>kind</strong> (what it is in the pipeline: provider, formatter, triager, enricher, action, ingestor, store,
+embedder, LLM backend and more) and <strong>tags</strong> (what it is for: <code>mail</code>, <code>signal</code>, <code>model</code>, <code>generic</code>). The kinds and what each
+one must do are in <a href="plugins.html#kinds">writing plugins</a>. Use <code>--kind</code> and <code>--tag</code> to filter the list.</p>
+</section>
+<section id="extras" class="doc-section"><div class="section-head"><span class="section-num">7</span><h2>Extras</h2></div>
+<p>Three plugins need a library that most users do not. They ask for it as an extra:</p>
+<div class="table-responsive"><table class="table table-sm table-striped align-middle">
+<thead>
+<tr>
+<th>Extra</th>
+<th>Library</th>
+<th>Used by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>oaken-plugins[imap]</code></td>
+<td><code>imapclient</code></td>
+<td>the IMAP provider</td>
+</tr>
+<tr>
+<td><code>oaken-plugins[smtp]</code></td>
+<td><code>aiosmtplib</code></td>
+<td>the SMTP provider</td>
+</tr>
+<tr>
+<td><code>oaken-plugins[clean]</code></td>
+<td><code>selectolax</code></td>
+<td>the rfc822 formatter's safe mode (HTML to text)</td>
+</tr>
+</tbody>
+</table></div>
+<div class="code"><pre class="highlight"><code class="language-bash">pip<span class="w"> </span>install<span class="w"> </span><span class="s1">'oaken-plugins[imap,smtp]'</span>
+</code></pre></div>
+<p>A plugin imports its library only when it connects, so you can list it and add it without the extra installed. You only need
+it when the plugin runs.</p>
+</section>
+<section id="secrets" class="doc-section"><div class="section-head"><span class="section-num">8</span><h2>Secrets</h2></div>
+<p>A password or token never goes in <code>config.toml</code>, and <code>plugin add --config</code> refuses one. Core keeps it in the operating
+system's keyring:</p>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>secret<span class="w"> </span><span class="nb">set</span><span class="w"> </span>...<span class="w">      </span><span class="c1"># store a plugin's credential</span>
+oaken<span class="w"> </span>secret<span class="w"> </span>status<span class="w"> </span>...<span class="w">   </span><span class="c1"># is one stored? never shows it</span>
+oaken<span class="w"> </span>secret<span class="w"> </span>delete<span class="w"> </span>...<span class="w">   </span><span class="c1"># remove it</span>
+</code></pre></div>
+<p>See <a href="keyring.html">keyring</a> for the entry names and what happens when no keyring is available.</p>
+</section>
+<section id="turn-a-plugin-off-and-on" class="doc-section"><div class="section-head"><span class="section-num">9</span><h2>Turn a plugin off and on</h2></div>
+<div class="code"><pre class="highlight"><code class="language-bash">oaken<span class="w"> </span>plugin<span class="w"> </span>list<span class="w">            </span><span class="c1"># every plugin, whether it started, and why not if it did not</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span>disable<span class="w"> </span>KIND.NAME<span class="w">   </span><span class="c1"># stop it and keep it stopped</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>KIND.NAME<span class="w">    </span><span class="c1"># start one that was disabled or switched off for a fault</span>
+oaken<span class="w"> </span>plugin<span class="w"> </span>reload<span class="w"> </span>KIND.NAME<span class="w">    </span><span class="c1"># re-read it and start it again</span>
+</code></pre></div>
+</section>
+<section id="your-own-plugins" class="doc-section"><div class="section-head"><span class="section-num">10</span><h2>Your own plugins</h2></div>
+<p>You do not have to put a plugin in <code>oaken-plugins</code>. Core finds one three ways, in this order:</p>
+<ol>
+<li>A <strong>class path</strong>: <code>oaken plugin add pkg.module:Class</code>.</li>
+<li>An <strong>entry point</strong> from any installed package, or from a folder listed in <code>[extensions] dirs</code>. Each folder in <code>dirs</code> holds
+plugin folders (<code>oaken-&lt;kind&gt;-&lt;name&gt;/pyproject.toml</code>) and is looked in before <code>oaken-plugins</code>.</li>
+<li>The <strong><code>oaken-plugins</code> catalog</strong>.</li>
+</ol>
+<p>A name in an extensions folder wins over the same name in <code>oaken-plugins</code>. How to write one is in
+<a href="plugins.html">writing plugins</a>.</p>
+</section>
+<section id="versions-and-compatibility" class="doc-section"><div class="section-head"><span class="section-num">11</span><h2>Versions and compatibility</h2></div>
+<p>Each plugin declares the plugin API it speaks and the core versions it needs (<code>requires_core</code>). Core refuses one that does
+not fit and says why in <code>plugin list</code>. The pin between the packages (<code>oaken-core&gt;=1.0.0,&lt;2</code> in <code>oaken-plugins</code>) keeps pip
+from installing a mismatch. Release procedure: <a href="releasing.html">releasing</a>.</p>
+</section>
+<section id="if-a-plugin-does-not-start" class="doc-section"><div class="section-head"><span class="section-num">12</span><h2>If a plugin does not start</h2></div>
+<ol>
+<li><code>oaken plugin list</code> says whether it started and, if not, why (<code>Needs: ...</code>).</li>
+<li><code>oaken plugin describe KIND.NAME</code> shows the settings it requires.</li>
+<li><code>oaken plugin test KIND.NAME --config '{...}'</code> tries settings without saving anything.</li>
+<li><code>oaken log tail</code> shows the error core logged.</li>
+<li>A plugin that needs an extra will fail when it connects, not when it is added. Install the extra.</li>
+</ol>
+</section>
+
+
+  <div class="prevnext d-flex justify-content-between gap-3">
+    <a class="btn btn-outline-secondary" href="settings.html">&larr; Settings, storage and the event log</a>
+    <a class="btn btn-outline-secondary" href="architecture/overview.html">Architecture overview &rarr;</a>
+  </div>
+  <footer>Oaken Core dev · Apache-2.0</footer>
+</main>
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+<script src="assets/site.js"></script>
+
+
+</body>
+</html>

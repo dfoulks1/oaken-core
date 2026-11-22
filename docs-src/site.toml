@@ -34,6 +34,10 @@ id = "getting-started"
 file = "getting-started.md"
 
 [[pages]]
+id = "using-plugins"
+file = "using-plugins.md"
+
+[[pages]]
 id = "keyring"
 file = "keyring.md"
 
