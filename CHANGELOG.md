@@ -40,3 +40,6 @@ old `oaken-core` bundle (0.x), which is retired along with `oaken` and `oaken-cl
   `label_find` and `log_list` leave such items out. Plugin commands reach an uncleared client only if they declare
   `@command(..., confidential_aware=True)` and honour the new `PluginOpContext.confidential`. **Behaviour change:** an MCP client that read confidential items before needs the setting (or a
   `local` agent), and plugin commands that do not declare `confidential_aware` drop out of an uncleared client's tool list.
+- **Swarm:** `job_claim` no longer hands a confidential job to an agent that is not `local`. The claim skips, in its own transaction, a job
+  whose subject's effective `confidential` label is `true` or whose payload says it is confidential; the job waits for a local agent or
+  core's own workers. Before, any agent allowed a kind received every job of it, confidential or not.
