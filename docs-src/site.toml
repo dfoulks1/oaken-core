@@ -19,6 +19,10 @@ id = "start"
 name = "Start"
 
 [[groups]]
+id = "plugins"
+name = "Plugins"
+
+[[groups]]
 id = "concepts"
 name = "Concepts"
 

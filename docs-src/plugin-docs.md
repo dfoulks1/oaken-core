@@ -2,8 +2,8 @@
 title = "Documenting a plugin"
 subtitle = "What every plugin ships, and the templates to copy"
 lead = "A plugin carries its own record: a README, the decisions that shaped it and the prompts it was built with. Copy the two templates below, fill them in and keep them with the plugin."
-group = "start"
-order = 14
+group = "plugins"
+order = 30
 description = "The documentation a plugin ships (README, decisions, prompts), with the ADR (MADR) and prompt templates to copy."
 +++
 

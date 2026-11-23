@@ -2,8 +2,8 @@
 title = "Writing a plugin"
 subtitle = "Kinds, base classes, commands, templates and tests"
 lead = "Everything core does beyond its pipeline is a plugin: a small class, registered with a Python entry point. Start from a base class, override what your plugin does, and run the contract suite."
-group = "concepts"
-order = 30
+group = "plugins"
+order = 20
 description = "How to write a plugin for core: kinds, BasePlugin and @command, template plugins, config_model, tags, migrations, labels, versions, the UI contract, contract tests and entry points."
 +++
 

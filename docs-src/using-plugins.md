@@ -2,8 +2,8 @@
 title = "Using plugins"
 subtitle = "Find, add, configure and manage the plugins in oaken-plugins"
 lead = "Core is the pipeline and the plugin host. What an item is, where it comes from and what happens to it are plugins. This page is how you use them: how they are packaged, how you add one, how it is configured, and what to do when one does not start."
-group = "start"
-order = 12
+group = "plugins"
+order = 10
 description = "How to use Oaken plugins: the oaken-plugins package, oaken plugins and plugin add, config.toml, templates and instances, extras, secrets, extension folders and version checks."
 +++
 
